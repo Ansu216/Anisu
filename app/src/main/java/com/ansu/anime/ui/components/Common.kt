@@ -211,6 +211,46 @@ fun HeroCarousel(items: List<SAnime>, onClick: (SAnime) -> Unit, modifier: Modif
 }
 
 @Composable
+fun GenreChip(text: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(MaterialTheme.shapes.extraLarge)
+            .background(AnisuSurfaceRaised)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Text(text, style = MaterialTheme.typography.labelSmall, color = AnisuTextSecondary)
+    }
+}
+
+@Composable
+fun StatItem(icon: androidx.compose.ui.graphics.vector.ImageVector, value: String, label: String, modifier: Modifier = Modifier, tint: Color = AnisuTextSecondary) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+        Text(value, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.padding(top = 2.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = AnisuTextSecondary)
+    }
+}
+
+/** A clickable person card used for both the Characters and Staff grids on the details page. */
+@Composable
+fun PersonCard(imageUrl: String?, name: String, role: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.width(96.dp).clickable(onClick = onClick)) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = name,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
+                .clip(MaterialTheme.shapes.small)
+                .background(AnisuSurfaceRaised),
+        )
+        Text(name, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+        Text(role, style = MaterialTheme.typography.labelSmall, color = AnisuTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
 fun AnisuBottomBar(navController: NavHostController, currentRoute: String?) {
     data class BarItem(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 

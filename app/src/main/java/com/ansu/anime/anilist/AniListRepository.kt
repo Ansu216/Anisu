@@ -53,6 +53,14 @@ class AniListRepository(
         if (authManager.isLoggedIn) runCatching { api.updateProgress(mediaId, episode) }
     }
 
+    /** Full CornCastle-style details: stats, characters, staff, related shows. Public data - works logged out too. */
+    suspend fun getMediaDetails(mediaId: Int): AniListMediaDetails? = runCatching { api.getMediaDetails(mediaId) }.getOrNull()
+
+    suspend fun toggleFavourite(mediaId: Int): Boolean {
+        if (!authManager.isLoggedIn) return false
+        return runCatching { api.toggleFavourite(mediaId) }.getOrDefault(false)
+    }
+
     fun login() = authManager.launchLogin()
 
     fun logout() {

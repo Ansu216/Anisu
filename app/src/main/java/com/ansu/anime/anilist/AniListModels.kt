@@ -25,3 +25,39 @@ data class AniListMediaListEntry(
     val status: String,
     val media: AniListMedia,
 )
+
+/** Everything the CornCastle-style details page needs beyond the basic card: stats, cast, crew, related shows. */
+data class AniListMediaDetails(
+    val id: Int,
+    val title: String,
+    val posterUrl: String?,
+    val bannerUrl: String?,
+    val description: String?,
+    val genres: List<String>,
+    val averageScore: Int?,
+    val episodes: Int?,
+    val year: Int?,
+    val format: String?,
+    val isFavourite: Boolean,
+    val characters: List<AniListCharacter>,
+    val staff: List<AniListStaffMember>,
+    val related: List<AniListMedia>,
+)
+
+data class AniListCharacter(
+    val id: Int,
+    val name: String,
+    val imageUrl: String?,
+    val role: String,
+    val description: String?,
+    val voiceActorName: String?,
+    val voiceActorImageUrl: String?,
+)
+
+data class AniListStaffMember(
+    val id: Int,
+    val name: String,
+    val imageUrl: String?,
+    val role: String,
+    val description: String?,
+)

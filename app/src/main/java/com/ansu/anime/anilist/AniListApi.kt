@@ -104,6 +104,60 @@ class AniListApi(
         return execute(mutation, mapOf("mediaId" to mediaId, "progress" to progress)) != null
     }
 
+    /**
+     * Everything the CornCastle-style details page shows beyond the basic
+     * card: format, characters with their voice actors, staff, and related
+     * shows for the "More like this" row.
+     */
+    suspend fun getMediaDetails(mediaId: Int): AniListMediaDetails? {
+        val gql = """
+            query (${'$'}id: Int) {
+              Media(id: ${'$'}id, type: ANIME) {
+                id
+                title { romaji english }
+                coverImage { extraLarge }
+                bannerImage
+                description(asHtml: false)
+                genres
+                averageScore
+                episodes
+                format
+                isFavourite
+                startDate { year }
+                characters(sort: [ROLE, RELEVANCE], perPage: 10) {
+                  edges {
+                    role
+                    node { id name { full } image { large } description(asHtml: false) }
+                    voiceActors(language: JAPANESE, sort: RELEVANCE) { id name { full } image { large } }
+                  }
+                }
+                staff(sort: [RELEVANCE], perPage: 10) {
+                  edges {
+                    role
+                    node { id name { full } image { large } description(asHtml: false) }
+                  }
+                }
+                recommendations(perPage: 8, sort: RATING_DESC) {
+                  nodes {
+                    mediaRecommendation { id title { romaji english } coverImage { extraLarge } bannerImage genres averageScore episodes startDate { year } }
+                  }
+                }
+              }
+            }
+        """.trimIndent()
+        val data = execute(gql, mapOf("id" to mediaId)) ?: return null
+        val media = data["Media"]?.jsonObject ?: return null
+        return media.toMediaDetails()
+    }
+
+    /** Toggles the heart/favourite state on the signed-in user's AniList account for this show. */
+    suspend fun toggleFavourite(mediaId: Int): Boolean {
+        val mutation = """
+            mutation (${'$'}id: Int) { ToggleFavourite(animeId: ${'$'}id) { anime { nodes { id } } } }
+        """.trimIndent()
+        return execute(mutation, mapOf("id" to mediaId)) != null
+    }
+
     private suspend fun execute(query: String, variables: Map<String, Any?>): JsonObject? = withContext(Dispatchers.IO) {
         val payload = buildString {
             append("{\"query\":")
@@ -152,6 +206,71 @@ class AniListApi(
             averageScore = this["averageScore"]?.jsonPrimitive?.content?.toIntOrNull(),
             episodes = this["episodes"]?.jsonPrimitive?.content?.toIntOrNull(),
             year = this["startDate"]?.jsonObject?.get("year")?.jsonPrimitive?.content?.toIntOrNull(),
+        )
+    }
+
+    private fun JsonObject.toMediaDetails(): AniListMediaDetails? {
+        val idValue = this["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
+        val titleObj = this["title"]?.jsonObject
+        val title = titleObj?.get("romaji")?.jsonPrimitive?.content
+            ?: titleObj?.get("english")?.jsonPrimitive?.content
+            ?: return null
+
+        val characterEdges = this["characters"]?.jsonObject?.get("edges")?.jsonArray.orEmpty()
+        val characters = characterEdges.mapNotNull { edge -> edge.jsonObject.toCharacter() }
+
+        val staffEdges = this["staff"]?.jsonObject?.get("edges")?.jsonArray.orEmpty()
+        val staff = staffEdges.mapNotNull { edge -> edge.jsonObject.toStaffMember() }
+
+        val recommendationNodes = this["recommendations"]?.jsonObject?.get("nodes")?.jsonArray.orEmpty()
+        val related = recommendationNodes.mapNotNull { node ->
+            node.jsonObject["mediaRecommendation"]?.jsonObject?.toMedia()
+        }
+
+        return AniListMediaDetails(
+            id = idValue,
+            title = title,
+            posterUrl = this["coverImage"]?.jsonObject?.get("extraLarge")?.jsonPrimitive?.content,
+            bannerUrl = this["bannerImage"]?.jsonPrimitive?.content,
+            description = this["description"]?.jsonPrimitive?.content,
+            genres = this["genres"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
+            averageScore = this["averageScore"]?.jsonPrimitive?.content?.toIntOrNull(),
+            episodes = this["episodes"]?.jsonPrimitive?.content?.toIntOrNull(),
+            year = this["startDate"]?.jsonObject?.get("year")?.jsonPrimitive?.content?.toIntOrNull(),
+            format = this["format"]?.jsonPrimitive?.content,
+            isFavourite = this["isFavourite"]?.jsonPrimitive?.content == "true",
+            characters = characters,
+            staff = staff,
+            related = related,
+        )
+    }
+
+    private fun JsonObject.toCharacter(): AniListCharacter? {
+        val node = this["node"]?.jsonObject ?: return null
+        val idValue = node["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
+        val name = node["name"]?.jsonObject?.get("full")?.jsonPrimitive?.content ?: return null
+        val voiceActor = this["voiceActors"]?.jsonArray?.firstOrNull()?.jsonObject
+        return AniListCharacter(
+            id = idValue,
+            name = name,
+            imageUrl = node["image"]?.jsonObject?.get("large")?.jsonPrimitive?.content,
+            role = this["role"]?.jsonPrimitive?.content ?: "BACKGROUND",
+            description = node["description"]?.jsonPrimitive?.content,
+            voiceActorName = voiceActor?.get("name")?.jsonObject?.get("full")?.jsonPrimitive?.content,
+            voiceActorImageUrl = voiceActor?.get("image")?.jsonObject?.get("large")?.jsonPrimitive?.content,
+        )
+    }
+
+    private fun JsonObject.toStaffMember(): AniListStaffMember? {
+        val node = this["node"]?.jsonObject ?: return null
+        val idValue = node["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
+        val name = node["name"]?.jsonObject?.get("full")?.jsonPrimitive?.content ?: return null
+        return AniListStaffMember(
+            id = idValue,
+            name = name,
+            imageUrl = node["image"]?.jsonObject?.get("large")?.jsonPrimitive?.content,
+            role = this["role"]?.jsonPrimitive?.content ?: "",
+            description = node["description"]?.jsonPrimitive?.content,
         )
     }
 
