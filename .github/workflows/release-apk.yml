@@ -1,0 +1,113 @@
+name: Anisu Release APK
+
+# Builds a signed APK and attaches it to a GitHub Release.
+# Triggers:
+#   - automatically when a tag like v1.0.0 is pushed
+#   - manually from the Actions tab (Run workflow), optionally with a tag
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag, e.g. v0.2.0 (leave empty to auto-generate one)'
+        required: false
+        default: ''
+      prerelease:
+        description: 'Mark this release as a pre-release'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+# Needed to create the release and upload its assets.
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build & publish release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "build-tools;34.0.0"
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Resolve release tag and version
+        id: rel
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="${{ github.event.inputs.tag }}"
+            if [ -z "$TAG" ]; then TAG="v$(date -u +'%Y.%m.%d.%H%M')"; fi
+          fi
+          # v1.2.3 -> 1.2.3
+          VERSION="${TAG#v}"
+          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing tag=$TAG version=$VERSION"
+
+      - name: Assemble signed APKs
+        run: |
+          ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug \
+            -PversionCode="${{ github.run_number }}" \
+            -PversionName="${{ steps.rel.outputs.version }}"
+
+      - name: Verify APK signatures
+        run: |
+          BUILD_TOOLS="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
+          echo "Using build-tools: $BUILD_TOOLS"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs \
+            app/build/outputs/apk/release/app-release.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs \
+            app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Rename APKs for the release
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.rel.outputs.version }}"
+          cp app/build/outputs/apk/release/app-release.apk "Anisu-${VERSION}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk     "Anisu-${VERSION}-debug.apk"
+          ls -la Anisu-*.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.rel.outputs.tag }}
+          name: Anisu ${{ steps.rel.outputs.tag }}
+          draft: false
+          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+          generate_release_notes: true
+          files: |
+            Anisu-${{ steps.rel.outputs.version }}.apk
+            Anisu-${{ steps.rel.outputs.version }}-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

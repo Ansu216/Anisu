@@ -1,6 +1,6 @@
-# How to Compile the Kernel APK
+# How to Compile the Anisu APK
 
-This guide explains, step by step, how to build the Kernel Android app from source.
+This guide explains, step by step, how to build the Anisu Android app from source.
 It is written for a beginner: if you have never opened a computer before, follow it
 in order. No prior Android knowledge is required.
 
@@ -51,15 +51,15 @@ Open a terminal and navigate to the folder where you want to save the project:
 ```powershell
 # Windows (PowerShell)
 cd C:\Users\<YourUser>\Documents
-git clone https://github.com/<your-username>/Kernel.git
-cd Kernel
+git clone https://github.com/<your-username>/Anisu.git
+cd Anisu
 ```
 
 ```bash
 # macOS / Linux (Terminal)
 cd ~/Documents
-git clone https://github.com/<your-username>/Kernel.git
-cd Kernel
+git clone https://github.com/<your-username>/Anisu.git
+cd Anisu
 ```
 
 > Replace `<your-username>` with your actual GitHub username, or use a different
@@ -118,7 +118,7 @@ locally, **not** committed to Git). Create it in the project root:
 ### Windows (PowerShell)
 
 ```powershell
-Set-Content -Path "C:\Users\<YourUser>\Documents\Kernel\local.properties" -Value @"
+Set-Content -Path "C:\Users\<YourUser>\Documents\Anisu\local.properties" -Value @"
 sdk.dir=C:\Users\<YourUser>\AppData\Local\Android\Sdk
 "@
 ```
@@ -128,7 +128,7 @@ Replace `<YourUser>` with your Windows username.
 ### macOS / Linux
 
 ```bash
-echo 'sdk.dir=/Users/<YourUser>/Library/Android/sdk' > /path/to/Kernel/local.properties
+echo 'sdk.dir=/Users/<YourUser>/Library/Android/sdk' > /path/to/Anisu/local.properties
 ```
 
 > If you chose a different SDK location, change the path accordingly. The `.gitignore`
@@ -140,7 +140,7 @@ echo 'sdk.dir=/Users/<YourUser>/Library/Android/sdk' > /path/to/Kernel/local.pro
 ## Step 5 — Open the project in Android Studio
 
 1. Open Android Studio and choose **Open**.
-2. Select the `Kernel` folder you cloned in Step 2.
+2. Select the `Anisu` folder you cloned in Step 2.
 3. Android Studio will start the **Gradle sync**. It will:
    - Download the Gradle wrapper (if not already cached).
    - Resolve all dependencies from Google Maven and Maven Central.
@@ -200,7 +200,7 @@ Android Studio will produce an APK like
 
 ```bash
 # macOS / Linux
-~/Android/Sdk/platform-tools/adb install ~/Kernel/app/build/outputs/apk/debug/app-debug.apk
+~/Android/Sdk/platform-tools/adb install ~/Anisu/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 > The device must have **Developer options** and **USB debugging** enabled, and
@@ -378,7 +378,7 @@ The build alone is not enough to use the app end-to-end. You need to fill in a
 client ID from AniList:
 
 1. Open https://anilist.co/settings/developer and register a new OAuth2 client.
-2. Set the **redirect URI** to `kernel://anilist-auth`.
+2. Set the **redirect URI** to `anisu://anilist-auth`.
 3. Copy the **client ID** into `app/src/main/java/com/kernel/anime/anilist/AniListAuthManager.kt`,
    replacing the placeholder in the `companion object`:
 
@@ -391,7 +391,7 @@ client ID from AniList:
 
 4. Rebuild: `./gradlew assembleDebug`.
 
-> The redirect URI `kernel://anilist-auth` is already declared in
+> The redirect URI `anisu://anilist-auth` is already declared in
 > `AndroidManifest.xml` and hard-coded in `AniListAuthManager`, so you only need
 > to paste the client ID.
 
@@ -418,14 +418,90 @@ Expected artifacts:
 
 | Variant | Output | Size |
 |---|---|---|
-| Debug | `app/build/outputs/apk/debug/app-debug.apk` | ~23 MB |
-| Release | `app/build/outputs/apk/release/app-release-unsigned.apk` | ~1.4 MB (minified) |
+| Debug | `app/build/outputs/apk/debug/app-debug.apk` | ~23 MB (signed) |
+| Release | `app/build/outputs/apk/release/app-release.apk` | ~3 MB (signed, minified) |
 
 The built APK reports:
 
+- **App name:** Anisu
 - **Package name:** `com.ansu.anime`
 - **Minimum Android:** 7.0 (API 24)
 - **Target Android:** 15 (API 35)
+
+Both variants are signed, so the release build is `app-release.apk` (not
+`app-release-unsigned.apk`).
+
+---
+
+## Signing
+
+The keystore lives at `keystore/anisu.jks` and is committed on purpose, so local
+builds and CI produce **identically-signed** APKs with no setup. Both the `debug`
+and `release` build types use it.
+
+| Setting | Value |
+|---|---|
+| Keystore | `keystore/anisu.jks` |
+| Alias | `anisu` |
+| Store / key password | `android` |
+
+You can override the passwords without editing any file:
+
+```bash
+./gradlew assembleRelease \
+  -PANISU_STORE_PASSWORD=yourpass \
+  -PANISU_KEY_ALIAS=youralias \
+  -PANISU_KEY_PASSWORD=yourpass
+```
+
+Verifiy a signed APK:
+
+```bash
+apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
+```
+
+See [`keystore/README.md`](keystore/README.md) for the security caveats and how to
+move the key to GitHub secrets instead.
+
+---
+
+## CI: nightly and release builds
+
+Two GitHub Actions workflows are included under `.github/workflows/`.
+
+### `apk-nightly.yml` — hourly nightly APK
+
+- **Runs:** every hour (`0 * * * *`) and manually
+  (**Actions → Anisu Nightly APK → Run workflow**).
+- **Does:** builds the signed debug + release APKs with a timestamped version
+  (`versionName=YYYY.MM.DD.HHMM`, `versionCode=YYYYMMDDHH`), verifies the
+  signatures, then **force-pushes** them to the `apk-nightly` branch. The branch is
+  wiped and replaced on every run.
+- **Branch contents:**
+
+  | File | Description |
+  |---|---|
+  | `Anisu-nightly.apk` | Signed release build. |
+  | `Anisu-nightly-debug.apk` | Signed debug build. |
+  | `nightly.json` | Version / build metadata. |
+  | `README.md` | Short note explaining the branch. |
+
+- **Install:** open `https://github.com/<owner>/<repo>/raw/apk-nightly/Anisu-nightly.apk`
+  on your phone, or browse the
+  [`apk-nightly` branch](https://github.com/Ansu216/Anisu/tree/apk-nightly).
+
+### `release-apk.yml` — automatic release
+
+- **Runs:** when you push a tag like `v1.0.0`, or manually
+  (**Actions → Anisu Release APK → Run workflow**, with an optional tag).
+- **Does:** builds and signs the APKs, verifies signatures, and creates a GitHub
+  Release named after the tag with `Anisu-<version>.apk` and
+  `Anisu-<version>-debug.apk` attached.
+
+### One-time repository setting
+
+The nightly workflow pushes a branch, so the workflow token needs write access:
+**Settings → Actions → General → Workflow permissions → Read and write permissions**.
 
 ---
 
@@ -433,10 +509,12 @@ The built APK reports:
 
 | Task | Command |
 |---|---|
-| Open the project | Android Studio → **Open** → select `Kernel/` |
+| Open the project | Android Studio → **Open** → select the project folder |
 | Sync Gradle | **File → Sync Project with Gradle Files** |
 | Build debug APK | **Build → Build APK(s)** |
-| Build release APK | **Build → Build APK(s)** → **Build Bundle(s) / APK(s) → Build APK(s)** |
-| Install debug APK on device | `.\gradlew installDebug` (Windows) / `./gradlew installDebug` (macOS/Linux) |
+| Build release APK | **Build → Build APK(s)** (release variant) |
+| Build both from CLI | `.\gradlew assembleDebug assembleRelease` |
+| Install on device | `.\gradlew installDebug` (Windows) / `./gradlew installDebug` (macOS/Linux) |
 | Clean build | `.\gradlew clean` |
+| Verify signing | `apksigner verify --print-certs <apk>` |
 | Check project health | `.\gradlew assembleDebug` (recommended as the single verification command) |

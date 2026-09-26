@@ -1,0 +1,163 @@
+name: Anisu Nightly APK
+
+# Builds a signed APK every hour and force-publishes it to the `apk-nightly`
+# branch (the branch contents are fully replaced on every run).
+# Can also be started by hand from the Actions tab (Run workflow).
+
+on:
+  schedule:
+    # Every hour, on the hour (UTC).
+    - cron: '0 * * * *'
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'Which APK to publish'
+        required: false
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+          - both
+
+# Needed to push the apk-nightly branch.
+permissions:
+  contents: write
+
+# Never let two nightly runs fight over the same branch.
+concurrency:
+  group: apk-nightly
+  cancel-in-progress: true
+
+jobs:
+  nightly:
+    name: Build & publish nightly APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "build-tools;34.0.0"
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Compute build stamp
+        id: stamp
+        run: |
+          echo "version_name=$(date -u +'%Y.%m.%d.%H%M')" >> "$GITHUB_OUTPUT"
+          echo "version_code=$(date -u +'%Y%m%d%H')"      >> "$GITHUB_OUTPUT"
+          echo "iso=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"     >> "$GITHUB_OUTPUT"
+
+      - name: Assemble signed APKs
+        run: |
+          ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease \
+            -PversionCode="${{ steps.stamp.outputs.version_code }}" \
+            -PversionName="${{ steps.stamp.outputs.version_name }}"
+
+      - name: Verify APK signatures
+        run: |
+          BUILD_TOOLS="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
+          echo "Using build-tools: $BUILD_TOOLS"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs \
+            app/build/outputs/apk/release/app-release.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs \
+            app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Stage APKs
+        id: stage
+        run: |
+          set -euo pipefail
+          VARIANT="${{ github.event.inputs.variant }}"
+          if [ -z "$VARIANT" ]; then VARIANT="both"; fi
+          echo "Publishing variant: $VARIANT"
+
+          STAGE="$(mktemp -d)"
+          echo "dir=$STAGE" >> "$GITHUB_OUTPUT"
+
+          if [ "$VARIANT" = "release" ] || [ "$VARIANT" = "both" ]; then
+            cp app/build/outputs/apk/release/app-release.apk "$STAGE/Anisu-nightly.apk"
+          fi
+          if [ "$VARIANT" = "debug" ] || [ "$VARIANT" = "both" ]; then
+            cp app/build/outputs/apk/debug/app-debug.apk "$STAGE/Anisu-nightly-debug.apk"
+          fi
+
+          cat > "$STAGE/nightly.json" <<JSON
+          {
+            "app": "Anisu",
+            "package": "com.ansu.anime",
+            "versionName": "${{ steps.stamp.outputs.version_name }}",
+            "versionCode": ${{ steps.stamp.outputs.version_code }},
+            "builtAt": "${{ steps.stamp.outputs.iso }}",
+            "commit": "${{ github.sha }}",
+            "runId": "${{ github.run_id }}"
+          }
+          JSON
+
+          cat > "$STAGE/README.md" <<'MD'
+          # Anisu — nightly APK
+
+          This branch is **generated automatically** by the
+          [`Anisu Nightly APK`](../actions/workflows/apk-nightly.yml) workflow.
+          Every run wipes the branch and replaces it with the newest build.
+
+          | File | Description |
+          |---|---|
+          | `Anisu-nightly.apk` | Signed **release** build (smaller, minified, R8). |
+          | `Anisu-nightly-debug.apk` | Signed **debug** build (easier to read stack traces). |
+          | `nightly.json` | Version / build metadata for this run. |
+
+          **Do not commit to this branch by hand — it is overwritten hourly.**
+
+          ## Install
+
+          Download `Anisu-nightly.apk` on your phone and open it. Android will ask
+          you to allow installing unknown apps for your browser/file manager.
+
+          Both APKs are signed with the same key, so each nightly installs as a
+          normal upgrade over the previous one (no uninstall needed).
+          MD
+
+          ls -la "$STAGE"
+
+      - name: Publish to apk-nightly branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STAGE: ${{ steps.stage.outputs.dir }}
+          STAMP: ${{ steps.stamp.outputs.iso }}
+        run: |
+          set -euo pipefail
+          cd "$STAGE"
+          git init -q
+          git checkout -q -b apk-nightly
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "nightly APK ${STAMP}"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin apk-nightly
+          echo "Published to branch apk-nightly"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: anisu-nightly-${{ steps.stamp.outputs.version_code }}
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
