@@ -13,12 +13,12 @@ on:
       variant:
         description: 'Which APK to publish'
         required: false
-        default: 'release'
+        default: 'both'
         type: choice
         options:
-          - release
-          - debug
           - both
+          - debug
+          - release
 
 # Needed to push the apk-nightly branch.
 permissions:
