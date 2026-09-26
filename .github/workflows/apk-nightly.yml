@@ -123,6 +123,9 @@ jobs:
           cat > "$STAGE/README.md" <<'MD'
           # Anisu — nightly APK
 
+          [![Download the release APK](https://img.shields.io/badge/Download-Anisu--nightly.apk-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://raw.githubusercontent.com/Ansu216/Anisu/apk-nightly/Anisu-nightly.apk)
+          [![Download the debug APK](https://img.shields.io/badge/Download-Anisu--nightly--debug.apk-FF6D00?style=for-the-badge&logo=android&logoColor=white)](https://raw.githubusercontent.com/Ansu216/Anisu/apk-nightly/Anisu-nightly-debug.apk)
+
           This branch is **generated automatically** by the
           [`Anisu Nightly APK`](../actions/workflows/apk-nightly.yml) workflow.
           Every run wipes the branch and replaces it with the newest build.
@@ -133,7 +136,7 @@ jobs:
           | `Anisu-nightly-debug.apk` | Signed **debug** build (easier to read stack traces). |
           | `nightly.json` | Version / build metadata for this run. |
 
-          **Do not commit to this branch by hand — it is overwritten hourly.**
+          **Do not commit to this branch by hand — it is overwritten on every run.**
 
           ## Install
 
