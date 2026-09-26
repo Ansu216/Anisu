@@ -379,7 +379,7 @@ client ID from AniList:
 
 1. Open https://anilist.co/settings/developer and register a new OAuth2 client.
 2. Set the **redirect URI** to `anisu://anilist-auth`.
-3. Copy the **client ID** into `app/src/main/java/com/kernel/anime/anilist/AniListAuthManager.kt`,
+3. Copy the **client ID** into `app/src/main/java/com/ansu/anime/anilist/AniListAuthManager.kt`,
    replacing the placeholder in the `companion object`:
 
    ```kotlin

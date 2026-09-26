@@ -1,8 +1,17 @@
-# Kernel
+# Anisu
+
+**Package:** `com.ansu.anime` · **Min Android:** 7.0 (API 24) · **Target:** Android 15 (API 35)
 
 A hybrid anime app: Nuvio's dark, addon-driven home screen and player, CornCastle's
 AniList-synced continue-watching row, built extension-based like Keiyoushi/Aniyomi
 sources, **plus** support for Stremio/Nuvio-protocol HTTP addons.
+
+APKs are signed (`keystore/anisu.jks`) and published automatically:
+
+- **Nightly:** every hour to the [`apk-nightly`](https://github.com/Ansu216/Anisu/tree/apk-nightly) branch
+- **Release:** on a `v*` tag, attached to a GitHub Release
+
+See [`how-to-compile.md`](how-to-compile.md) for the full build guide.
 
 ## Architecture at a glance
 
@@ -10,7 +19,7 @@ sources, **plus** support for Stremio/Nuvio-protocol HTTP addons.
   `PackageManager` and loaded with a `PathClassLoader` + reflection into the
   `AnimeCatalogueSource` interface. This is the same mechanism Keiyoushi/Aniyomi
   extensions use: an extension APK declares an empty `<receiver>` with an
-  intent-filter for `com.kernel.anime.extension.ANIME_SOURCE`, and a `<meta-data>`
+  intent-filter for `com.ansu.anime.extension.ANIME_SOURCE`, and a `<meta-data>`
   entry naming its source class(es). `DemoSource` is a real, working example
   bundled straight into the app (pulls AniList metadata, points at a public
   Apple HLS test stream) so there's content on first launch and something to
@@ -35,30 +44,33 @@ sources, **plus** support for Stremio/Nuvio-protocol HTTP addons.
 ## Setup
 
 1. Open the project root in Android Studio (Ladybug or newer) and let it sync.
-   It will offer to generate the Gradle wrapper jar automatically — accept
-   that, since it isn't checked into this download.
+   The Gradle wrapper (`gradlew` + `gradle/wrapper/gradle-wrapper.jar`) **is**
+   checked in, so no wrapper generation step is needed.
 2. Register a client at <https://anilist.co/settings/developer> with redirect
-   URI `kernel://anilist-auth`, then put the client ID in
-   `app/build.gradle.kts` (`ANILIST_CLIENT_ID`), replacing the placeholder.
-3. Build and run. The home screen will show AniList trending data via the
-   built-in demo source immediately; no extension or addon is required to see
-   the UI working end to end (including playback, against a public test
-   stream).
+   URI `anisu://anilist-auth`, then put the client ID in
+   `app/src/main/java/com/ansu/anime/anilist/AniListAuthManager.kt`
+   (`ANILIST_CLIENT_ID`), replacing the placeholder.
+3. Build and run — `./gradlew assembleDebug` or **Build → Build APK(s)**.
+   The home screen will show AniList trending data via the built-in demo
+   source immediately; no extension or addon is required to see the UI working
+   end to end (including playback, against a public test stream).
 4. To add real content: install a Keiyoushi-format extension APK on the
    device (Settings → Extensions → Rescan), or add a Stremio/Nuvio addon
    manifest URL (Settings → Addons).
 
-## Honest limitations
+## Build status
 
-This was written in a sandboxed environment with no network access, so **it
-has not been compiled or run**. It's a complete, coherent source tree
-following real, documented protocols (Keiyoushi extension loading, the
-Stremio addon spec, AniList's public GraphQL API), but treat the first build
-in Android Studio as exactly that — a first build. Likely rough edges:
+This tree now compiles and is verified: `./gradlew assembleDebug assembleRelease`
+produces signed APKs with **zero errors and zero warnings**, and the APKs install
+and launch (the previous instant-launch crash — the manifest pointing at
+`com.ansu.anime.AnisuApp`, a class that does not exist — is fixed).
+
+Known rough edges that remain:
 
 - Dependency versions (AGP/Kotlin/Compose BOM/Room/Media3) were current as of
   writing but Android Studio may prompt to bump one or two on first sync —
-  that's expected and safe to accept.
+  that's expected and safe to accept. If you bump Kotlin, bump KSP to the
+  matching `<kotlinVersion>-<kspVersion>` release too.
 - Matching an AniList list entry back to a specific installed extension is
   simplified to "use whatever the first source is" (`CatalogRepository`).
   A real app would want fuzzy title matching across sources, which is a
@@ -73,7 +85,7 @@ in Android Studio as exactly that — a first build. Likely rough edges:
 ## Where things live
 
 ```
-app/src/main/java/com/kernel/anime/
+app/src/main/java/com/ansu/anime/
 ├── core/model/        SAnime, SEpisode, Video, MediaOrigin
 ├── extension/          AnimeCatalogueSource contract + APK loader + DemoSource
 ├── addon/              Stremio/Nuvio protocol client + AddonManager

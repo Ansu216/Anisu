@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Kernel"
+rootProject.name = "Anisu"
 include(":app")

@@ -24,7 +24,7 @@ android {
 
         // Fill these in from https://anilist.co/settings/developer
         buildConfigField("String", "ANILIST_CLIENT_ID", "\"YOUR_ANILIST_CLIENT_ID\"")
-        buildConfigField("String", "ANILIST_REDIRECT_URI", "\"kernel://anilist-auth\"")
+        buildConfigField("String", "ANILIST_REDIRECT_URI", "\"anisu://anilist-auth\"")
     }
 
     // A keystore is committed at keystore/anisu.jks so that local builds and CI
