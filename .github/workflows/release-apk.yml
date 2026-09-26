@@ -18,7 +18,7 @@ on:
       prerelease:
         description: 'Mark this release as a pre-release'
         required: false
-        default: 'false'
+        default: 'true'
         type: choice
         options:
           - 'false'
