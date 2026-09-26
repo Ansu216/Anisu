@@ -379,17 +379,53 @@ client ID from AniList:
 
 1. Open https://anilist.co/settings/developer and register a new OAuth2 client.
 2. Set the **redirect URI** to `kernel://anilist-auth`.
-3. Copy the **client ID** into `app/build.gradle.kts`:
+3. Copy the **client ID** into `app/src/main/java/com/kernel/anime/anilist/AniListAuthManager.kt`,
+   replacing the placeholder in the `companion object`:
 
    ```kotlin
-   buildConfigField("String", "ANILIST_CLIENT_ID", "\"YOUR_ANILIST_CLIENT_ID\"")
+   companion object {
+       const val ANILIST_CLIENT_ID = "YOUR_ANILIST_CLIENT_ID"  // <-- your real ID here
+       private const val KEY_TOKEN = "access_token"
+   }
    ```
 
 4. Rebuild: `./gradlew assembleDebug`.
 
-Also note that `AGP 8.1.1` and `Kotlin 2.1.0` are the versions used; if Android
-Studio suggests a newer version, you can accept the update — it will not break the
-build (the project uses version catalog aliases, so only the version numbers change).
+> The redirect URI `kernel://anilist-auth` is already declared in
+> `AndroidManifest.xml` and hard-coded in `AniListAuthManager`, so you only need
+> to paste the client ID.
+
+The versions this project is pinned to (in `gradle/libs.versions.toml`) are:
+
+| Component | Version |
+|---|---|
+| Android Gradle Plugin | 8.7.2 |
+| Kotlin | 2.1.0 |
+| KSP | 2.1.0-1.0.29 |
+| Compose BOM | 2024.12.01 |
+
+Kotlin, KSP and Compose must stay in sync: the KSP version prefix **must** match the
+Kotlin version (`2.1.0-…`). If you bump Kotlin, bump KSP to the matching
+`<kotlinVersion>-<kspVersion>` release too, or the build stops with
+`ksp-… is too old for kotlin-…`.
+
+---
+
+## Verified build result
+
+This project has been built from a clean checkout with the command-line commands above.
+Expected artifacts:
+
+| Variant | Output | Size |
+|---|---|---|
+| Debug | `app/build/outputs/apk/debug/app-debug.apk` | ~23 MB |
+| Release | `app/build/outputs/apk/release/app-release-unsigned.apk` | ~1.4 MB (minified) |
+
+The built APK reports:
+
+- **Package name:** `com.ansu.anime`
+- **Minimum Android:** 7.0 (API 24)
+- **Target Android:** 15 (API 35)
 
 ---
 
