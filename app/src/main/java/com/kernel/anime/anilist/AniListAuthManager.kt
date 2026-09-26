@@ -2,6 +2,7 @@ package com.kernel.anime.anilist
 
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.security.crypto.EncryptedSharedPreferences
@@ -20,14 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
  */
 class AniListAuthManager(private val context: Context) {
 
-    private val masterKey = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
-    private val prefs = EncryptedSharedPreferences.create(
-        context,
-        "kernel_anilist_auth",
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-    )
+    private val prefs: SharedPreferences = createPrefs(context)
 
     private val _accessToken = MutableStateFlow(prefs.getString(KEY_TOKEN, null))
     val accessToken: StateFlow<String?> = _accessToken
@@ -73,5 +67,31 @@ class AniListAuthManager(private val context: Context) {
         const val ANILIST_CLIENT_ID = "YOUR_ANILIST_CLIENT_ID"
 
         private const val KEY_TOKEN = "access_token"
+        private const val PREFS_NAME = "anisu_anilist_auth"
+
+        /**
+         * [EncryptedSharedPreferences] needs a working Android Keystore. On a
+         * handful of devices/ROMs (and after a backup restore) creating it
+         * throws — and because this class is built during
+         * `Application.onCreate`, that exception would kill the app before the
+         * first frame is ever drawn. We therefore degrade to plain
+         * preferences instead of crashing the whole app on launch.
+         */
+        private fun createPrefs(context: Context): SharedPreferences {
+            return runCatching {
+                val masterKey = MasterKey.Builder(context)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build()
+                EncryptedSharedPreferences.create(
+                    context,
+                    PREFS_NAME,
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+                )
+            }.getOrElse {
+                context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            }
+        }
     }
 }
