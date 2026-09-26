@@ -8,8 +8,10 @@
 .idea/
 
 # Local Gradle user home (may contain caches and downloaded distributions)
+# Anchored to the repo root so the wrapper jar (gradle-wrapper.jar) is kept.
 .gradle/
-gradle-*
+/gradle-*/
+/gradle-*.zip
 
 # Local SDK properties (no API keys, no machine paths)
 local.properties
