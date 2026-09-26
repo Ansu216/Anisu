@@ -27,6 +27,7 @@ build/
 out/
 
 # JetBrains
+.kotlin/
 com.intellij.plugins.gradle.settings.xml
 idea.doNotTouchPluginConfigurations
 *.plotter.xml
