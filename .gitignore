@@ -1,0 +1,35 @@
+# Built application files
+*.apk
+*.aab
+
+# Gradle build output
+.build/
+.gradle/
+.idea/
+
+# Local Gradle user home (may contain caches and downloaded distributions)
+.gradle/
+gradle-*
+
+# Local SDK properties (no API keys, no machine paths)
+local.properties
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+*.iml
+.vscode/
+
+# Debug / log / test artifacts
+*.log
+build/
+out/
+
+# JetBrains
+com.intellij.plugins.gradle.settings.xml
+idea.doNotTouchPluginConfigurations
+*.plotter.xml
+*.iml
+*.ipr
+*.iws

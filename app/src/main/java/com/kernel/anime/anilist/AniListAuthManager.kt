@@ -1,0 +1,77 @@
+package com.kernel.anime.anilist
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
+/**
+ * AniList uses OAuth2's implicit grant for client-only apps: we open the
+ * authorize URL in a Custom Tab, the user logs in on anilist.co, and AniList
+ * redirects back to our registered `kernel://anilist-auth` scheme with the
+ * access token in the URI fragment — no client secret or backend needed.
+ *
+ * Register a client at https://anilist.co/settings/developer with redirect
+ * URI `kernel://anilist-auth` and put the client id in [ANILIST_CLIENT_ID].
+ */
+class AniListAuthManager(private val context: Context) {
+
+    private val masterKey = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+    private val prefs = EncryptedSharedPreferences.create(
+        context,
+        "kernel_anilist_auth",
+        masterKey,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+    )
+
+    private val _accessToken = MutableStateFlow(prefs.getString(KEY_TOKEN, null))
+    val accessToken: StateFlow<String?> = _accessToken
+    val isLoggedIn: Boolean get() = _accessToken.value != null
+
+    fun launchLogin() {
+        val authorizeUrl = Uri.parse("https://anilist.co/api/v2/oauth/authorize")
+            .buildUpon()
+            .appendQueryParameter("client_id", ANILIST_CLIENT_ID)
+            .appendQueryParameter("redirect_uri", "kernel://anilist-auth")
+            .appendQueryParameter("response_type", "token")
+            .build()
+
+        val customTabsIntent = CustomTabsIntent.Builder().build()
+        customTabsIntent.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        customTabsIntent.launchUrl(context, authorizeUrl)
+    }
+
+    /** Call from [android.app.Activity.onNewIntent] / onCreate when handling the `kernel://anilist-auth` redirect. */
+    fun handleRedirect(uri: Uri): Boolean {
+        if (uri.scheme != "kernel" || uri.host != "anilist-auth") return false
+        // AniList returns the token in the URI *fragment* (#access_token=...),
+        // which Android's Uri parses into getFragment() rather than query params.
+        val fragment = uri.fragment ?: return false
+        val token = fragment.split("&")
+            .map { it.split("=") }
+            .firstOrNull { it.size == 2 && it[0] == "access_token" }
+            ?.get(1)
+            ?: return false
+
+        prefs.edit().putString(KEY_TOKEN, token).apply()
+        _accessToken.value = token
+        return true
+    }
+
+    fun logout() {
+        prefs.edit().remove(KEY_TOKEN).apply()
+        _accessToken.value = null
+    }
+
+    companion object {
+        /** Fill in from https://anilist.co/settings/developer */
+        const val ANILIST_CLIENT_ID = "YOUR_ANILIST_CLIENT_ID"
+
+        private const val KEY_TOKEN = "access_token"
+    }
+}
