@@ -1,5 +1,6 @@
 package com.ansu.anime.di
 
+
 import android.content.Context
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import com.ansu.anime.addon.AddonManager
@@ -50,8 +51,7 @@ class AppContainer(context: Context) {
     val addonManager: AddonManager = AddonManager(stremioAddonApi, database.installedAddonDao())
 
     val aniListAuthManager: AniListAuthManager = AniListAuthManager(appContext)
-    val aniListApi: AniListApi = AniListApi(okHttpClient, aniListAuthManager)
-    val aniListRepository: AniListRepository = AniListRepository(aniListApi, aniListAuthManager)
+    val aniListRepository: AniListRepository = AniListRepository(AniListApi, aniListAuthManager)
 
     val continueWatchingRepository: ContinueWatchingRepository = ContinueWatchingRepository(
         database.continueWatchingDao(),

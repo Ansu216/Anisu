@@ -1,6 +1,8 @@
 package com.ansu.anime.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -9,6 +11,7 @@ import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.addons.AddonsScreen
 import com.ansu.anime.ui.auth.AniListLoginScreen
 import com.ansu.anime.ui.details.DetailsScreen
+import com.ansu.anime.anilist.AniListMedia
 import com.ansu.anime.ui.extensions.ExtensionsScreen
 import com.ansu.anime.ui.home.HomeScreen
 import com.ansu.anime.ui.library.LibraryScreen
@@ -77,14 +80,31 @@ fun AnisuNavGraph(container: AppContainer, navController: NavHostController = re
             AniListLoginScreen(container = container, navController = navController)
         }
         composable(Dest.DETAILS) {
-            DetailsScreen(
-                container = container,
-                navController = navController,
-                onEpisodeSelected = { episode ->
-                    container.selectionHolder.selectEpisode(episode)
-                    navController.navigate(Dest.PLAYER)
-                },
-            )
+            val anime = container.selectionHolder.currentAnime.value
+            val anilistId = anime?.anilistId
+            val media by produceState<com.ansu.anime.anilist.AniListMedia?>(initialValue = null, anilistId) {
+                value = anilistId?.let { container.aniListRepository.getMediaDetails(it) }
+            }
+            media?.let { loaded ->
+                DetailsScreen(
+                    media = loaded,
+                    isLiked = false,
+                    onBack = { navController.popBackStack() },
+                    onPlay = { navController.navigate(Dest.PLAYER) },
+                    onToggleLike = { },
+                    onEpisodeClick = { episode ->
+                        container.selectionHolder.selectEpisode(
+                            com.ansu.anime.core.model.SEpisode(
+                                id = episode.number.toString(),
+                                name = episode.title,
+                                episodeNumber = episode.number.toFloat(),
+                                thumbnailUrl = episode.thumbnailUrl,
+                            ),
+                        )
+                        navController.navigate(Dest.PLAYER)
+                    },
+                )
+            }
         }
         composable(Dest.PLAYER) {
             PlayerScreen(container = container, navController = navController)

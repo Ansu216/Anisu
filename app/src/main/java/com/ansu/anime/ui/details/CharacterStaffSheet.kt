@@ -1,89 +1,98 @@
 package com.ansu.anime.ui.details
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import androidx.compose.ui.unit.sp
 import com.ansu.anime.anilist.AniListCharacter
 import com.ansu.anime.anilist.AniListStaffMember
-import com.ansu.anime.ui.theme.AnisuSurfaceRaised
-import com.ansu.anime.ui.theme.AnisuTextSecondary
+import com.ansu.anime.ui.components.PersonCard
+import com.ansu.anime.ui.theme.StreamHubColors
 
-/** What CharacterStaffSheet renders - either kind of person, normalized to the same shape. */
-sealed class PersonDetail {
-    abstract val name: String
-    abstract val imageUrl: String?
-    abstract val subtitle: String
-    abstract val bio: String?
-
-    data class Character(val source: AniListCharacter) : PersonDetail() {
-        override val name get() = source.name
-        override val imageUrl get() = source.imageUrl
-        override val subtitle get() = listOfNotNull(source.role.lowercase().replaceFirstChar { it.uppercase() }, source.voiceActorName?.let { "VA: $it" })
-            .joinToString(" · ")
-        override val bio get() = source.description
-    }
-
-    data class Staff(val source: AniListStaffMember) : PersonDetail() {
-        override val name get() = source.name
-        override val imageUrl get() = source.imageUrl
-        override val subtitle get() = source.role
-        override val bio get() = source.description
+@Composable
+fun CharacterStaffSheet(
+    characters: List<AniListCharacter>,
+    staff: List<AniListStaffMember>,
+    onCharacterClick: (Int) -> Unit = {},
+    onStaffClick: (Int) -> Unit = {},
+    onDismiss: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+        ) {
+            if (characters.isNotEmpty()) {
+                Text(
+                    text = "Characters",
+                    color = StreamHubColors.TextPrimary,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+                CharacterRow(characters = characters, onClick = onCharacterClick)
+            }
+            HorizontalDivider(
+                color = StreamHubColors.TextTertiary.copy(alpha = 0.25f),
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
+            if (staff.isNotEmpty()) {
+                Text(
+                    text = "Staff",
+                    color = StreamHubColors.TextPrimary,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+                StaffRow(staff = staff, onClick = onStaffClick)
+            }
+        }
     }
 }
 
 @Composable
-fun CharacterStaffSheet(person: PersonDetail, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(modifier = Modifier.fillMaxWidth().padding(16.dp).verticalScroll(rememberScrollState())) {
-            Row {
-                AsyncImage(
-                    model = person.imageUrl,
-                    contentDescription = person.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .width(100.dp)
-                        .aspectRatio(2f / 3f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(AnisuSurfaceRaised),
-                )
-                Column(modifier = Modifier.padding(start = 14.dp)) {
-                    Text(person.name, style = MaterialTheme.typography.titleMedium)
-                    Text(person.subtitle, style = MaterialTheme.typography.bodyMedium, color = AnisuTextSecondary, modifier = Modifier.padding(top = 4.dp))
-                }
-            }
-            person.bio
-                ?.replace(Regex("<[^>]*>"), "")
-                ?.takeIf { it.isNotBlank() }
-                ?.let { bio ->
-                    Text(
-                        bio,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(top = 16.dp, bottom = 24.dp),
-                    )
-                } ?: run {
-                Text(
-                    "No further bio available.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = AnisuTextSecondary,
-                    modifier = Modifier.padding(top = 16.dp, bottom = 24.dp),
-                )
-            }
+private fun CharacterRow(characters: List<AniListCharacter>, onClick: (Int) -> Unit) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        items(characters, key = { it.id }) { character ->
+            PersonCard(
+                imageUrl = character.imageUrl,
+                name = character.name,
+                role = character.role,
+                onClick = { onClick(character.id) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun StaffRow(staff: List<AniListStaffMember>, onClick: (Int) -> Unit) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        items(staff, key = { it.id }) { member ->
+            PersonCard(
+                imageUrl = member.imageUrl,
+                name = member.name,
+                role = member.role,
+                onClick = { onClick(member.id) },
+            )
         }
     }
 }

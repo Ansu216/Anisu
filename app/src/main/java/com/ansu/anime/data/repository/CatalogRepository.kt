@@ -1,104 +1,88 @@
 package com.ansu.anime.data.repository
 
-import com.ansu.anime.addon.AddonManager
-import com.ansu.anime.addon.model.StremioMeta
-import com.ansu.anime.anilist.AniListMediaListEntry
 import com.ansu.anime.anilist.AniListRepository
 import com.ansu.anime.core.model.MediaOrigin
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.Shelf
 import com.ansu.anime.extension.ExtensionManager
-import com.ansu.anime.extension.api.AnimeCatalogueSource
+import com.ansu.anime.addon.AddonManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-/**
- * Builds the home screen's feed by pulling from every content source the app
- * currently knows about: installed extensions, installed addons, and (if
- * logged in) the user's own AniList lists. Nothing here is hardcoded to one
- * provider — add an extension or an addon and a new shelf shows up.
- */
 class CatalogRepository(
     private val extensionManager: ExtensionManager,
     private val addonManager: AddonManager,
-    private val aniList: AniListRepository,
+    private val aniListRepository: AniListRepository,
 ) {
-    suspend fun buildHomeShelves(): List<Shelf> = coroutineScope {
-        val extensionShelves = async { buildExtensionShelves() }
-        val addonShelves = async { buildAddonShelves() }
-        val listShelves = async { buildAniListShelves() }
+    suspend fun buildHomeShelves(): List<Shelf> = withContext(Dispatchers.IO) {
+        coroutineScope {
+            val trendingDeferred = async { fetchTrending() }
+            val continueWatchingDeferred = async { fetchContinueWatching() }
 
-        listShelves.await() + extensionShelves.await() + addonShelves.await()
-    }
-
-    private suspend fun buildExtensionShelves(): List<Shelf> = coroutineScope {
-        extensionManager.allSources().map { source ->
-            async {
-                val label = if (source.id == 1L) "Trending Now" else "From ${source.name}"
-                val page = runCatching { source.getPopularAnime(1) }.getOrNull()
-                Shelf(title = label, items = page?.animes.orEmpty())
-            }
-        }.map { it.await() }.filter { it.items.isNotEmpty() }
-    }
-
-    private suspend fun buildAddonShelves(): List<Shelf> = coroutineScope {
-        val seriesShelves = async { addonManager.getShelvesForType("series") }
-        val movieShelves = async { addonManager.getShelvesForType("movie") }
-        val combined = seriesShelves.await() + movieShelves.await()
-        combined.map { (addon, metas) ->
-            Shelf(
-                title = "From ${addon.name}",
-                items = metas.map { it.toSAnime(addon.id, addon.baseUrl) },
+            listOfNotNull(
+                trendingDeferred.await()?.let { Shelf("Trending Now", it) },
+                continueWatchingDeferred.await()?.let { Shelf("Continue Watching", it) },
             )
-        }.filter { it.items.isNotEmpty() }
+        }
     }
 
-    private suspend fun buildAniListShelves(): List<Shelf> {
-        if (!aniList.isLoggedIn.value) return emptyList()
-        val watching = aniList.getCurrentlyWatching()
-        val planning = aniList.getPlanning()
-        return listOfNotNull(
-            watching.takeIf { it.isNotEmpty() }?.let { Shelf("Continue Your List", it.map { e -> e.toSAnime() }) },
-            planning.takeIf { it.isNotEmpty() }?.let { Shelf("Planning To Watch", it.map { e -> e.toSAnime() }) },
-        )
+    private suspend fun fetchTrending(): List<SAnime> {
+        val trending = aniListRepository.getTrending()
+        return trending.map { ani ->
+            SAnime(
+                id = "anilist:${ani.id}",
+                title = ani.displayTitle,
+                posterUrl = ani.coverImage?.extraLarge ?: ani.coverImage?.large,
+                bannerUrl = ani.bannerImage,
+                description = ani.plainDescription.ifBlank { null },
+                genres = ani.genres,
+                releaseYear = ani.seasonYear,
+                rating = ani.averageScore?.div(10.0),
+                anilistId = ani.id,
+                origin = MediaOrigin.Extension(sourceId = 0L, urlPath = "anilist:${ani.id}"),
+            )
+        }
     }
 
-    suspend fun search(query: String): List<SAnime> = coroutineScope {
-        val extensionResults = extensionManager.allSources().map { source ->
-            async { runCatching { source.getSearchAnime(1, query, source.getFilterList()) }.getOrNull()?.animes.orEmpty() }
-        }.flatMap { it.await() }
-        extensionResults
+    private suspend fun fetchContinueWatching(): List<SAnime> {
+        val watching = aniListRepository.getCurrentlyWatching()
+        return watching.mapNotNull { entry ->
+            entry.media?.let { media ->
+                SAnime(
+                    id = "anilist:${media.id}",
+                    title = media.title,
+                    posterUrl = media.posterUrl,
+                    bannerUrl = media.bannerUrl,
+                    description = media.description,
+                    genres = media.genres,
+                    releaseYear = media.year,
+                    rating = media.averageScore?.div(10.0),
+                    anilistId = media.id,
+                    origin = MediaOrigin.Extension(sourceId = 0L, urlPath = "anilist:${media.id}"),
+                )
+            }
+        }
     }
 
-    /** The default source to resolve an AniList-only entry against until real per-title source matching exists. */
-    private fun defaultSource(): AnimeCatalogueSource? = extensionManager.allSources().firstOrNull()
-
-    private fun AniListMediaListEntry.toSAnime(): SAnime {
-        val sourceId = defaultSource()?.id ?: 1L
-        return SAnime(
-            id = media.id.toString(),
-            title = media.title,
-            posterUrl = media.posterUrl,
-            bannerUrl = media.bannerUrl,
-            description = media.description,
-            genres = media.genres,
-            releaseYear = media.year,
-            rating = media.averageScore?.div(10.0),
-            anilistId = media.id,
-            origin = MediaOrigin.Extension(sourceId = sourceId, urlPath = media.id.toString()),
-        )
+    suspend fun search(query: String): List<SAnime> = withContext(Dispatchers.IO) {
+        val results = aniListRepository.search(query)
+        results.map { ani ->
+            SAnime(
+                id = "anilist:${ani.id}",
+                title = ani.displayTitle,
+                posterUrl = ani.coverImage?.extraLarge ?: ani.coverImage?.large,
+                bannerUrl = ani.bannerImage,
+                description = ani.plainDescription.ifBlank { null },
+                genres = ani.genres,
+                releaseYear = ani.seasonYear,
+                rating = ani.averageScore?.div(10.0),
+                anilistId = ani.id,
+                origin = MediaOrigin.Extension(sourceId = 0L, urlPath = "anilist:${ani.id}"),
+            )
+        }
     }
-
-    private fun StremioMeta.toSAnime(addonId: String, addonBaseUrl: String): SAnime = SAnime(
-        id = id,
-        title = name,
-        posterUrl = poster,
-        bannerUrl = background,
-        description = description,
-        genres = genres.orEmpty(),
-        releaseYear = releaseInfo?.take(4)?.toIntOrNull(),
-        rating = imdbRating?.toDoubleOrNull(),
-        anilistId = null,
-        origin = MediaOrigin.Addon(addonId = addonId, addonBaseUrl = addonBaseUrl, type = type, stremioId = id),
-    )
 }
