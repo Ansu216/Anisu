@@ -36,3 +36,6 @@ idea.doNotTouchPluginConfigurations
 *.iml
 *.ipr
 *.iws
+
+#misc
+.ignore/

@@ -1,292 +1,380 @@
-package com.ansu.anime.anilist
+package com.streamhub.data.anilist
 
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+/**
+ * Minimal AniList (https://anilist.co) GraphQL client for anime metadata:
+ * titles, synopsis, cover/banner art, episode counts, genres, scores, etc.
+ * Public API — no auth/API key required for these read-only queries.
+ * Schema reference: https://anilist.gitbook.io/anilist-apiv2-docs/
+ *
+ * Gradle dependencies (add if not already present):
+ *   implementation("com.squareup.okhttp3:okhttp:4.12.0")
+ *   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+ * Plugin (module-level build.gradle.kts, alongside the Compose plugin):
+ *   id("org.jetbrains.kotlin.plugin.serialization")
+ */
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 
-/**
- * Talks to https://graphql.anilist.co directly with hand-written queries.
- * AniList's schema is stable and public; a raw client avoids pulling in a
- * codegen pipeline (Apollo) that we can't build-test in this environment.
- */
-class AniListApi(
-    private val client: OkHttpClient,
-    private val authManager: AniListAuthManager,
+// ---------- Response models ----------
+
+@Serializable
+data class AniListTitle(
+    val romaji: String? = null,
+    val english: String? = null,
+    val native: String? = null,
+)
+
+@Serializable
+data class AniListCoverImage(
+    val extraLarge: String? = null,
+    val large: String? = null,
+    val color: String? = null,
+)
+
+@Serializable
+data class AniListName(
+    val full: String? = null,
+)
+
+@Serializable
+data class AniListPersonImage(
+    val large: String? = null,
+    val medium: String? = null,
+)
+
+@Serializable
+data class AniListCharacterNode(
+    val id: Int,
+    val name: AniListName = AniListName(),
+    val image: AniListPersonImage? = null,
+)
+
+@Serializable
+data class AniListCharacterEdge(
+    val role: String? = null, // "MAIN" | "SUPPORTING" | "BACKGROUND"
+    val node: AniListCharacterNode,
+)
+
+@Serializable
+data class AniListCharacterConnection(
+    val edges: List<AniListCharacterEdge> = emptyList(),
+)
+
+@Serializable
+data class AniListStaffNode(
+    val id: Int,
+    val name: AniListName = AniListName(),
+    val image: AniListPersonImage? = null,
+)
+
+@Serializable
+data class AniListStaffEdge(
+    val role: String? = null, // free-text credit, e.g. "Original Creator", "Director"
+    val node: AniListStaffNode,
+)
+
+@Serializable
+data class AniListStaffConnection(
+    val edges: List<AniListStaffEdge> = emptyList(),
+)
+
+@Serializable
+data class AniListStudioNode(
+    val id: Int,
+    val name: String,
+)
+
+@Serializable
+data class AniListStudioConnection(
+    val nodes: List<AniListStudioNode> = emptyList(),
+)
+
+/** Shared shape for both "relations" and "recommendations" target media. */
+@Serializable
+data class AniListRelatedNode(
+    val id: Int,
+    val title: AniListTitle = AniListTitle(),
+    val coverImage: AniListCoverImage? = null,
+    val format: String? = null,
+    val type: String? = null, // "ANIME" | "MANGA"
+)
+
+@Serializable
+data class AniListRelationEdge(
+    val relationType: String? = null, // "SEQUEL" | "PREQUEL" | "SIDE_STORY" | "ADAPTATION" | ...
+    val node: AniListRelatedNode,
+)
+
+@Serializable
+data class AniListRelationConnection(
+    val edges: List<AniListRelationEdge> = emptyList(),
+)
+
+@Serializable
+data class AniListRecommendationNode(
+    val mediaRecommendation: AniListRelatedNode? = null,
+)
+
+@Serializable
+data class AniListRecommendationConnection(
+    val nodes: List<AniListRecommendationNode> = emptyList(),
+)
+
+@Serializable
+data class AniListTrailer(
+    val id: String? = null,
+    val site: String? = null,      // "youtube" | "dailymotion"
+    val thumbnail: String? = null,
+)
+
+@Serializable
+data class AniListStreamingEpisode(
+    val title: String? = null,     // e.g. "Episode 1 - Ryomen Sukuna"
+    val thumbnail: String? = null,
+    val url: String? = null,
+    val site: String? = null,      // e.g. "Crunchyroll"
+)
+
+@Serializable
+data class AniListMedia(
+    val id: Int,
+    val title: AniListTitle,
+    val description: String? = null,
+    val coverImage: AniListCoverImage? = null,
+    val bannerImage: String? = null,
+    val episodes: Int? = null,
+    val duration: Int? = null,
+    val genres: List<String> = emptyList(),
+    val averageScore: Int? = null,
+    val status: String? = null,
+    val seasonYear: Int? = null,
+    val format: String? = null,
+    // Populated only by getMediaDetails() — list/search queries omit these to stay light.
+    val studios: AniListStudioConnection? = null,
+    val trailer: AniListTrailer? = null,
+    val streamingEpisodes: List<AniListStreamingEpisode> = emptyList(),
+    val characters: AniListCharacterConnection? = null,
+    val staff: AniListStaffConnection? = null,
+    val relations: AniListRelationConnection? = null,
+    val recommendations: AniListRecommendationConnection? = null,
 ) {
-    private val endpoint = "https://graphql.anilist.co"
+    /** Best available display title, preferring English. */
+    val displayTitle: String get() = title.english ?: title.romaji ?: title.native ?: "Untitled"
+
+    /** Synopsis with AniList's HTML line breaks/tags stripped. AniList descriptions
+     *  commonly end with a "(Source: ...)" attribution line — left intact on purpose. */
+    val plainDescription: String
+        get() = description?.replace("<br>", "\n")?.replace(Regex("<.*?>"), "") ?: ""
+}
+
+class AniListException(message: String) : IOException(message)
+
+@Serializable
+private data class PageData(val media: List<AniListMedia> = emptyList())
+
+@Serializable
+private data class ResponseData(
+    @SerialName("Page") val page: PageData? = null,
+    @SerialName("Media") val media: AniListMedia? = null,
+)
+
+@Serializable
+private data class GraphQLError(val message: String)
+
+@Serializable
+private data class GraphQLEnvelope(
+    val data: ResponseData? = null,
+    val errors: List<GraphQLError>? = null,
+)
+
+// ---------- Client ----------
+
+object AniListApi {
+    private const val ENDPOINT = "https://graphql.anilist.co"
+
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+
     private val json = Json { ignoreUnknownKeys = true }
+    private val jsonMediaType = "application/json".toMediaType()
 
-    suspend fun getViewer(): AniListViewer? {
-        val query = """
-            query { Viewer { id name avatar { medium } } }
-        """.trimIndent()
-        val data = execute(query, emptyMap()) ?: return null
-        val viewer = data["Viewer"]?.jsonObject ?: return null
-        return AniListViewer(
-            id = viewer["id"]!!.jsonPrimitive.content.toInt(),
-            name = viewer["name"]!!.jsonPrimitive.content,
-            avatarUrl = viewer["avatar"]?.jsonObject?.get("medium")?.jsonPrimitive?.content,
-        )
-    }
+    // Shared field selection reused by every light-weight query below (rows, search, grids).
+    private const val MEDIA_FIELDS = """
+        id
+        title { romaji english native }
+        description(asHtml: false)
+        coverImage { extraLarge large color }
+        bannerImage
+        episodes
+        duration
+        genres
+        averageScore
+        status
+        seasonYear
+        format
+    """
 
-    suspend fun getMediaListCollection(userId: Int, status: String = "CURRENT"): List<AniListMediaListEntry> {
-        val query = """
-            query (${'$'}userId: Int, ${'$'}status: MediaListStatus) {
-              MediaListCollection(userId: ${'$'}userId, type: ANIME, status: ${'$'}status) {
-                lists {
-                  entries {
-                    progress
-                    status
-                    media { ...mediaFields }
-                  }
-                }
-              }
-            }
-            $MEDIA_FIELDS
-        """.trimIndent()
-        val data = execute(query, mapOf("userId" to userId, "status" to status)) ?: return emptyList()
-        val lists = data["MediaListCollection"]?.jsonObject?.get("lists")?.jsonArray ?: return emptyList()
-        return lists.flatMap { list ->
-            list.jsonObject["entries"]?.jsonArray.orEmpty().mapNotNull { entry ->
-                val entryObj = entry.jsonObject
-                val media = entryObj["media"]?.jsonObject?.toMedia() ?: return@mapNotNull null
-                AniListMediaListEntry(
-                    mediaId = media.id,
-                    progress = entryObj["progress"]!!.jsonPrimitive.content.toInt(),
-                    status = entryObj["status"]!!.jsonPrimitive.content,
-                    media = media,
-                )
+    // Superset used only by getMediaDetails() — everything the details screen renders:
+    // hero, stats, genres, description, episode list, trailer, related/recommended, cast & crew.
+    private const val MEDIA_DETAILS_FIELDS = """
+        $MEDIA_FIELDS
+        studios(isMain: true) {
+            nodes { id name }
+        }
+        trailer { id site thumbnail }
+        streamingEpisodes { title thumbnail url site }
+        characters(sort: [ROLE, RELEVANCE], perPage: 12) {
+            edges {
+                role
+                node { id name { full } image { large medium } }
             }
         }
-    }
+        staff(sort: [RELEVANCE], perPage: 12) {
+            edges {
+                role
+                node { id name { full } image { large medium } }
+            }
+        }
+        relations {
+            edges {
+                relationType(version: 2)
+                node {
+                    id
+                    title { romaji english }
+                    coverImage { extraLarge large }
+                    format
+                    type
+                }
+            }
+        }
+        recommendations(sort: RATING_DESC, perPage: 10) {
+            nodes {
+                mediaRecommendation {
+                    id
+                    title { romaji english }
+                    coverImage { extraLarge large }
+                    format
+                    type
+                }
+            }
+        }
+    """
 
-    suspend fun searchMedia(query: String, page: Int = 1): List<AniListMedia> {
+    /** Search anime by title — powers a search screen or "add to list" flow. */
+    suspend fun searchAnime(query: String, perPage: Int = 20): List<AniListMedia> {
         val gql = """
-            query (${'$'}page: Int, ${'$'}search: String) {
-              Page(page: ${'$'}page, perPage: 20) {
-                media(type: ANIME, search: ${'$'}search) { ...mediaFields }
-              }
+            query (${'$'}search: String, ${'$'}perPage: Int) {
+                Page(perPage: ${'$'}perPage) {
+                    media(search: ${'$'}search, type: ANIME, sort: SEARCH_MATCH) {
+                        $MEDIA_FIELDS
+                    }
+                }
             }
-            $MEDIA_FIELDS
         """.trimIndent()
-        val data = execute(gql, mapOf("page" to page, "search" to query)) ?: return emptyList()
-        return data["Page"]?.jsonObject?.get("media")?.jsonArray.orEmpty().mapNotNull { it.jsonObject.toMedia() }
+        return execute(gql, mapOf("search" to query, "perPage" to perPage)).page?.media ?: emptyList()
     }
 
-    suspend fun getTrending(page: Int = 1): List<AniListMedia> {
+    /** Currently trending anime — a natural source for a "Trending Now" row. */
+    suspend fun getTrending(perPage: Int = 20): List<AniListMedia> {
         val gql = """
-            query (${'$'}page: Int) {
-              Page(page: ${'$'}page, perPage: 20) {
-                media(type: ANIME, sort: TRENDING_DESC) { ...mediaFields }
-              }
-            }
-            $MEDIA_FIELDS
-        """.trimIndent()
-        val data = execute(gql, mapOf("page" to page)) ?: return emptyList()
-        return data["Page"]?.jsonObject?.get("media")?.jsonArray.orEmpty().mapNotNull { it.jsonObject.toMedia() }
-    }
-
-    /** Pushes watched-episode progress back to the user's AniList list; called (debounced) as the player advances. */
-    suspend fun updateProgress(mediaId: Int, progress: Int): Boolean {
-        val mutation = """
-            mutation (${'$'}mediaId: Int, ${'$'}progress: Int) {
-              SaveMediaListEntry(mediaId: ${'$'}mediaId, progress: ${'$'}progress) { id }
+            query (${'$'}perPage: Int) {
+                Page(perPage: ${'$'}perPage) {
+                    media(sort: TRENDING_DESC, type: ANIME) {
+                        $MEDIA_FIELDS
+                    }
+                }
             }
         """.trimIndent()
-        return execute(mutation, mapOf("mediaId" to mediaId, "progress" to progress)) != null
+        return execute(gql, mapOf("perPage" to perPage)).page?.media ?: emptyList()
     }
 
-    /**
-     * Everything the CornCastle-style details page shows beyond the basic
-     * card: format, characters with their voice actors, staff, and related
-     * shows for the "More like this" row.
-     */
-    suspend fun getMediaDetails(mediaId: Int): AniListMediaDetails? {
+    /** Highest-rated anime this season — good source for "Top Picks". */
+    suspend fun getTopThisSeason(season: String, seasonYear: Int, perPage: Int = 20): List<AniListMedia> {
+        val gql = """
+            query (${'$'}season: MediaSeason, ${'$'}seasonYear: Int, ${'$'}perPage: Int) {
+                Page(perPage: ${'$'}perPage) {
+                    media(season: ${'$'}season, seasonYear: ${'$'}seasonYear, type: ANIME, sort: POPULARITY_DESC) {
+                        $MEDIA_FIELDS
+                    }
+                }
+            }
+        """.trimIndent()
+        return execute(gql, mapOf("season" to season, "seasonYear" to seasonYear, "perPage" to perPage))
+            .page?.media ?: emptyList()
+    }
+
+    /** Single title lookup by AniList ID, light fields only — for hero cards, "My List" rows, etc. */
+    suspend fun getMediaById(id: Int): AniListMedia? {
         val gql = """
             query (${'$'}id: Int) {
-              Media(id: ${'$'}id, type: ANIME) {
-                id
-                title { romaji english }
-                coverImage { extraLarge }
-                bannerImage
-                description(asHtml: false)
-                genres
-                averageScore
-                episodes
-                format
-                isFavourite
-                startDate { year }
-                characters(sort: [ROLE, RELEVANCE], perPage: 10) {
-                  edges {
-                    role
-                    node { id name { full } image { large } description(asHtml: false) }
-                    voiceActors(language: JAPANESE, sort: RELEVANCE) { id name { full } image { large } }
-                  }
+                Media(id: ${'$'}id, type: ANIME) {
+                    $MEDIA_FIELDS
                 }
-                staff(sort: [RELEVANCE], perPage: 10) {
-                  edges {
-                    role
-                    node { id name { full } image { large } description(asHtml: false) }
-                  }
-                }
-                recommendations(perPage: 8, sort: RATING_DESC) {
-                  nodes {
-                    mediaRecommendation { id title { romaji english } coverImage { extraLarge } bannerImage genres averageScore episodes startDate { year } }
-                  }
-                }
-              }
             }
         """.trimIndent()
-        val data = execute(gql, mapOf("id" to mediaId)) ?: return null
-        val media = data["Media"]?.jsonObject ?: return null
-        return media.toMediaDetails()
+        return execute(gql, mapOf("id" to id)).media
     }
 
-    /** Toggles the heart/favourite state on the signed-in user's AniList account for this show. */
-    suspend fun toggleFavourite(mediaId: Int): Boolean {
-        val mutation = """
-            mutation (${'$'}id: Int) { ToggleFavourite(animeId: ${'$'}id) { anime { nodes { id } } } }
-        """.trimIndent()
-        return execute(mutation, mapOf("id" to mediaId)) != null
-    }
-
-    private suspend fun execute(query: String, variables: Map<String, Any?>): JsonObject? = withContext(Dispatchers.IO) {
-        val payload = buildString {
-            append("{\"query\":")
-            append(json.encodeToString(kotlinx.serialization.serializer<String>(), query))
-            append(",\"variables\":{")
-            append(
-                variables.entries.joinToString(",") { (key, value) ->
-                    val jsonValue = when (value) {
-                        is Int -> value.toString()
-                        is Long -> value.toString()
-                        is String -> json.encodeToString(kotlinx.serialization.serializer<String>(), value)
-                        null -> "null"
-                        else -> json.encodeToString(kotlinx.serialization.serializer<String>(), value.toString())
-                    }
-                    "\"$key\":$jsonValue"
-                },
-            )
-            append("}}")
-        }
-
-        val requestBuilder = Request.Builder()
-            .url(endpoint)
-            .post(payload.toRequestBody("application/json".toMediaType()))
-        authManager.accessToken.value?.let { token -> requestBuilder.addHeader("Authorization", "Bearer $token") }
-
-        client.newCall(requestBuilder.build()).execute().use { response ->
-            val text = response.body?.string().orEmpty()
-            if (!response.isSuccessful || text.isBlank()) return@withContext null
-            runCatching { json.parseToJsonElement(text).jsonObject["data"]?.jsonObject }.getOrNull()
-        }
-    }
-
-    private fun JsonObject.toMedia(): AniListMedia? {
-        val idValue = this["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
-        val titleObj = this["title"]?.jsonObject
-        val title = titleObj?.get("romaji")?.jsonPrimitive?.content
-            ?: titleObj?.get("english")?.jsonPrimitive?.content
-            ?: return null
-        return AniListMedia(
-            id = idValue,
-            title = title,
-            posterUrl = this["coverImage"]?.jsonObject?.get("extraLarge")?.jsonPrimitive?.content,
-            bannerUrl = this["bannerImage"]?.jsonPrimitive?.content,
-            description = this["description"]?.jsonPrimitive?.content,
-            genres = this["genres"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
-            averageScore = this["averageScore"]?.jsonPrimitive?.content?.toIntOrNull(),
-            episodes = this["episodes"]?.jsonPrimitive?.content?.toIntOrNull(),
-            year = this["startDate"]?.jsonObject?.get("year")?.jsonPrimitive?.content?.toIntOrNull(),
-        )
-    }
-
-    private fun JsonObject.toMediaDetails(): AniListMediaDetails? {
-        val idValue = this["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
-        val titleObj = this["title"]?.jsonObject
-        val title = titleObj?.get("romaji")?.jsonPrimitive?.content
-            ?: titleObj?.get("english")?.jsonPrimitive?.content
-            ?: return null
-
-        val characterEdges = this["characters"]?.jsonObject?.get("edges")?.jsonArray.orEmpty()
-        val characters = characterEdges.mapNotNull { edge -> edge.jsonObject.toCharacter() }
-
-        val staffEdges = this["staff"]?.jsonObject?.get("edges")?.jsonArray.orEmpty()
-        val staff = staffEdges.mapNotNull { edge -> edge.jsonObject.toStaffMember() }
-
-        val recommendationNodes = this["recommendations"]?.jsonObject?.get("nodes")?.jsonArray.orEmpty()
-        val related = recommendationNodes.mapNotNull { node ->
-            node.jsonObject["mediaRecommendation"]?.jsonObject?.toMedia()
-        }
-
-        return AniListMediaDetails(
-            id = idValue,
-            title = title,
-            posterUrl = this["coverImage"]?.jsonObject?.get("extraLarge")?.jsonPrimitive?.content,
-            bannerUrl = this["bannerImage"]?.jsonPrimitive?.content,
-            description = this["description"]?.jsonPrimitive?.content,
-            genres = this["genres"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
-            averageScore = this["averageScore"]?.jsonPrimitive?.content?.toIntOrNull(),
-            episodes = this["episodes"]?.jsonPrimitive?.content?.toIntOrNull(),
-            year = this["startDate"]?.jsonObject?.get("year")?.jsonPrimitive?.content?.toIntOrNull(),
-            format = this["format"]?.jsonPrimitive?.content,
-            isFavourite = this["isFavourite"]?.jsonPrimitive?.content == "true",
-            characters = characters,
-            staff = staff,
-            related = related,
-        )
-    }
-
-    private fun JsonObject.toCharacter(): AniListCharacter? {
-        val node = this["node"]?.jsonObject ?: return null
-        val idValue = node["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
-        val name = node["name"]?.jsonObject?.get("full")?.jsonPrimitive?.content ?: return null
-        val voiceActor = this["voiceActors"]?.jsonArray?.firstOrNull()?.jsonObject
-        return AniListCharacter(
-            id = idValue,
-            name = name,
-            imageUrl = node["image"]?.jsonObject?.get("large")?.jsonPrimitive?.content,
-            role = this["role"]?.jsonPrimitive?.content ?: "BACKGROUND",
-            description = node["description"]?.jsonPrimitive?.content,
-            voiceActorName = voiceActor?.get("name")?.jsonObject?.get("full")?.jsonPrimitive?.content,
-            voiceActorImageUrl = voiceActor?.get("image")?.jsonObject?.get("large")?.jsonPrimitive?.content,
-        )
-    }
-
-    private fun JsonObject.toStaffMember(): AniListStaffMember? {
-        val node = this["node"]?.jsonObject ?: return null
-        val idValue = node["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
-        val name = node["name"]?.jsonObject?.get("full")?.jsonPrimitive?.content ?: return null
-        return AniListStaffMember(
-            id = idValue,
-            name = name,
-            imageUrl = node["image"]?.jsonObject?.get("large")?.jsonPrimitive?.content,
-            role = this["role"]?.jsonPrimitive?.content ?: "",
-            description = node["description"]?.jsonPrimitive?.content,
-        )
-    }
-
-    companion object {
-        private const val MEDIA_FIELDS = """
-            fragment mediaFields on Media {
-              id
-              title { romaji english }
-              coverImage { extraLarge }
-              bannerImage
-              description(asHtml: false)
-              genres
-              averageScore
-              episodes
-              startDate { year }
+    /** Full record for the details screen: adds studios, cast, crew, relations, trailer, episodes. */
+    suspend fun getMediaDetails(id: Int): AniListMedia? {
+        val gql = """
+            query (${'$'}id: Int) {
+                Media(id: ${'$'}id, type: ANIME) {
+                    $MEDIA_DETAILS_FIELDS
+                }
             }
-        """
+        """.trimIndent()
+        return execute(gql, mapOf("id" to id)).media
+    }
+
+    private suspend fun execute(query: String, variables: Map<String, Any?>): ResponseData =
+        withContext(Dispatchers.IO) {
+            val payload = buildJsonObject {
+                put("query", query)
+                put("variables", buildJsonObject {
+                    variables.forEach { (key, value) -> put(key, toJsonElement(value)) }
+                })
+            }.toString()
+
+            val request = Request.Builder()
+                .url(ENDPOINT)
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Accept", "application/json")
+                .post(payload.toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val raw = response.body?.string()
+                    ?: throw AniListException("Empty response from AniList")
+                if (!response.isSuccessful) {
+                    throw AniListException("AniList request failed (${response.code}): $raw")
+                }
+                val envelope = json.decodeFromString(GraphQLEnvelope.serializer(), raw)
+                envelope.errors?.firstOrNull()?.let { throw AniListException(it.message) }
+                envelope.data ?: throw AniListException("AniList returned no data")
+            }
+        }
+
+    private fun toJsonElement(value: Any?): JsonElement = when (value) {
+        null -> JsonPrimitive(null as String?)
+        is Int -> JsonPrimitive(value)
+        is Boolean -> JsonPrimitive(value)
+        else -> JsonPrimitive(value.toString())
     }
 }
