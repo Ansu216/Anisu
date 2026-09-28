@@ -133,10 +133,28 @@ app/src/main/java/com/ansu/anime/
                         settings, auth + shared components and theme
 ```
 
+## Versioning and changelog
+
+Every change is documented in [`CHANGELOG.md`](CHANGELOG.md), which follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html). New work goes under
+`## [Unreleased]`; at release time it moves to `## [<version>] - <date>`, where
+`<version>` is the pushed tag without its `v` (tag `v1.2.3` → `## [1.2.3]`).
+
+`release-apk.yml` reads that section and uses it as the release body, so the tag
+and the changelog heading have to match. `CLAUDE.md` §7 has the full rules,
+including which of MAJOR/MINOR/PATCH a change needs.
+
 ## Continuous integration
+
+Both workflows compile the **release and debug APKs in parallel** — one matrix
+leg per variant, on its own runner — and a single final job collects them, so a
+half-finished run can never publish a partial build.
 
 - `apk-nightly.yml` rebuilds and force-publishes the `apk-nightly` branch
   (`Ansu-nightly.apk`, `Ansu-nightly-debug.apk`, `nightly.json`) every hour and
   on every push to `main`.
 - `release-apk.yml` builds a GitHub Release with `Ansu-<version>.apk` and
-  `Ansu-<version>-debug.apk` when you push a `v*` tag.
+  `Ansu-<version>-debug.apk` when you push a `v*` tag, and marks it as a
+  pre-release automatically when the tag carries a SemVer pre-release suffix
+  (`v1.2.3-rc.1`). The release notes come from `CHANGELOG.md`.

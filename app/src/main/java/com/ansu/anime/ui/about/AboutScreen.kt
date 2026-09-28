@@ -71,7 +71,10 @@ import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.theme.AnsuColors
 import kotlin.math.roundToInt
 
-/** The developer, i.e. the owner of the GitHub repository this app is published from. */
+/** The lead developer, i.e. the owner of the GitHub repository this app is published from. */
+private const val DEVELOPER_NAME = "Ansuman Sahu"
+
+/** GitHub account of the developer above — used for the avatar and the profile link. */
 private const val DEVELOPER_HANDLE = "Ansu216"
 
 /**
@@ -416,7 +419,7 @@ private fun StatusLine(icon: ImageVector, text: String, tint: androidx.compose.u
 @Composable
 private fun DeveloperSection(onOpenUrl: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SectionTitle("Developer")
+        SectionTitle("Lead developer")
 
         FrostedGlassCard(
             modifier = Modifier.fillMaxWidth(),
@@ -449,12 +452,12 @@ private fun DeveloperSection(onOpenUrl: (String) -> Unit) {
                 }
                 Column(modifier = Modifier.padding(start = 16.dp).weight(1f)) {
                     Text(
-                        text = DEVELOPER_HANDLE,
+                        text = DEVELOPER_NAME,
                         style = MaterialTheme.typography.titleMedium,
                         color = AnsuColors.TextPrimary,
                     )
                     Text(
-                        text = "Developer",
+                        text = "Lead developer · @$DEVELOPER_HANDLE",
                         style = MaterialTheme.typography.bodyMedium,
                         color = AnsuColors.TextSecondary,
                     )

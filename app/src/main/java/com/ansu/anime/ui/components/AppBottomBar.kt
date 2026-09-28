@@ -3,8 +3,11 @@ package com.ansu.anime.ui.components
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -53,6 +56,13 @@ fun AppBottomBar(navController: NavHostController, currentRoute: String?) {
     NavBarSurface(
         currentRoute = currentRoute,
         roundness = LocalNavBarRoundness.current,
+        // The app draws edge to edge and a Scaffold lays its bottomBar slot
+        // flush against the window, so a custom (non-Material) bar has to keep
+        // clear of the system navigation bar itself. Without this the floating
+        // card sits underneath the gesture / three-button bar and its labels
+        // are unreachable. The inset goes on the outside so the card still
+        // floats above the system bar with its own 8dp gap.
+        modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
         onItemClick = { route ->
             navController.navigate(route) {
                 popUpTo(Dest.HOME) { saveState = true }

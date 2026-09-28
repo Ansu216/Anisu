@@ -1,8 +1,12 @@
 name: Ansu Nightly APK
 
-# Builds a signed APK every hour and force-publishes it to the `apk-nightly`
-# branch (the branch contents are fully replaced on every run).
-# Can also be started by hand from the Actions tab (Run workflow).
+# Builds signed APKs and force-publishes them to the `apk-nightly` branch (the
+# branch contents are fully replaced on every run). Can also be started by hand
+# from the Actions tab (Run workflow).
+#
+# The two variants build in PARALLEL (one matrix leg each, on its own runner);
+# a single `publish` job collects them and is the only job allowed to touch the
+# branch, so a half-finished run can never publish a partial build.
 
 on:
   schedule:
@@ -34,8 +38,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  nightly:
-    name: Build & publish nightly APK
+  # ---------------------------------------------------------------------------
+  # 1) One stamp for the whole run, so the APKs built by different runners in
+  #    different seconds still carry the exact same version.
+  # ---------------------------------------------------------------------------
+  plan:
+    name: Plan the run
+    runs-on: ubuntu-latest
+    outputs:
+      variant: ${{ steps.stamp.outputs.variant }}
+      variants: ${{ steps.stamp.outputs.variants }}
+      version_name: ${{ steps.stamp.outputs.version_name }}
+      version_code: ${{ steps.stamp.outputs.version_code }}
+      iso: ${{ steps.stamp.outputs.iso }}
+
+    steps:
+      - name: Compute the build stamp and the variant matrix
+        id: stamp
+        run: |
+          set -euo pipefail
+
+          VARIANT="${{ github.event.inputs.variant }}"
+          if [ -z "$VARIANT" ]; then VARIANT="both"; fi
+          case "$VARIANT" in
+            both)    VARIANTS='["release","debug"]' ;;
+            release) VARIANTS='["release"]' ;;
+            debug)   VARIANTS='["debug"]' ;;
+            *) echo "::error::Unknown variant '$VARIANT'"; exit 1 ;;
+          esac
+
+          echo "variant=$VARIANT"       >> "$GITHUB_OUTPUT"
+          echo "variants=$VARIANTS"     >> "$GITHUB_OUTPUT"
+          echo "version_name=$(date -u +'%Y.%m.%d.%H%M')" >> "$GITHUB_OUTPUT"
+          echo "version_code=$(date -u +'%Y%m%d%H')"      >> "$GITHUB_OUTPUT"
+          echo "iso=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"     >> "$GITHUB_OUTPUT"
+
+          echo "Publishing variant(s): $VARIANT"
+
+  # ---------------------------------------------------------------------------
+  # 2) The variants build in parallel. `fail-fast: false` keeps the other leg
+  #    running so one broken variant does not hide the state of the other.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build ${{ matrix.variant }} APK
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJSON(needs.plan.outputs.variants) }}
     runs-on: ubuntu-latest
 
     steps:
@@ -68,59 +118,116 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Compute build stamp
-        id: stamp
-        run: |
-          echo "version_name=$(date -u +'%Y.%m.%d.%H%M')" >> "$GITHUB_OUTPUT"
-          echo "version_code=$(date -u +'%Y%m%d%H')"      >> "$GITHUB_OUTPUT"
-          echo "iso=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"     >> "$GITHUB_OUTPUT"
-
-      - name: Assemble signed APKs
-        run: |
-          ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease \
-            -PversionCode="${{ steps.stamp.outputs.version_code }}" \
-            -PversionName="${{ steps.stamp.outputs.version_name }}"
-
-      - name: Verify APK signatures
-        run: |
-          BUILD_TOOLS="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
-          echo "Using build-tools: $BUILD_TOOLS"
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs \
-            app/build/outputs/apk/release/app-release.apk
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs \
-            app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Stage APKs
-        id: stage
+      - name: Assemble the ${{ matrix.variant }} APK
         run: |
           set -euo pipefail
-          VARIANT="${{ github.event.inputs.variant }}"
-          if [ -z "$VARIANT" ]; then VARIANT="both"; fi
+          case "${{ matrix.variant }}" in
+            release) TASK="assembleRelease" ;;
+            debug)   TASK="assembleDebug" ;;
+            *) echo "::error::Unknown variant '${{ matrix.variant }}'"; exit 1 ;;
+          esac
+          # The version comes from the plan job so both legs agree; the release
+          # build is minified by R8 (see app/build.gradle.kts).
+          ./gradlew --no-daemon --stacktrace "$TASK" \
+            -PversionCode="${{ needs.plan.outputs.version_code }}" \
+            -PversionName="${{ needs.plan.outputs.version_name }}"
+
+      - name: Verify the APK signature
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
+          echo "Using build-tools: $BUILD_TOOLS"
+          APK="$(find "app/build/outputs/apk/${{ matrix.variant }}" -type f -name '*.apk' | head -1)"
+          if [ -z "$APK" ]; then
+            echo "::error::No APK produced for variant ${{ matrix.variant }}"
+            exit 1
+          fi
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+
+      - name: Upload the APK as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ matrix.variant }}
+          path: app/build/outputs/apk/${{ matrix.variant }}/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # 3) Publish. Runs only when every leg of the matrix succeeded, so the branch
+  #    never ends up with the release APK of one run and the debug APK of
+  #    another.
+  # ---------------------------------------------------------------------------
+  publish:
+    name: Publish to apk-nightly
+    needs: [plan, build]
+    if: ${{ always() && needs.plan.result == 'success' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download the built APKs
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Stage the branch contents
+        id: stage
+        env:
+          VARIANT: ${{ needs.plan.outputs.variant }}
+          VERSION_NAME: ${{ needs.plan.outputs.version_name }}
+          VERSION_CODE: ${{ needs.plan.outputs.version_code }}
+          ISO: ${{ needs.plan.outputs.iso }}
+        run: |
+          set -euo pipefail
+
           echo "Publishing variant: $VARIANT"
+          find artifacts -type f -name '*.apk' -print
+
+          # download-artifact@v4 flattens uploaded paths unpredictably, so look
+          # the APKs up by name instead of assuming a layout.
+          APK_RELEASE="$(find artifacts -type f -name 'app-release.apk' | head -1 || true)"
+          APK_DEBUG="$(find artifacts -type f -name 'app-debug.apk' | head -1 || true)"
 
           STAGE="$(mktemp -d)"
           echo "dir=$STAGE" >> "$GITHUB_OUTPUT"
 
           if [ "$VARIANT" = "release" ] || [ "$VARIANT" = "both" ]; then
-            cp app/build/outputs/apk/release/app-release.apk "$STAGE/Ansu-nightly.apk"
-          fi
-          if [ "$VARIANT" = "debug" ] || [ "$VARIANT" = "both" ]; then
-            cp app/build/outputs/apk/debug/app-debug.apk "$STAGE/Ansu-nightly-debug.apk"
+            if [ -z "$APK_RELEASE" ]; then
+              echo "::error::The release APK was expected but is missing — refusing to publish a partial build."
+              exit 1
+            fi
+            cp "$APK_RELEASE" "$STAGE/Ansu-nightly.apk"
           fi
 
-          cat > "$STAGE/nightly.json" <<JSON
+          if [ "$VARIANT" = "debug" ] || [ "$VARIANT" = "both" ]; then
+            if [ -z "$APK_DEBUG" ]; then
+              echo "::error::The debug APK was expected but is missing — refusing to publish a partial build."
+              exit 1
+            fi
+            cp "$APK_DEBUG" "$STAGE/Ansu-nightly-debug.apk"
+          fi
+
+          # `apk` / `apkDebug` only list what this run actually published. The
+          # in-app updater reads `apk`, so the published file name can change
+          # without ever breaking updates.
           {
-            "app": "Ansu",
-            "package": "com.ansu.anime",
-            "apk": "Ansu-nightly.apk",
-            "apkDebug": "Ansu-nightly-debug.apk",
-            "versionName": "${{ steps.stamp.outputs.version_name }}",
-            "versionCode": ${{ steps.stamp.outputs.version_code }},
-            "builtAt": "${{ steps.stamp.outputs.iso }}",
-            "commit": "${{ github.sha }}",
-            "runId": "${{ github.run_id }}"
-          }
-          JSON
+            echo "{"
+            echo "  \"app\": \"Ansu\","
+            echo "  \"package\": \"com.ansu.anime\","
+            echo "  \"versionName\": \"$VERSION_NAME\","
+            echo "  \"versionCode\": $VERSION_CODE,"
+            echo "  \"builtAt\": \"$ISO\","
+            echo "  \"commit\": \"$GITHUB_SHA\","
+            echo "  \"runId\": \"$GITHUB_RUN_ID\","
+            LAST="\"apk\": \"Ansu-nightly.apk\""
+            if [ "$VARIANT" = "debug" ]; then LAST="\"apkDebug\": \"Ansu-nightly-debug.apk\""; fi
+            if [ "$VARIANT" = "both" ]; then
+              echo "  \"apk\": \"Ansu-nightly.apk\","
+              LAST="\"apkDebug\": \"Ansu-nightly-debug.apk\""
+            fi
+            echo "  $LAST"
+            echo "}"
+          } > "$STAGE/nightly.json"
 
           cat > "$STAGE/README.md" <<'MD'
           # Ansu — nightly APK
@@ -151,11 +258,11 @@ jobs:
 
           ls -la "$STAGE"
 
-      - name: Publish to apk-nightly branch
+      - name: Publish to the apk-nightly branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           STAGE: ${{ steps.stage.outputs.dir }}
-          STAMP: ${{ steps.stamp.outputs.iso }}
+          STAMP: ${{ needs.plan.outputs.iso }}
         run: |
           set -euo pipefail
           cd "$STAGE"
@@ -168,13 +275,3 @@ jobs:
           git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --force origin apk-nightly
           echo "Published to branch apk-nightly"
-
-      - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ansu-nightly-${{ steps.stamp.outputs.version_code }}
-          path: |
-            app/build/outputs/apk/release/app-release.apk
-            app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14

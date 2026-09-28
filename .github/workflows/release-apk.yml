@@ -1,9 +1,14 @@
 name: Ansu Release APK
 
-# Builds a signed APK and attaches it to a GitHub Release.
+# Builds signed APKs and attaches them to a GitHub Release.
+#
 # Triggers:
-#   - automatically when a tag like v1.0.0 is pushed
+#   - automatically when a tag like v1.2.3 is pushed
 #   - manually from the Actions tab (Run workflow), optionally with a tag
+#
+# The two variants build in PARALLEL (one matrix leg each); a final `release`
+# job rewrites the notes from CHANGELOG.md and publishes only after both legs
+# succeeded, so a release is never created with half of its assets.
 
 on:
   push:
@@ -15,14 +20,15 @@ on:
         description: 'Release tag, e.g. v0.2.0 (leave empty to auto-generate one)'
         required: false
         default: ''
-      prerelease:
-        description: 'Mark this release as a pre-release'
+      channel:
+        description: 'Release type (auto = derive it from the version)'
         required: false
-        default: 'true'
+        default: 'auto'
         type: choice
         options:
-          - 'false'
-          - 'true'
+          - auto
+          - stable
+          - prerelease
 
 # Needed to create the release and upload its assets.
 permissions:
@@ -33,8 +39,65 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Build & publish release APK
+  # ---------------------------------------------------------------------------
+  # 1) Resolve the tag, the version and the release type once, for every job.
+  # ---------------------------------------------------------------------------
+  plan:
+    name: Resolve the version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.rel.outputs.tag }}
+      version: ${{ steps.rel.outputs.version }}
+      prerelease: ${{ steps.rel.outputs.prerelease }}
+      channel: ${{ steps.rel.outputs.channel }}
+
+    steps:
+      - name: Resolve the tag, the version and the release type
+        id: rel
+        env:
+          CHANNEL_INPUT: ${{ github.event.inputs.channel }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="${{ github.event.inputs.tag }}"
+            if [ -z "$TAG" ]; then TAG="v$(date -u +'%Y.%m.%d.%H%M')"; fi
+          fi
+
+          # v1.2.3 -> 1.2.3. The changelog headings use the version WITHOUT the
+          # "v" prefix, and so does CHANGELOG.md lookups below.
+          VERSION="${TAG#v}"
+
+          # SemVer pre-release: anything after a "-" in the version (1.2.3-rc.1,
+          # 2.0.0-beta, …) is a pre-release; a bare x.y.z is stable. The manual
+          # input can override the derivation.
+          if [[ "$VERSION" == *-* ]]; then DERIVED="prerelease"; else DERIVED="stable"; fi
+          case "${CHANNEL_INPUT:-auto}" in
+            stable)     CHANNEL="stable";     PRERELEASE=false ;;
+            prerelease) CHANNEL="prerelease"; PRERELEASE=true  ;;
+            *)          CHANNEL="$DERIVED"
+                        if [ "$DERIVED" = "prerelease" ]; then PRERELEASE=true; else PRERELEASE=false; fi ;;
+          esac
+
+          echo "tag=$TAG"               >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION"       >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL"       >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "Releasing tag=$TAG version=$VERSION channel=$CHANNEL prerelease=$PRERELEASE"
+
+  # ---------------------------------------------------------------------------
+  # 2) The variants build in parallel. `fail-fast: false` keeps the other leg
+  #    running so one broken variant does not hide the state of the other.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build ${{ matrix.variant }} APK
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [release, debug]
     runs-on: ubuntu-latest
 
     steps:
@@ -67,55 +130,151 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Resolve release tag and version
-        id: rel
+      - name: Assemble the ${{ matrix.variant }} APK
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "push" ]; then
-            TAG="${{ github.ref_name }}"
-          else
-            TAG="${{ github.event.inputs.tag }}"
-            if [ -z "$TAG" ]; then TAG="v$(date -u +'%Y.%m.%d.%H%M')"; fi
-          fi
-          # v1.2.3 -> 1.2.3
-          VERSION="${TAG#v}"
-          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Releasing tag=$TAG version=$VERSION"
-
-      - name: Assemble signed APKs
-        run: |
-          ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug \
+          case "${{ matrix.variant }}" in
+            release) TASK="assembleRelease" ;;
+            debug)   TASK="assembleDebug" ;;
+            *) echo "::error::Unknown variant '${{ matrix.variant }}'"; exit 1 ;;
+          esac
+          ./gradlew --no-daemon --stacktrace "$TASK" \
             -PversionCode="${{ github.run_number }}" \
-            -PversionName="${{ steps.rel.outputs.version }}"
+            -PversionName="${{ needs.plan.outputs.version }}"
 
-      - name: Verify APK signatures
+      - name: Verify the APK signature
         run: |
+          set -euo pipefail
           BUILD_TOOLS="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
           echo "Using build-tools: $BUILD_TOOLS"
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs \
-            app/build/outputs/apk/release/app-release.apk
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs \
-            app/build/outputs/apk/debug/app-debug.apk
+          APK="$(find "app/build/outputs/apk/${{ matrix.variant }}" -type f -name '*.apk' | head -1)"
+          if [ -z "$APK" ]; then
+            echo "::error::No APK produced for variant ${{ matrix.variant }}"
+            exit 1
+          fi
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
 
-      - name: Rename APKs for the release
+      - name: Upload the APK as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ matrix.variant }}
+          path: app/build/outputs/apk/${{ matrix.variant }}/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # 3) Publish the release. The notes come from CHANGELOG.md — the `## [x.y.z]`
+  #    section has to exist for the version being released (see CLAUDE.md).
+  # ---------------------------------------------------------------------------
+  release:
+    name: Publish the GitHub Release
+    needs: [plan, build]
+    if: ${{ always() && needs.plan.result == 'success' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      # Full history: `git describe` needs the previous tags and the changelog
+      # section is matched against the file at the tagged commit.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download the built APKs
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Rename the APKs for the release
         run: |
           set -euo pipefail
-          VERSION="${{ steps.rel.outputs.version }}"
-          cp app/build/outputs/apk/release/app-release.apk "Ansu-${VERSION}.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk     "Ansu-${VERSION}-debug.apk"
+          VERSION="${{ needs.plan.outputs.version }}"
+          APK_RELEASE="$(find artifacts -type f -name 'app-release.apk' | head -1 || true)"
+          APK_DEBUG="$(find artifacts -type f -name 'app-debug.apk' | head -1 || true)"
+          if [ -z "$APK_RELEASE" ] || [ -z "$APK_DEBUG" ]; then
+            echo "::error::Both APKs are required to publish a release — refusing to publish a partial one."
+            find artifacts -type f -print
+            exit 1
+          fi
+          cp "$APK_RELEASE" "Ansu-${VERSION}.apk"
+          cp "$APK_DEBUG"   "Ansu-${VERSION}-debug.apk"
           ls -la Ansu-*.apk
 
-      - name: Create GitHub Release
+      - name: Extract the changelog section for this version
+        id: changelog
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.plan.outputs.version }}"
+          SECTION=""
+          if [ -f CHANGELOG.md ]; then
+            SECTION="$(awk -v v="$VERSION" '
+              # Match the exact version, optionally followed by a channel suffix
+              # (e.g. -rc.1), before the closing bracket.
+              index($0, "## [" v "]") == 1 || index($0, "## [" v "-") == 1 { found = 1; print; next }
+              found && /^## / { exit }
+              found { print }
+            ' CHANGELOG.md)"
+          fi
+          if [ -z "$SECTION" ]; then
+            echo "::warning title=Missing changelog entry::CHANGELOG.md has no '## [$VERSION]' section. Add one before tagging (see CLAUDE.md, section 7) — this release is being published with a placeholder body."
+            SECTION="*No changelog entry found for \`$VERSION\`. See [CHANGELOG.md](../blob/main/CHANGELOG.md).*"
+          fi
+          {
+            echo "section<<CHANGELOG_EOF"
+            echo "$SECTION"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Collect the commits since the previous release
+        id: commits
+        run: |
+          set -euo pipefail
+          PREV_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS="$(git log "$PREV_TAG..HEAD" --pretty=format:'- %s' --no-merges 2>/dev/null || true)"
+          else
+            COMMITS="$(git log --pretty=format:'- %s' --no-merges 2>/dev/null || true)"
+          fi
+          if [ -z "$COMMITS" ]; then COMMITS="- Initial release"; fi
+
+          # Collapse a long list so the release body stays readable.
+          COMMIT_COUNT="$(printf '%s\n' "$COMMITS" | grep -c . || true)"
+          if [ "$COMMIT_COUNT" -gt 7 ]; then
+            COMMITS="$(printf '<details>\n<summary>Show all %s commits</summary>\n\n%s\n</details>' "$COMMIT_COUNT" "$COMMITS")"
+          fi
+
+          {
+            echo "commits<<COMMITS_EOF"
+            echo "$COMMITS"
+            echo "COMMITS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create the GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.rel.outputs.tag }}
-          name: Ansu ${{ steps.rel.outputs.tag }}
+          tag_name: ${{ needs.plan.outputs.tag }}
+          name: Ansu ${{ needs.plan.outputs.version }}
+          target_commitish: ${{ github.sha }}
           draft: false
-          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
-          generate_release_notes: true
+          prerelease: ${{ needs.plan.outputs.prerelease == 'true' }}
+          # The body is written by hand from CHANGELOG.md, so GitHub's
+          # generated notes are not used.
+          generate_release_notes: false
+          fail_on_unmatched_files: true
           files: |
-            Ansu-${{ steps.rel.outputs.version }}.apk
-            Ansu-${{ steps.rel.outputs.version }}-debug.apk
+            Ansu-${{ needs.plan.outputs.version }}.apk
+            Ansu-${{ needs.plan.outputs.version }}-debug.apk
+          body: |
+            ## Ansu ${{ needs.plan.outputs.version }}
+            **Release channel:** `${{ needs.plan.outputs.channel }}`
+
+            ${{ steps.changelog.outputs.section }}
+
+            ### Commits
+            ${{ steps.commits.outputs.commits }}
+
+            ---
+            This release was built automatically from commit `${{ github.sha }}`.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
