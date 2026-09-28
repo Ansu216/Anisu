@@ -1,7 +1,10 @@
 package com.ansu.anime.ui.home
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -9,13 +12,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -24,12 +25,14 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavHostController
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.di.AppContainer
+import com.ansu.anime.ui.components.AppBottomBar
 import com.ansu.anime.ui.components.ContinueWatchingRow
 import com.ansu.anime.ui.components.HeroCarousel
-import com.ansu.anime.ui.components.AnisuBottomBar
 import com.ansu.anime.ui.components.PosterRow
 import com.ansu.anime.ui.components.ShelfHeader
 import com.ansu.anime.ui.navigation.Dest
+import com.ansu.anime.ui.theme.AnsuColors
+import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(
@@ -43,27 +46,39 @@ fun HomeScreen(
         },
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Anisu", color = Color.White) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-            )
-        },
-        bottomBar = { AnisuBottomBar(navController, Dest.HOME) },
+        containerColor = AnsuColors.Background,
+        bottomBar = { AppBottomBar(navController, Dest.HOME) },
     ) { padding ->
         if (state.isLoading && state.shelves.isEmpty()) {
-            Column(modifier = Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(modifier = Modifier.padding(top = 80.dp))
+            Column(
+                modifier = Modifier.fillMaxSize().padding(padding).background(AnsuColors.Background),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CircularProgressIndicator(color = AnsuColors.Accent, modifier = Modifier.padding(top = 80.dp))
             }
             return@Scaffold
         }
 
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding).background(AnsuColors.Background),
+            contentPadding = PaddingValues(bottom = 24.dp),
+        ) {
             val heroSource = state.shelves.firstOrNull()?.items.orEmpty()
             if (heroSource.isNotEmpty()) {
-                item { HeroCarousel(items = heroSource, onClick = onAnimeSelected) }
+                item {
+                    HeroCarousel(
+                        items = heroSource,
+                        onClick = onAnimeSelected,
+                        onToggleFavourite = { anime ->
+                            anime.anilistId?.let { id ->
+                                scope.launch { container.aniListRepository.toggleFavourite(id) }
+                            }
+                        },
+                    )
+                }
             }
 
             if (state.continueWatching.isNotEmpty()) {

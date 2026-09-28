@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.ansu.anime.ui.extensions
 
 import androidx.compose.foundation.layout.Arrangement
@@ -9,7 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.Button
@@ -36,8 +38,7 @@ import androidx.navigation.NavHostController
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.extension.ExtensionRepoEntry
 import com.ansu.anime.extension.InstalledExtension
-import com.ansu.anime.ui.theme.AnisuGold
-import com.ansu.anime.ui.theme.AnisuTextSecondary
+import com.ansu.anime.ui.theme.AnsuColors
 import kotlinx.coroutines.launch
 
 @Composable
@@ -52,7 +53,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
         topBar = {
             TopAppBar(
                 title = { Text("Extensions") },
-                navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
+                navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Filled.ArrowBack, null) } },
             )
         },
     ) { padding ->
@@ -65,7 +66,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                 )
             }
             if (installed.isEmpty()) {
-                item { Text("Only the built-in demo source is active. Install an extension APK to add real sources.", modifier = Modifier.padding(16.dp), color = AnisuTextSecondary) }
+                item { Text("Only the built-in demo source is active. Install an extension APK to add real sources.", modifier = Modifier.padding(16.dp), color = AnsuColors.TextSecondary) }
             }
             items(installed) { ext -> InstalledExtensionRow(ext) }
 
@@ -87,7 +88,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                 Text(
                     "Paste a Keiyoushi-style repo's index.min.json URL to see what it offers.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = AnisuTextSecondary,
+                    color = AnsuColors.TextSecondary,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
                 Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -118,7 +119,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                 ) {
                     Column {
                         Text(entry.name, style = MaterialTheme.typography.titleSmall)
-                        Text("${entry.lang} · v${entry.version}", style = MaterialTheme.typography.bodyMedium, color = AnisuTextSecondary)
+                        Text("${entry.lang} · v${entry.version}", style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary)
                     }
                     TextButton(onClick = {
                         scope.launch {
@@ -141,14 +142,14 @@ private fun InstalledExtensionRow(ext: InstalledExtension) {
         Icon(
             imageVector = if (ext.isValid) Icons.Filled.CheckCircle else Icons.Filled.Error,
             contentDescription = null,
-            tint = if (ext.isValid) AnisuGold else MaterialTheme.colorScheme.error,
+            tint = if (ext.isValid) AnsuColors.Accent else MaterialTheme.colorScheme.error,
         )
         Column(modifier = Modifier.padding(start = 12.dp)) {
             Text(ext.displayName, style = MaterialTheme.typography.titleSmall)
             Text(
                 ext.loadError ?: "v${ext.versionName} · ${ext.sources.size} source(s)",
                 style = MaterialTheme.typography.bodyMedium,
-                color = AnisuTextSecondary,
+                color = AnsuColors.TextSecondary,
             )
         }
     }

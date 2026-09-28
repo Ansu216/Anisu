@@ -2,7 +2,18 @@ package com.ansu.anime.ui.details
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -10,16 +21,20 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material3.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,7 +43,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -36,125 +50,198 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
-import com.ansu.anime.anilist.toEpisodeItems
-import com.ansu.anime.anilist.toRelatedCards
-import com.ansu.anime.anilist.toRecommendationCards
-import com.ansu.anime.anilist.toCharacterCards
-import com.ansu.anime.anilist.toStaffCards
-import com.ansu.anime.ui.theme.StreamHubColors
+import com.ansu.anime.anilist.AniListMedia
+import com.ansu.anime.core.model.MediaOrigin
+import com.ansu.anime.core.model.SAnime
+import com.ansu.anime.core.model.SEpisode
+import com.ansu.anime.core.util.formatEpisodeNumber
+import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.BottomScrim
 import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.GenreChip
+import com.ansu.anime.ui.components.PersonCard
+import com.ansu.anime.ui.components.StatItem
+import com.ansu.anime.ui.theme.AnsuColors
 
-data class EpisodeItem(
-    val number: Int,
-    val title: String,
-    val description: String,
-    val thumbnailUrl: String?,
-)
-
-data class RelatedCard(
-    val id: Int,
-    val title: String,
-    val imageUrl: String?,
-    val badge: String? = null,
-)
-
-data class PersonCard(
-    val id: Int,
-    val name: String,
-    val role: String,
-    val imageUrl: String?,
-)
-
+/**
+ * Details page — a JJK-reference-style layout: banner hero with back button,
+ * white "Play Now" + frosted circular like button, score/episodes/year/format
+ * stats, genre row, expandable synopsis, episode list, cast, crew, related
+ * shows. Data comes from [DetailsViewModel]: episodes are resolved from the
+ * anime's real extension/addon source, AniList details load in parallel.
+ */
 @Composable
 fun DetailsScreen(
-    media: com.ansu.anime.anilist.AniListMedia,
-    isLiked: Boolean,
-    onBack: () -> Unit,
-    onPlay: () -> Unit,
-    onToggleLike: () -> Unit,
-    onEpisodeClick: (EpisodeItem) -> Unit = {},
-    onTrailerClick: (com.ansu.anime.anilist.AniListTrailer) -> Unit = {},
-    onRelatedClick: (Int) -> Unit = {},
-    onCharacterClick: (Int) -> Unit = {},
-    onStaffClick: (Int) -> Unit = {},
+    container: AppContainer,
+    navController: NavHostController,
+    onEpisodeSelected: (SEpisode) -> Unit,
 ) {
-    val episodes = remember(media) { media.toEpisodeItems() }
-    val related = remember(media) { media.toRelatedCards() }
-    val recommendations = remember(media) { media.toRecommendationCards() }
-    val characters = remember(media) { media.toCharacterCards() }
-    val staffCards = remember(media) { media.toStaffCards() }
+    val viewModel: DetailsViewModel = viewModel(
+        factory = viewModelFactory {
+            initializer {
+                DetailsViewModel(container.extensionManager, container.addonManager, container.aniListRepository, container.selectionHolder)
+            }
+        },
+    )
+    val anime by viewModel.anime.collectAsStateWithLifecycle()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var expandSynopsis by remember { mutableStateOf(false) }
+    var selectedPerson by remember { mutableStateOf<PersonDetail?>(null) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(StreamHubColors.Background)
-    ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 40.dp)
-        ) {
-            item { DetailsHero(media = media, onBack = onBack) }
-            item { PlayLikeRow(onPlay = onPlay, isLiked = isLiked, onToggleLike = onToggleLike) }
-            item { StatsRow(media = media) }
+    val details = state.aniListDetails
 
-            if (media.genres.isNotEmpty()) {
-                item { GenreRow(genres = media.genres) }
+    Box(modifier = Modifier.fillMaxSize().background(AnsuColors.Background)) {
+        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
+            item {
+                DetailsHero(
+                    title = anime?.title.orEmpty(),
+                    imageUrl = anime?.bannerUrl ?: details?.bannerUrl ?: anime?.posterUrl,
+                    onBack = { navController.popBackStack() },
+                )
             }
-            if (media.plainDescription.isNotBlank()) {
-                item { DescriptionSection(text = media.plainDescription) }
+
+            item {
+                val firstEpisode = state.episodes.firstOrNull()
+                PlayLikeRow(
+                    playLabel = firstEpisode?.let { "Play Ep. ${it.episodeNumber.formatEpisodeNumber()}" } ?: "No episodes yet",
+                    playEnabled = firstEpisode != null,
+                    onPlay = { firstEpisode?.let(onEpisodeSelected) },
+                    isLiked = state.isFavourite,
+                    onToggleLike = { viewModel.toggleFavourite() },
+                )
             }
-            if (episodes.isNotEmpty()) {
-                item { DetailsSectionHeader("Episodes") }
-                item { EpisodesSection(episodes = episodes, onEpisodeClick = onEpisodeClick) }
+
+            item {
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    StatItem(Icons.Filled.Star, details?.averageScore?.let { "$it%" } ?: "—", "SCORE", tint = AnsuColors.ScoreGreen)
+                    StatItem(Icons.Filled.ViewList, (details?.episodes ?: state.episodes.size.takeIf { it > 0 })?.toString() ?: "—", "EPISODES")
+                    StatItem(Icons.Filled.CalendarToday, details?.year?.toString() ?: anime?.releaseYear?.toString() ?: "—", "YEAR")
+                    StatItem(Icons.Filled.Tv, details?.format ?: "TV", "FORMAT")
+                }
             }
-            media.trailer?.let { trailer ->
-                item { DetailsSectionHeader("Trailers & More") }
-                item { TrailerRow(trailer = trailer, onClick = { onTrailerClick(trailer) }) }
+
+            val genres = (details?.genres?.takeIf { it.isNotEmpty() } ?: anime?.genres).orEmpty()
+            if (genres.isNotEmpty()) {
+                item {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(genres) { genre -> GenreChip(genre) }
+                    }
+                }
             }
-            if (related.isNotEmpty()) {
-                item { DetailsSectionHeader("Related Content") }
-                item { PosterRow(items = related, onClick = onRelatedClick) }
+
+            val synopsis = (details?.description ?: anime?.description)?.replace(Regex("<[^>]*>"), "")
+            if (!synopsis.isNullOrBlank()) {
+                item {
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+                        Text(
+                            text = synopsis,
+                            color = AnsuColors.TextSecondary,
+                            fontSize = 14.sp,
+                            lineHeight = 21.sp,
+                            maxLines = if (expandSynopsis) Int.MAX_VALUE else 4,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = if (expandSynopsis) "Show Less" else "Read More",
+                            color = AnsuColors.TextPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(top = 6.dp).clickable { expandSynopsis = !expandSynopsis },
+                        )
+                    }
+                }
             }
-            if (characters.isNotEmpty()) {
+
+            item { DetailsSectionHeader("Episodes") }
+            if (state.isLoading) {
+                item { CircularProgressIndicator(color = AnsuColors.Accent, modifier = Modifier.padding(20.dp)) }
+            } else if (state.episodes.isEmpty()) {
+                item {
+                    Text(
+                        state.error ?: "No episodes found yet.",
+                        color = AnsuColors.TextTertiary,
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                    )
+                }
+            } else {
+                items(state.episodes, key = { it.id }) { episode ->
+                    EpisodeRow(episode = episode, synopsis = synopsis, onClick = { onEpisodeSelected(episode) })
+                    androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
+                }
+            }
+
+            details?.characters?.takeIf { it.isNotEmpty() }?.let { characters ->
                 item { DetailsSectionHeader("Characters") }
-                item { PersonRow(items = characters, onClick = onCharacterClick) }
+                item {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        items(characters, key = { it.id }) { character ->
+                            PersonCard(
+                                imageUrl = character.imageUrl,
+                                name = character.name,
+                                role = character.role.lowercase().replaceFirstChar { it.uppercase() },
+                                onClick = { selectedPerson = PersonDetail.Character(character) },
+                            )
+                        }
+                    }
+                }
             }
-            if (staffCards.isNotEmpty()) {
+
+            details?.staff?.takeIf { it.isNotEmpty() }?.let { staff ->
                 item { DetailsSectionHeader("Staff") }
-                item { PersonRow(items = staffCards, onClick = onStaffClick) }
+                item {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        items(staff, key = { it.id }) { member ->
+                            PersonCard(
+                                imageUrl = member.imageUrl,
+                                name = member.name,
+                                role = member.role,
+                                onClick = { selectedPerson = PersonDetail.Staff(member) },
+                            )
+                        }
+                    }
+                }
             }
-            if (recommendations.isNotEmpty()) {
+
+            details?.related?.takeIf { it.isNotEmpty() }?.let { related ->
                 item { DetailsSectionHeader("More Like This") }
-                item { PosterRow(items = recommendations, onClick = onRelatedClick) }
+                item {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        items(related, key = { it.id }) { media ->
+                            RelatedPoster(
+                                media = media,
+                                onClick = {
+                                    container.selectionHolder.selectAnime(media.toSAnime())
+                                    navController.navigate(com.ansu.anime.ui.navigation.Dest.DETAILS)
+                                },
+                            )
+                        }
+                    }
+                }
             }
         }
     }
+
+    selectedPerson?.let { person ->
+        CharacterStaffSheet(person = person, onDismiss = { selectedPerson = null })
+    }
 }
 
+/** Banner hero with back button and overlaid title — sized like the reference (320dp). */
 @Composable
-private fun DetailsHero(media: com.ansu.anime.anilist.AniListMedia, onBack: () -> Unit) {
+private fun DetailsHero(title: String, imageUrl: String?, onBack: () -> Unit) {
     Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
-        val imageUrl = media.bannerImage ?: media.coverImage?.extraLarge ?: media.coverImage?.large
-        if (imageUrl != null) {
-            AsyncImage(
-                model = imageUrl,
-                contentDescription = media.displayTitle,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(0xFF2A2D3A), StreamHubColors.Background),
-                        ),
-                    ),
-            )
-        }
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().background(AnsuColors.BackgroundElevated),
+        )
         BottomScrim(modifier = Modifier.fillMaxSize())
         IconButton(
             onClick = onBack,
@@ -165,58 +252,44 @@ private fun DetailsHero(media: com.ansu.anime.anilist.AniListMedia, onBack: () -
                 .clip(CircleShape)
                 .background(Color.Black.copy(alpha = 0.35f)),
         ) {
-            Icon(
-                Icons.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = StreamHubColors.TextPrimary,
-            )
+            Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = AnsuColors.TextPrimary)
         }
         Text(
-            text = media.displayTitle.uppercase(),
-            color = StreamHubColors.TextPrimary,
-            fontSize = 26.sp,
+            text = title.uppercase(),
+            color = AnsuColors.TextPrimary,
+            fontSize = 24.sp,
             fontWeight = FontWeight.ExtraBold,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+            modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 20.dp, vertical = 16.dp),
         )
     }
 }
 
+/** White "Play" CTA with a circular frosted-glass like button to its right. */
 @Composable
-private fun PlayLikeRow(onPlay: () -> Unit, isLiked: Boolean, onToggleLike: () -> Unit) {
+private fun PlayLikeRow(playLabel: String, playEnabled: Boolean, onPlay: () -> Unit, isLiked: Boolean, onToggleLike: () -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Button(
             onClick = onPlay,
+            enabled = playEnabled,
             modifier = Modifier.weight(1f).height(50.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = StreamHubColors.Accent,
-                contentColor = StreamHubColors.Background,
-            ),
+            colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.Background),
             shape = RoundedCornerShape(14.dp),
         ) {
-            Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = StreamHubColors.Background)
-            Spacer(Modifier.width(8.dp))
-            Text("Play Now", color = StreamHubColors.Background, fontWeight = FontWeight.Bold)
+            Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = AnsuColors.Background)
+            Text(playLabel, color = AnsuColors.Background, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
         }
-        FrostedGlassCard(
-            modifier = Modifier.size(50.dp),
-            shape = CircleShape,
-            tintAlpha = 0.5f,
-        ) {
+        FrostedGlassCard(modifier = Modifier.size(50.dp), shape = CircleShape, tintAlpha = 0.5f) {
             IconButton(onClick = onToggleLike, modifier = Modifier.fillMaxSize()) {
                 Icon(
                     imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                    contentDescription = if (isLiked) "Unlike" else "Like",
-                    tint = StreamHubColors.TextPrimary,
+                    contentDescription = "Favourite",
+                    tint = if (isLiked) AnsuColors.Accent else AnsuColors.TextPrimary,
                 )
             }
         }
@@ -224,123 +297,10 @@ private fun PlayLikeRow(onPlay: () -> Unit, isLiked: Boolean, onToggleLike: () -
 }
 
 @Composable
-private fun StatsRow(media: com.ansu.anime.anilist.AniListMedia) {
-    val stats = buildList {
-        media.averageScore?.let { add(Stat(Icons.Filled.Star, "$it%", "SCORE", StreamHubColors.ScoreGreen)) }
-        media.episodes?.let { add(Stat(Icons.Filled.List, "$it EP", "EPISODES")) }
-        media.seasonYear?.let { add(Stat(Icons.Filled.DateRange, "$it", "YEAR")) }
-        media.format?.let { add(Stat(Icons.Filled.Info, formatLabel(it), "FORMAT")) }
-    }
-    if (stats.isEmpty()) return
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        stats.forEachIndexed { index, stat ->
-            StatItem(stat)
-            if (index != stats.lastIndex) {
-                Box(
-                    modifier = Modifier
-                        .width(1.dp)
-                        .height(30.dp)
-                        .background(StreamHubColors.TextTertiary.copy(alpha = 0.4f)),
-                )
-            }
-        }
-    }
-}
-
-private data class Stat(
-    val icon: androidx.compose.ui.graphics.vector.ImageVector,
-    val value: String,
-    val label: String,
-    val tint: Color = StreamHubColors.TextPrimary,
-)
-
-@Composable
-private fun StatItem(stat: Stat) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(stat.icon, contentDescription = null, tint = stat.tint, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.height(4.dp))
-        Text(stat.value, color = stat.tint, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-        Text(stat.label, color = StreamHubColors.TextTertiary, fontSize = 10.sp)
-    }
-}
-
-private fun formatLabel(format: String): String = when (format) {
-    "TV" -> "TV"
-    "TV_SHORT" -> "TV Short"
-    "MOVIE" -> "Movie"
-    "SPECIAL" -> "Special"
-    "OVA" -> "OVA"
-    "ONA" -> "ONA"
-    "MUSIC" -> "Music"
-    else -> format
-}
-
-@Composable
-private fun GenreRow(genres: List<String>) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        genres.take(3).forEachIndexed { index, genre ->
-            if (index > 0) {
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = 10.dp)
-                        .width(1.dp)
-                        .height(14.dp)
-                        .background(StreamHubColors.TextTertiary),
-                )
-            }
-            Text(
-                text = genre,
-                color = StreamHubColors.TextPrimary,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-            )
-        }
-    }
-}
-
-@Composable
-private fun DescriptionSection(text: String) {
-    var expanded by remember { mutableStateOf(false) }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-    ) {
-        Text(
-            text = text,
-            color = StreamHubColors.TextSecondary,
-            fontSize = 14.sp,
-            lineHeight = 21.sp,
-            maxLines = if (expanded) Int.MAX_VALUE else 4,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = if (expanded) "Show Less" else "Read More",
-            color = StreamHubColors.TextPrimary,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.clickable { expanded = !expanded },
-        )
-    }
-}
-
-@Composable
-private fun DetailsSectionHeader(text: String) {
+private fun DetailsSectionHeader(title: String) {
     Text(
-        text = text,
-        color = StreamHubColors.TextPrimary,
+        text = title,
+        color = AnsuColors.TextPrimary,
         fontSize = 19.sp,
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(start = 20.dp, top = 22.dp, bottom = 12.dp),
@@ -348,253 +308,78 @@ private fun DetailsSectionHeader(text: String) {
 }
 
 @Composable
-private fun EpisodesSection(episodes: List<EpisodeItem>, onEpisodeClick: (EpisodeItem) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    val visible = if (expanded) episodes else episodes.take(4)
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-        visible.forEach { episode ->
-            EpisodeRow(episode = episode, onClick = { onEpisodeClick(episode) })
-            Spacer(Modifier.height(16.dp))
-        }
-        if (episodes.size > 4) {
-            FrostedGlassCard(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .clickable { expanded = !expanded },
-                shape = RoundedCornerShape(20.dp),
-                tintAlpha = 0.4f,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = if (expanded) "View Less" else "View More",
-                        color = StreamHubColors.TextPrimary,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Icon(
-                        imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                        contentDescription = null,
-                        tint = StreamHubColors.TextPrimary,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EpisodeRow(episode: EpisodeItem, onClick: () -> Unit) {
+private fun EpisodeRow(episode: SEpisode, synopsis: String?, onClick: () -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Box(
-            modifier = Modifier
-                .width(120.dp)
-                .height(72.dp)
-                .clip(RoundedCornerShape(8.dp)),
+            modifier = Modifier.width(120.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(AnsuColors.BackgroundElevated),
         ) {
             if (episode.thumbnailUrl != null) {
-                AsyncImage(
-                    model = episode.thumbnailUrl,
-                    contentDescription = episode.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Box(modifier = Modifier.fillMaxSize().background(StreamHubColors.BackgroundElevated))
+                AsyncImage(model = episode.thumbnailUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
             Icon(
-                imageVector = Icons.Filled.PlayArrow,
+                Icons.Filled.PlayArrow,
                 contentDescription = null,
-                tint = StreamHubColors.TextPrimary,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(6.dp)
-                    .size(18.dp),
+                tint = AnsuColors.TextPrimary,
+                modifier = Modifier.align(Alignment.BottomStart).padding(6.dp).size(18.dp),
             )
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = episode.title,
-                color = StreamHubColors.TextPrimary,
+                text = "Episode ${episode.episodeNumber.formatEpisodeNumber()}" +
+                    episode.name.takeIf { it.isNotBlank() && !it.startsWith("Episode") }?.let { " - $it" }.orEmpty(),
+                color = AnsuColors.TextPrimary,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(4.dp))
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(StreamHubColors.SurfaceGlassBase)
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-            ) {
+            if (!synopsis.isNullOrBlank()) {
                 Text(
-                    "E${episode.number}",
-                    color = StreamHubColors.TextSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
+                    text = synopsis,
+                    color = AnsuColors.TextTertiary,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp),
                 )
             }
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = episode.description,
-                color = StreamHubColors.TextTertiary,
-                fontSize = 12.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
 
 @Composable
-private fun TrailerRow(trailer: com.ansu.anime.anilist.AniListTrailer, onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .padding(horizontal = 20.dp)
-            .clickable(onClick = onClick),
-    ) {
+private fun RelatedPoster(media: AniListMedia, onClick: () -> Unit) {
+    Column(modifier = Modifier.width(120.dp).clickable(onClick = onClick)) {
         Box(
-            modifier = Modifier
-                .width(220.dp)
-                .height(124.dp)
-                .clip(RoundedCornerShape(12.dp)),
+            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)).background(AnsuColors.BackgroundElevated),
         ) {
-            if (trailer.thumbnail != null) {
-                AsyncImage(
-                    model = trailer.thumbnail,
-                    contentDescription = "Trailer",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Box(modifier = Modifier.fillMaxSize().background(StreamHubColors.BackgroundElevated))
-            }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.5f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = "Play trailer", tint = StreamHubColors.TextPrimary)
+            if (media.posterUrl != null) {
+                AsyncImage(model = media.posterUrl, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
         }
-        Spacer(Modifier.height(8.dp))
         Text(
-            "Official Trailer",
-            color = StreamHubColors.TextPrimary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
+            text = media.title,
+            color = AnsuColors.TextPrimary,
+            fontSize = 12.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 6.dp),
         )
     }
 }
 
-@Composable
-private fun PosterRow(items: List<RelatedCard>, onClick: (Int) -> Unit) {
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        items(items, key = { it.id }) { item ->
-            Column(modifier = Modifier.width(120.dp).clickable { onClick(item.id) }) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(2f / 3f)
-                        .clip(RoundedCornerShape(10.dp)),
-                ) {
-                    if (item.imageUrl != null) {
-                        AsyncImage(
-                            model = item.imageUrl,
-                            contentDescription = item.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    } else {
-                        Box(modifier = Modifier.fillMaxSize().background(StreamHubColors.BackgroundElevated))
-                    }
-                    item.badge?.let { badge ->
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(6.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color.Black.copy(alpha = 0.65f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                        ) {
-                            Text(badge, color = StreamHubColors.TextPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = item.title,
-                    color = StreamHubColors.TextPrimary,
-                    fontSize = 12.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PersonRow(items: List<PersonCard>, onClick: (Int) -> Unit) {
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        items(items, key = { it.id }) { person ->
-            Column(
-                modifier = Modifier.width(88.dp).clickable { onClick(person.id) },
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(88.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(StreamHubColors.BackgroundElevated),
-                ) {
-                    if (person.imageUrl != null) {
-                        AsyncImage(
-                            model = person.imageUrl,
-                            contentDescription = person.name,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = person.name,
-                    color = StreamHubColors.TextPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                )
-                if (person.role.isNotBlank()) {
-                    Text(
-                        text = person.role,
-                        color = StreamHubColors.TextTertiary,
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                    )
-                }
-            }
-        }
-    }
-}
+private fun AniListMedia.toSAnime(): SAnime = SAnime(
+    id = id.toString(),
+    title = title,
+    posterUrl = posterUrl,
+    bannerUrl = bannerUrl,
+    description = description,
+    genres = genres,
+    releaseYear = year,
+    rating = averageScore?.div(10.0),
+    anilistId = id,
+    origin = MediaOrigin.Extension(sourceId = 1L, urlPath = id.toString()),
+)

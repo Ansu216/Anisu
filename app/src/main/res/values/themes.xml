@@ -1,8 +1,8 @@
 <resources>
-    <style name="Theme.Anisu" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@color/anisu_background</item>
-        <item name="android:statusBarColor">@color/anisu_background</item>
-        <item name="android:navigationBarColor">@color/anisu_background</item>
+    <style name="Theme.Ansu" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/kernel_background</item>
+        <item name="android:statusBarColor">@color/kernel_background</item>
+        <item name="android:navigationBarColor">@color/kernel_background</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

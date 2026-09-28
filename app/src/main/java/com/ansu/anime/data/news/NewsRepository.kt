@@ -1,15 +1,15 @@
 package com.ansu.anime.data.news
 
-import com.ansu.anime.data.news.NewsArticle
+import com.ansu.anime.ui.schedule.NewsArticle
 
 /**
- * News source for the "Anime News" tab.
+ * News source for the "News" toggle on the Schedule tab.
  *
  * AniList's GraphQL schema has no news feed (unlike [com.ansu.anime.anilist.AniListApi],
- * which has a real `airingSchedules` query backing the Schedule tab), so this repository is
- * a thin seam rather than a live client: [getNews] returns fixture data today, and can be
- * swapped for a real HTTP call — an RSS/JSON feed from a news provider, or your own backend —
- * without any change to NewsScheduleScreen or [NewsArticle] itself.
+ * which has a real `airingSchedules` query backing the Schedule side), so this repository
+ * is a thin seam rather than a live client: [getNews] returns fixture data today, and can
+ * be swapped for a real HTTP call — an RSS/JSON feed, or your own backend — without any
+ * change to ScheduleScreen or [NewsArticle] itself.
  */
 object NewsRepository {
 
@@ -50,20 +50,6 @@ object NewsRepository {
             snippet = "The short pairs with a remastered theatrical cut of the studio's earlier film.",
             category = "Anime",
             dateDisplay = "Fri, 25 Sep 2026",
-        ),
-        NewsArticle(
-            id = "6",
-            title = "This Week's North American Anime and Manga Releases",
-            snippet = "New volumes and home-video titles arriving in stores and on streaming this week.",
-            category = "Anime",
-            dateDisplay = "Fri, 25 Sep 2026",
-        ),
-        NewsArticle(
-            id = "7",
-            title = "Tactics Game Adaptation Enters Production, Studio Confirms",
-            snippet = "Pre-production art shared alongside the announcement hints at a 2028 release.",
-            category = "Games",
-            dateDisplay = "Thu, 24 Sep 2026",
         ),
     )
 }

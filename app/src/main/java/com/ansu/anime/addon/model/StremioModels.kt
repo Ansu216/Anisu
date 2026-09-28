@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 /**
  * The response from an addon's `/manifest.json`. Both Stremio addons and
  * Nuvio Streams-style addons publish this same shape, which is what lets
- * Anisu treat them interchangeably: adding an addon is just pointing the
+ * Kernel treat them interchangeably: adding an addon is just pointing the
  * app at any URL that serves one of these.
  */
 @Serializable

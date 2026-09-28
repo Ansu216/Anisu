@@ -1,4 +1,4 @@
 <resources>
-    <color name="anisu_background">#101013</color>
-    <color name="anisu_gold">#E8A33D</color>
+    <color name="kernel_background">#101013</color>
+    <color name="kernel_gold">#E8A33D</color>
 </resources>

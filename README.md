@@ -1,17 +1,8 @@
-# Anisu
-
-**Package:** `com.ansu.anime` · **Min Android:** 7.0 (API 24) · **Target:** Android 15 (API 35)
+# Kernel
 
 A hybrid anime app: Nuvio's dark, addon-driven home screen and player, CornCastle's
 AniList-synced continue-watching row, built extension-based like Keiyoushi/Aniyomi
 sources, **plus** support for Stremio/Nuvio-protocol HTTP addons.
-
-APKs are signed (`keystore/anisu.jks`) and published automatically:
-
-- **Nightly:** every hour to the [`apk-nightly`](https://github.com/Ansu216/Anisu/tree/apk-nightly) branch
-- **Release:** on a `v*` tag, attached to a GitHub Release
-
-See [`how-to-compile.md`](how-to-compile.md) for the full build guide.
 
 ## Architecture at a glance
 
@@ -34,43 +25,50 @@ See [`how-to-compile.md`](how-to-compile.md) for the full build guide.
 - **Continue watching** (`data/db`, `data/repository/ContinueWatchingRepository`)
   — Room-backed, CornCastle-style row on the home screen with a progress bar
   drawn onto each thumbnail.
-- **UI** — Jetpack Compose throughout. `ui/home` is the Nuvio-style hero +
-  shelves layout; `ui/player` is a Media3 `ExoPlayer` with fully custom
-  overlay controls (no default Android controller) and a source-picker sheet
-  for switching between addon/extension results.
+- **Details page** (`ui/details/`) — deliberately CornCastle-shaped rather than
+  a thin "poster + play" screen: banner with centered title, a big Play
+  button plus an AniList favourite heart, a score/episodes/year/format stat
+  row, genre chips, an expandable synopsis, a vertical episode list, then
+  **Characters** and **Staff** grids (tap either for a bottom sheet with
+  their bio/role/voice actor), and a "More Like This" row. Episode data comes
+  from whichever extension/addon supplied the show; everything else
+  (characters, staff, stats, related titles, the favourite toggle) comes from
+  AniList's public GraphQL API via `anilistId`, since extensions/addons don't
+  carry that metadata. A title with no `anilistId` (most addon-only content)
+  still gets episodes and playback, just without the cast/crew sections.
+- **Player** (`ui/player/`) — stays Nuvio-style: a Media3 `ExoPlayer` with
+  fully custom overlay controls (no default Android controller) and a
+  source-picker sheet for switching between addon/extension results.
 - **DI** — a single hand-written `AppContainer` (`di/AppContainer.kt`) instead
   of Hilt/Dagger, to keep the first build simple.
 
 ## Setup
 
 1. Open the project root in Android Studio (Ladybug or newer) and let it sync.
-   The Gradle wrapper (`gradlew` + `gradle/wrapper/gradle-wrapper.jar`) **is**
-   checked in, so no wrapper generation step is needed.
+   It will offer to generate the Gradle wrapper jar automatically — accept
+   that, since it isn't checked into this download.
 2. Register a client at <https://anilist.co/settings/developer> with redirect
-   URI `anisu://anilist-auth`, then put the client ID in
-   `app/src/main/java/com/ansu/anime/anilist/AniListAuthManager.kt`
-   (`ANILIST_CLIENT_ID`), replacing the placeholder.
-3. Build and run — `./gradlew assembleDebug` or **Build → Build APK(s)**.
-   The home screen will show AniList trending data via the built-in demo
-   source immediately; no extension or addon is required to see the UI working
-   end to end (including playback, against a public test stream).
+   URI `ansu://anilist-auth`, then put the client ID in
+   `app/build.gradle.kts` (`ANILIST_CLIENT_ID`), replacing the placeholder.
+3. Build and run. The home screen will show AniList trending data via the
+   built-in demo source immediately; no extension or addon is required to see
+   the UI working end to end (including playback, against a public test
+   stream).
 4. To add real content: install a Keiyoushi-format extension APK on the
    device (Settings → Extensions → Rescan), or add a Stremio/Nuvio addon
    manifest URL (Settings → Addons).
 
-## Build status
+## Honest limitations
 
-This tree now compiles and is verified: `./gradlew assembleDebug assembleRelease`
-produces signed APKs with **zero errors and zero warnings**, and the APKs install
-and launch (the previous instant-launch crash — the manifest pointing at
-`com.ansu.anime.AnisuApp`, a class that does not exist — is fixed).
-
-Known rough edges that remain:
+This was written in a sandboxed environment with no network access, so **it
+has not been compiled or run**. It's a complete, coherent source tree
+following real, documented protocols (Keiyoushi extension loading, the
+Stremio addon spec, AniList's public GraphQL API), but treat the first build
+in Android Studio as exactly that — a first build. Likely rough edges:
 
 - Dependency versions (AGP/Kotlin/Compose BOM/Room/Media3) were current as of
   writing but Android Studio may prompt to bump one or two on first sync —
-  that's expected and safe to accept. If you bump Kotlin, bump KSP to the
-  matching `<kotlinVersion>-<kspVersion>` release too.
+  that's expected and safe to accept.
 - Matching an AniList list entry back to a specific installed extension is
   simplified to "use whatever the first source is" (`CatalogRepository`).
   A real app would want fuzzy title matching across sources, which is a
@@ -85,7 +83,7 @@ Known rough edges that remain:
 ## Where things live
 
 ```
-app/src/main/java/com/ansu/anime/
+app/src/main/java/com/kernel/anime/
 ├── core/model/        SAnime, SEpisode, Video, MediaOrigin
 ├── extension/          AnimeCatalogueSource contract + APK loader + DemoSource
 ├── addon/              Stremio/Nuvio protocol client + AddonManager

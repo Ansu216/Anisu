@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.ansu.anime.ui.addons
 
 import androidx.compose.foundation.layout.Arrangement
@@ -9,7 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,7 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.theme.AnisuTextSecondary
+import com.ansu.anime.ui.theme.AnsuColors
 import kotlinx.coroutines.launch
 
 @Composable
@@ -46,7 +48,7 @@ fun AddonsScreen(container: AppContainer, navController: NavHostController) {
         topBar = {
             TopAppBar(
                 title = { Text("Addons") },
-                navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
+                navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Filled.ArrowBack, null) } },
             )
         },
     ) { padding ->
@@ -55,7 +57,7 @@ fun AddonsScreen(container: AppContainer, navController: NavHostController) {
                 Text(
                     "Add any Stremio or Nuvio Streams-compatible addon by its manifest URL — both speak the same protocol.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = AnisuTextSecondary,
+                    color = AnsuColors.TextSecondary,
                     modifier = Modifier.padding(16.dp),
                 )
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -89,7 +91,7 @@ fun AddonsScreen(container: AppContainer, navController: NavHostController) {
                         Text(
                             "v${addon.version} · ${addon.types.joinToString(", ").ifEmpty { "no types declared" }}",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = AnisuTextSecondary,
+                            color = AnsuColors.TextSecondary,
                         )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {

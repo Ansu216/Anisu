@@ -1,6 +1,5 @@
 package com.ansu.anime.di
 
-
 import android.content.Context
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import com.ansu.anime.addon.AddonManager
@@ -9,6 +8,7 @@ import com.ansu.anime.anilist.AniListApi
 import com.ansu.anime.anilist.AniListAuthManager
 import com.ansu.anime.anilist.AniListRepository
 import com.ansu.anime.data.db.AppDatabase
+import com.ansu.anime.data.prefs.AppearancePrefs
 import com.ansu.anime.data.repository.CatalogRepository
 import com.ansu.anime.data.repository.ContinueWatchingRepository
 import com.ansu.anime.core.util.SelectionHolder
@@ -51,7 +51,8 @@ class AppContainer(context: Context) {
     val addonManager: AddonManager = AddonManager(stremioAddonApi, database.installedAddonDao())
 
     val aniListAuthManager: AniListAuthManager = AniListAuthManager(appContext)
-    val aniListRepository: AniListRepository = AniListRepository(AniListApi, aniListAuthManager)
+    val aniListApi: AniListApi = AniListApi(okHttpClient, aniListAuthManager)
+    val aniListRepository: AniListRepository = AniListRepository(aniListApi, aniListAuthManager)
 
     val continueWatchingRepository: ContinueWatchingRepository = ContinueWatchingRepository(
         database.continueWatchingDao(),
@@ -61,6 +62,8 @@ class AppContainer(context: Context) {
     val catalogRepository: CatalogRepository = CatalogRepository(extensionManager, addonManager, aniListRepository)
 
     val selectionHolder: SelectionHolder = SelectionHolder()
+
+    val appearancePrefs: AppearancePrefs = AppearancePrefs(appContext)
 
     init {
         // The demo source ships built into the app so there's content on

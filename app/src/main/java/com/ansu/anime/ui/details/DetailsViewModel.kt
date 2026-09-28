@@ -3,7 +3,7 @@ package com.ansu.anime.ui.details
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ansu.anime.addon.AddonManager
-import com.ansu.anime.anilist.AniListMedia
+import com.ansu.anime.anilist.AniListMediaDetails
 import com.ansu.anime.anilist.AniListRepository
 import com.ansu.anime.core.model.MediaOrigin
 import com.ansu.anime.core.model.SAnime
@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 data class DetailsUiState(
     val isLoading: Boolean = true,
     val episodes: List<SEpisode> = emptyList(),
-    val aniListDetails: AniListMedia? = null,
+    val aniListDetails: AniListMediaDetails? = null,
     val isFavourite: Boolean = false,
     val error: String? = null,
 )
@@ -57,7 +57,7 @@ class DetailsViewModel(
                     isLoading = false,
                     episodes = episodes,
                     aniListDetails = details,
-                    isFavourite = false,
+                    isFavourite = details?.isFavourite ?: false,
                     error = if (episodes.isEmpty() && details == null) "Couldn't load this title" else null,
                 )
             }

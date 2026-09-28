@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.ansu.anime.ui.library
 
 import androidx.compose.foundation.layout.Arrangement
@@ -27,7 +29,7 @@ import com.ansu.anime.anilist.AniListMediaListEntry
 import com.ansu.anime.core.model.MediaOrigin
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.components.AnisuBottomBar
+import com.ansu.anime.ui.components.AppBottomBar
 import com.ansu.anime.ui.components.PosterRow
 import com.ansu.anime.ui.components.ShelfHeader
 import com.ansu.anime.ui.navigation.Dest
@@ -56,7 +58,7 @@ fun LibraryScreen(
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Library") }) },
-        bottomBar = { AnisuBottomBar(navController, Dest.LIBRARY) },
+        bottomBar = { AppBottomBar(navController, Dest.LIBRARY) },
     ) { padding ->
         if (!isLoggedIn) {
             Column(

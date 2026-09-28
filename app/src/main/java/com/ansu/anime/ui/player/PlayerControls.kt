@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.ansu.anime.ui.player
 
 import androidx.compose.foundation.background
@@ -13,7 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -34,7 +36,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.ansu.anime.core.util.formatDuration
-import com.ansu.anime.ui.theme.AnisuGold
+import com.ansu.anime.ui.theme.AnsuColors
 
 @Composable
 fun PlayerControlsOverlay(
@@ -57,7 +59,7 @@ fun PlayerControlsOverlay(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(state.anime?.title.orEmpty(), color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 1)
@@ -96,7 +98,7 @@ fun PlayerControlsOverlay(
                 value = state.positionMs.toFloat().coerceAtMost(state.durationMs.toFloat().coerceAtLeast(1f)),
                 onValueChange = { onSeekTo(it.toLong()) },
                 valueRange = 0f..state.durationMs.toFloat().coerceAtLeast(1f),
-                colors = SliderDefaults.colors(thumbColor = AnisuGold, activeTrackColor = AnisuGold, inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
+                colors = SliderDefaults.colors(thumbColor = AnsuColors.Accent, activeTrackColor = AnsuColors.Accent, inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(formatDuration(state.positionMs / 1000), color = Color.White, style = MaterialTheme.typography.labelSmall)

@@ -61,7 +61,7 @@ class ExtensionManager(private val context: Context) {
         sourcesById[source.id] = source
     }
 
-    /** Every package on the device that declares itself as a Anisu anime source. */
+    /** Every package on the device that declares itself as a Kernel anime source. */
     fun findAvailableExtensions(): List<PackageInfo> {
         val pm = context.packageManager
         val intent = Intent(EXTENSION_ACTION)

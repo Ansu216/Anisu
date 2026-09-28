@@ -39,3 +39,4 @@ idea.doNotTouchPluginConfigurations
 
 #misc
 .ignore/
+.freebuff/

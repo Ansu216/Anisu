@@ -8,14 +8,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import com.ansu.anime.ui.navigation.AnisuNavGraph
-import com.ansu.anime.ui.theme.AnisuTheme
+import com.ansu.anime.ui.navigation.AnsuNavGraph
+import com.ansu.anime.ui.theme.AnsuTheme
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
-    private val container get() = (application as AnisuApp).container
+    private val container get() = (application as AnsuApp).container
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -23,9 +23,9 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
 
         setContent {
-            AnisuTheme {
+            AnsuTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    AnisuNavGraph(container = container)
+                    AnsuNavGraph(container = container)
                 }
             }
         }

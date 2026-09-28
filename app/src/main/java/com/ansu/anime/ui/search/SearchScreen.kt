@@ -26,7 +26,7 @@ import androidx.navigation.NavHostController
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.AnimeCard
-import com.ansu.anime.ui.components.AnisuBottomBar
+import com.ansu.anime.ui.components.AppBottomBar
 import com.ansu.anime.ui.navigation.Dest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -42,7 +42,7 @@ fun SearchScreen(
     var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    Scaffold(bottomBar = { AnisuBottomBar(navController, Dest.SEARCH) }) { padding ->
+    Scaffold(bottomBar = { AppBottomBar(navController, Dest.SEARCH) }) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             TextField(
                 value = query,
