@@ -2,6 +2,7 @@ package com.ansu.anime.data.repository
 
 import com.ansu.anime.addon.AddonManager
 import com.ansu.anime.addon.model.StremioMeta
+import com.ansu.anime.anilist.AniListMedia
 import com.ansu.anime.anilist.AniListMediaListEntry
 import com.ansu.anime.anilist.AniListRepository
 import com.ansu.anime.core.model.MediaOrigin
@@ -73,21 +74,8 @@ class CatalogRepository(
     /** The default source to resolve an AniList-only entry against until real per-title source matching exists. */
     private fun defaultSource(): AnimeCatalogueSource? = extensionManager.allSources().firstOrNull()
 
-    private fun AniListMediaListEntry.toSAnime(): SAnime {
-        val sourceId = defaultSource()?.id ?: 1L
-        return SAnime(
-            id = media.id.toString(),
-            title = media.title,
-            posterUrl = media.posterUrl,
-            bannerUrl = media.bannerUrl,
-            description = media.description,
-            genres = media.genres,
-            releaseYear = media.year,
-            rating = media.averageScore?.div(10.0),
-            anilistId = media.id,
-            origin = MediaOrigin.Extension(sourceId = sourceId, urlPath = media.id.toString()),
-        )
-    }
+    private fun AniListMediaListEntry.toSAnime(): SAnime =
+        media.toSAnime(sourceId = defaultSource()?.id ?: 1L)
 
     private fun StremioMeta.toSAnime(addonId: String, addonBaseUrl: String): SAnime = SAnime(
         id = id,
@@ -102,3 +90,22 @@ class CatalogRepository(
         origin = MediaOrigin.Addon(addonId = addonId, addonBaseUrl = addonBaseUrl, type = type, stremioId = id),
     )
 }
+
+/**
+ * Normalises an AniList-only entry (a list row, a trending or season pick) into
+ * [SAnime]. Until per-title source matching exists it points at [sourceId] — by
+ * default the built-in demo source — so the details page and playback have
+ * something to resolve against.
+ */
+fun AniListMedia.toSAnime(sourceId: Long = 1L): SAnime = SAnime(
+    id = id.toString(),
+    title = title,
+    posterUrl = posterUrl,
+    bannerUrl = bannerUrl,
+    description = description,
+    genres = genres,
+    releaseYear = year,
+    rating = averageScore?.div(10.0),
+    anilistId = id,
+    origin = MediaOrigin.Extension(sourceId = sourceId, urlPath = id.toString()),
+)

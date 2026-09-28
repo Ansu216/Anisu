@@ -57,6 +57,10 @@ class AniListRepository(
 
     suspend fun getTrending(page: Int = 1) = runCatching { api.getTrending(page) }.getOrDefault(emptyList())
 
+    /** Most popular anime of the current season, for the home screen's "Top Picks" grid. */
+    suspend fun getTopThisSeason(season: String, seasonYear: Int) =
+        runCatching { api.getTopThisSeason(season, seasonYear) }.getOrDefault(emptyList())
+
     suspend fun search(query: String, page: Int = 1) = runCatching { api.searchMedia(query, page) }.getOrDefault(emptyList())
 
     suspend fun reportProgress(mediaId: Int, episode: Int) {

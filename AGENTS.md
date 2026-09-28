@@ -4,23 +4,24 @@ Instructions for AI coding agents working in this repository.
 
 ## 1. Project overview
 
-**Anisu** is an Android client for [AniList](https://anilist.co) with anime
-catalogue browsing, library tracking and playback through pluggable sources
-(built-in demo source, Stremio addons, extensions).
+**Ansu** is an Android client for [AniList](https://anilist.co) with anime
+catalogue browsing, an airing schedule and news feed, library tracking and
+playback through pluggable sources (built-in demo source, Stremio addons,
+extensions).
 
 - **Package / application id**: `com.ansu.anime`
-- **Display name**: `Anisu`
+- **Display name**: `Ansu`
 - **Language/build**: Kotlin 2.1.0, Java 17 bytecode target, JDK 21 toolchain,
-  Gradle Kotlin DSL, Gradle 8.14.5 (wrapper committed).
+  Gradle Kotlin DSL, Gradle 8.9 (wrapper committed), AGP 8.7.2.
 - **UI**: Jetpack Compose + Material 3, Navigation Compose, Coil for images.
 - **Data**: Room (KSP codegen), DataStore Preferences, `EncryptedSharedPreferences`.
 - **Network**: OkHttp + Retrofit + `kotlinx.serialization`.
 - **Playback**: Media3 / ExoPlayer.
-- **SDK levels**: `minSdk 24` (Android 7.0), `targetSdk`/`compileSdk` 35.
+- **SDK levels**: `minSdk 26` (Android 8.0), `targetSdk`/`compileSdk` 35.
 
 ## 2. Architecture and module structure
 
-`settings.gradle.kts` sets `rootProject.name = "Anisu"` and declares a single
+`settings.gradle.kts` sets `rootProject.name = "Ansu"` and declares a single
 module: `:app`. There are no other Gradle modules — do not introduce one unless
 the user explicitly asks.
 
@@ -28,23 +29,31 @@ Source root: `app/src/main/java/com/ansu/anime/`
 
 | Path | Role |
 |---|---|
-| `AnisuApp.kt` | `Application` subclass; builds the DI container |
+| `AnsuApp.kt` | `Application` subclass; builds the DI container |
 | `MainActivity.kt` | Single activity, hosts the Compose content |
 | `di/AppContainer.kt` | **Manual** dependency container (there is no Hilt/Koin) |
-| `ui/navigation/AnisuNavGraph.kt` | Navigation graph and `Dest` routes |
-| `ui/theme/Theme.kt` | `AnisuTheme` + the `Anisu*` color palette |
-| `ui/components/Common.kt` | Shared composables (bars, shelves, cards, chips) |
-| `ui/home`, `ui/search`, `ui/library`, `ui/details`, `ui/player` | Feature screens |
-| `ui/details/CharacterStaffSheet.kt` | Cast/crew bottom sheet for the details page |
-| `ui/extensions`, `ui/addons`, `ui/settings`, `ui/auth` | Extension, addon, settings and AniList login screens |
-| `core/model/AnimeModels.kt` | `SAnime`, `SEpisode`, `MediaOrigin` |
+| `ui/navigation/AnsuNavGraph.kt` | Navigation graph, `Dest` routes, `bottomNavDestinations` |
+| `ui/theme/Theme.kt` | `AnsuTheme` + the `AnsuColors` palette and type/shape scales |
+| `ui/components/Common.kt` | Shared composables (hero carousel, shelves, cards, chips, `PersonCard`) |
+| `ui/components/GlassSurface.kt` | `FrostedGlassCard` / `BottomScrim` glass surfaces |
+| `ui/components/AppBottomBar.kt` | Frosted bottom navigation bar (`AppBottomBar`, `NavBarSurface`) |
+| `ui/home` | Home screen + view model (continue watching, trending, season picks, shelves) |
+| `ui/schedule` | Schedule **and** News tab, its view model and UI models |
+| `ui/myspace` | "My Space" profile tab (Liked / Watching / Completed lists) |
+| `ui/appearance` | Appearance settings (nav-bar roundness) |
+| `ui/search`, `ui/details`, `ui/player` | Search, details (cast/crew sheet) and playback |
+| `ui/extensions`, `ui/addons`, `ui/settings`, `ui/auth` | Extensions, addons, settings, AniList login |
+| `core/model/AnimeModels.kt` | `SAnime`, `SEpisode`, `MediaOrigin`, `Shelf` |
+| `core/util/` | `Formatting`, `SelectionHolder` |
 | `data/db/AppDatabase.kt` | Room database |
 | `data/repository/` | Catalogue and continue-watching repositories |
+| `data/news/NewsRepository.kt` | News feed backing the Schedule screen's News tab |
+| `data/prefs/AppearancePrefs.kt` | DataStore-backed appearance preferences |
 | `extension/` | Extension manager, repo and the `AnimeCatalogueSource` API |
 | `addon/` | Stremio addon client and models |
-| `anilist/` | AniList GraphQL API, models, repository, OAuth manager |
+| `anilist/` | AniList GraphQL API (`AniListApi`), models, repository, OAuth manager |
 
-Dependency wiring flows `AnisuApp` → `AppContainer` → screens/view models. Pass
+Dependency wiring flows `AnsuApp` → `AppContainer` → screens/view models. Pass
 dependencies explicitly; keep it that way.
 
 ## 3. Build, run and verify
@@ -58,7 +67,7 @@ dependencies explicitly; keep it that way.
 - **Both** build types are signed with `keystore/anisu.jks`, so the debug and
   release APKs install as upgrades over each other.
 - Signing credentials can be overridden without editing the build file:
-  `-PANISU_STORE_PASSWORD=`, `-PANISU_KEY_ALIAS=`, `-PANISU_KEY_PASSWORD=`.
+  `-PANSU_STORE_PASSWORD=`, `-PANSU_KEY_ALIAS=`, `-PANSU_KEY_PASSWORD=`.
 - Version is overridable from the command line / CI:
   `-PversionCode=42 -PversionName=1.2.3`. Defaults are `1` / `0.1.0`.
 - `local.properties` is machine-local and **gitignored** — never commit it.
@@ -68,7 +77,13 @@ dependencies explicitly; keep it that way.
 
 **Verification bar: after any code change, run the build and reach zero errors
 and zero warnings.** Do not leave deprecation warnings behind. There are no unit
-tests in this repository; the build plus an APK inspection is the check.
+tests in this repository; the build plus an APK inspection is the check. A quick
+sanity check of a built APK:
+
+```bash
+"$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk
+# must report package: name='com.ansu.anime', application-label:'Ansu'
+```
 
 `how-to-compile.md` is the beginner, click-by-click guide (English). If you
 change how the project is built, signing included, update it.
@@ -83,16 +98,25 @@ change how the project is built, signing included, update it.
 - **Do not add a DI framework**, a second module, or a new networking/DB stack.
   Use what is already wired.
 - Material 3 APIs that are still experimental (`TopAppBar`, `ModalBottomSheet`,
-  `HorizontalDivider`) are opted into **once** in `app/build.gradle.kts` via
-  `-opt-in=androidx.compose.material3.ExperimentalMaterial3Api`. Do not annotate
-  individual composables.
+  `HorizontalDivider`) are opted into **per file**, with
+  `@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)` as
+  the first line of the file that uses them.
 
 ### Known traps — these have broken the build before
 
+- **Never leave two files declaring the same top-level symbol.** A duplicated
+  `Application`, nav graph, `Dest`, composable or model does not just shadow:
+  it makes the whole file set fail with `Redeclaration` / `Conflicting
+  overloads` / `Overload resolution ambiguity`, and the follow-on errors
+  (`@Composable invocations can only happen from the context of a @Composable
+  function`) are pure noise. Search before adding a new screen or model.
 - **`item { }` inside a `LazyColumn`/`LazyRow` is a member of `LazyListScope`**,
   not a top-level function. `import androidx.compose.foundation.lazy.item` does
   not exist and fails with "Unresolved reference". Only `items(...)` is
   imported (`androidx.compose.foundation.lazy.items`).
+- Never nest a vertical `LazyColumn`/`LazyVerticalGrid` inside another
+  vertically scrolling container — it either crashes at runtime or needs a
+  magic height. Build non-scrolling grids with `chunked(n)` + `Row`/`Column`.
 - Use the auto-mirrored icons: `Icons.AutoMirrored.Filled.ArrowBack`,
   `Icons.AutoMirrored.Filled.ViewList`, … The `Icons.Filled.*` variants are
   deprecated and produce warnings.
@@ -108,11 +132,18 @@ change how the project is built, signing included, update it.
 
 ### Branding — never regress this
 
-The app was renamed from "Kernel" to "Anisu" and its package from
-`com.kernel.anime` to `com.ansu.anime`. There must be **no** `com.kernel.anime`
-reference anywhere, in any file name, path or source line. Keep the class names
-`AnisuApp`, `AnisuTheme`, `AnisuNavGraph`, the colour names `anisu_*`, the URI
-scheme `anisu://` and the app label `Anisu`.
+The app is **Ansu** and its package is `com.ansu.anime`. There must be **no**
+`com.kernel.anime` and no leftover `Anisu`/`StreamHub` naming anywhere, in any
+file name, path or source line. Keep the class names `AnsuApp`, `AnsuTheme`,
+`AnsuNavGraph`, `AnsuColors`, the colour resources `ansu_*`, the URI scheme
+`ansu://` and the app label `Ansu`.
+
+The only intentional legacy names are the **signing identity**: the keystore
+file `keystore/anisu.jks` and its key alias `anisu`, plus the prefs file name in
+`AniListAuthManager`. Do not rename them — that would change the signing
+certificate or silently log every user out. The GitHub repository slug
+(`Ansu216/Anisu`, used in the workflow badge URLs) is also fixed and must not be
+rewritten.
 
 ## 5. Golden rule: "if it works, don't touch it"
 
@@ -125,7 +156,7 @@ that could break existing behaviour, and ask when in doubt.
 
 - **The signing setup and the committed keystore.** `keystore/anisu.jks` is
   committed on purpose so local and CI builds produce identically signed APKs.
-- **The launch path.** `AnisuApp` → `MainActivity` → `AnisuNavGraph` is verified
+- **The launch path.** `AnsuApp` → `MainActivity` → `AnsuNavGraph` is verified
   against the built APK; a mismatch between the manifest class names and the
   package is an instant `ClassNotFoundException` on launch.
 - **The `apk-nightly` branch.** It is generated by CI. Never commit to it by
@@ -150,8 +181,8 @@ that could break existing behaviour, and ask when in doubt.
 
 | Workflow | Trigger | Output |
 |---|---|---|
-| `.github/workflows/apk-nightly.yml` | hourly `cron`, **every push to `main`**, manual | force-publishes to `apk-nightly`: `Anisu-nightly.apk`, `Anisu-nightly-debug.apk`, `nightly.json`, generated `README.md` |
-| `.github/workflows/release-apk.yml` | tag `v*`, manual | GitHub Release with `Anisu-<version>.apk` and `-debug.apk` |
+| `.github/workflows/apk-nightly.yml` | hourly `cron`, **every push to `main`**, manual | force-publishes to `apk-nightly`: `Ansu-nightly.apk`, `Ansu-nightly-debug.apk`, `nightly.json`, generated `README.md` |
+| `.github/workflows/release-apk.yml` | tag `v*`, manual | GitHub Release with `Ansu-<version>.apk` and `-debug.apk` |
 
 Notes for anyone editing these:
 
@@ -160,6 +191,8 @@ Notes for anyone editing these:
   package that no longer exists, and fails every run.
 - The workflow checks out the repository, so the Gradle wrapper jar must be
   committed or `./gradlew` cannot start.
+- Both workflows build with `-PversionCode` / `-PversionName`, which only work
+  because `app/build.gradle.kts` reads those properties. Keep that wiring.
 - The nightly README is generated inside the workflow heredoc, so its two
   download badges must be edited there — not on the branch, which is
   overwritten on every run.
@@ -175,7 +208,7 @@ expensive than one question.
 
 ## 9. Legal and content compliance
 
-Anisu aggregates metadata from the public AniList API and plays media through
+Ansu aggregates metadata from the public AniList API and plays media through
 third-party sources, extensions and Stremio addons. Never hardcode credentials,
 API keys or tokens into the repository or into commit messages, and do not add
 code whose only purpose is to bypass a paywall, DRM or an access control. The

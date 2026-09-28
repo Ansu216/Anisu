@@ -117,6 +117,20 @@ class AniListApi(
         return data["Page"]?.jsonObject?.get("media")?.jsonArray.orEmpty().mapNotNull { it.jsonObject.toMedia() }
     }
 
+    /** The most popular anime of a given season (e.g. "FALL" 2026) — powers the home screen's "Top Picks". */
+    suspend fun getTopThisSeason(season: String, seasonYear: Int, page: Int = 1): List<AniListMedia> {
+        val gql = """
+            query (${'$'}page: Int, ${'$'}season: MediaSeason, ${'$'}seasonYear: Int) {
+              Page(page: ${'$'}page, perPage: 20) {
+                media(type: ANIME, season: ${'$'}season, seasonYear: ${'$'}seasonYear, sort: POPULARITY_DESC) { ...mediaFields }
+              }
+            }
+            $MEDIA_FIELDS
+        """.trimIndent()
+        val data = execute(gql, mapOf("page" to page, "season" to season, "seasonYear" to seasonYear)) ?: return emptyList()
+        return data["Page"]?.jsonObject?.get("media")?.jsonArray.orEmpty().mapNotNull { it.jsonObject.toMedia() }
+    }
+
     /** Pushes watched-episode progress back to the user's AniList list; called (debounced) as the player advances. */
     suspend fun updateProgress(mediaId: Int, progress: Int): Boolean {
         val mutation = """

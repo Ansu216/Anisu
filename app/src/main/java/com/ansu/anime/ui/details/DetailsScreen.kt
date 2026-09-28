@@ -20,13 +20,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -120,7 +120,7 @@ fun DetailsScreen(
             item {
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     StatItem(Icons.Filled.Star, details?.averageScore?.let { "$it%" } ?: "—", "SCORE", tint = AnsuColors.ScoreGreen)
-                    StatItem(Icons.Filled.ViewList, (details?.episodes ?: state.episodes.size.takeIf { it > 0 })?.toString() ?: "—", "EPISODES")
+                    StatItem(Icons.AutoMirrored.Filled.ViewList, (details?.episodes ?: state.episodes.size.takeIf { it > 0 })?.toString() ?: "—", "EPISODES")
                     StatItem(Icons.Filled.CalendarToday, details?.year?.toString() ?: anime?.releaseYear?.toString() ?: "—", "YEAR")
                     StatItem(Icons.Filled.Tv, details?.format ?: "TV", "FORMAT")
                 }
@@ -252,7 +252,7 @@ private fun DetailsHero(title: String, imageUrl: String?, onBack: () -> Unit) {
                 .clip(CircleShape)
                 .background(Color.Black.copy(alpha = 0.35f)),
         ) {
-            Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = AnsuColors.TextPrimary)
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = AnsuColors.TextPrimary)
         }
         Text(
             text = title.uppercase(),

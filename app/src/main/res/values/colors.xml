@@ -1,4 +1,4 @@
 <resources>
-    <color name="kernel_background">#101013</color>
-    <color name="kernel_gold">#E8A33D</color>
+    <!-- Window / status-bar background used by Theme.Ansu before Compose draws. -->
+    <color name="ansu_background">#101013</color>
 </resources>

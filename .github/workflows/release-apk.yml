@@ -1,4 +1,4 @@
-name: Anisu Release APK
+name: Ansu Release APK
 
 # Builds a signed APK and attaches it to a GitHub Release.
 # Triggers:
@@ -102,20 +102,20 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ steps.rel.outputs.version }}"
-          cp app/build/outputs/apk/release/app-release.apk "Anisu-${VERSION}.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk     "Anisu-${VERSION}-debug.apk"
-          ls -la Anisu-*.apk
+          cp app/build/outputs/apk/release/app-release.apk "Ansu-${VERSION}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk     "Ansu-${VERSION}-debug.apk"
+          ls -la Ansu-*.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.rel.outputs.tag }}
-          name: Anisu ${{ steps.rel.outputs.tag }}
+          name: Ansu ${{ steps.rel.outputs.tag }}
           draft: false
           prerelease: ${{ github.event.inputs.prerelease == 'true' }}
           generate_release_notes: true
           files: |
-            Anisu-${{ steps.rel.outputs.version }}.apk
-            Anisu-${{ steps.rel.outputs.version }}-debug.apk
+            Ansu-${{ steps.rel.outputs.version }}.apk
+            Ansu-${{ steps.rel.outputs.version }}-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

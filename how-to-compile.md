@@ -1,6 +1,6 @@
-# How to Compile the Anisu APK
+# How to Compile the Ansu APK
 
-This guide explains, step by step, how to build the Anisu Android app from source.
+This guide explains, step by step, how to build the Ansu Android app from source.
 It is written for a beginner: if you have never opened a computer before, follow it
 in order. No prior Android knowledge is required.
 
@@ -131,9 +131,9 @@ Replace `<YourUser>` with your Windows username.
 echo 'sdk.dir=/Users/<YourUser>/Library/Android/sdk' > /path/to/Anisu/local.properties
 ```
 
-> If you chose a different SDK location, change the path accordingly. The `.gitignore`
-> file commits the directory, so a `local.properties` created like this will not be
-> accidentally committed.
+> If you chose a different SDK location, change the path accordingly. `.gitignore`
+> excludes `local.properties`, so a file created like this will not be accidentally
+> committed.
 
 ---
 
@@ -146,10 +146,10 @@ echo 'sdk.dir=/Users/<YourUser>/Library/Android/sdk' > /path/to/Anisu/local.prop
    - Resolve all dependencies from Google Maven and Maven Central.
    - Generate the `buildConfig` fields, the Room database schema, and the KSP compiler output.
 
-> **Note:** A Gradle wrapper jar is not checked into this download (see the README).
-> Android Studio offers to download it automatically the first time you open the project.
-> Simply accept the prompt and let it finish. If you ever need to generate the wrapper
-> manually, run: `gradle wrapper` from the project root.
+> **Note:** The Gradle wrapper jar **is** committed
+> (`gradle/wrapper/gradle-wrapper.jar`), so `./gradlew` works from a fresh clone with
+> no extra step. If you ever need to regenerate it, run `gradle wrapper` from the
+> project root.
 
 ### First run may take a while
 
@@ -239,9 +239,9 @@ error, Android Studio is not using JDK 21: go back to **Step 3** and set the
 
 Release build.
 
-The project already ships a configured **release** build type: `isMinifyEnabled = true`,
-`proguard-rules.pro` is wired in, and the packaging rule excludes `META-INF/{AL2.0,LGPL2.1}`. So the same
-command builds a signed or unsigned **release** APK depending on whether you provide a keystore:
+The project already ships a configured and **already signed** release build type:
+`isMinifyEnabled = true`, `proguard-rules.pro` is wired in, and both variants are signed
+with the committed `keystore/anisu.jks`, so there is nothing to configure:
 
 ```powershell
 ./gradlew assembleRelease
@@ -254,36 +254,17 @@ command builds a signed or unsigned **release** APK depending on whether you pro
 The output is:
 
 ```text
-app/build/outputs/apk/release/app-release-unsigned.apk
+app/build/outputs/apk/release/app-release.apk
 ```
 
-To sign it you need a **keystore** `JKS` or `PKCS12`. It must contain a single key with a
-password and a store password. Two options:
+Because the build is signed, the file is named `app-release.apk` — not
+`app-release-unsigned.apk`.
 
-1. **Generate a keystore** (dev machine only, not for production distribution):
-
-   ```powershell
-   keytool -genkey -v -keystore my-release-key.jks -alias mykey -keyalg RSA -keysize 2048 -validity 10000
-   ```
-
-   You will be asked for a key password and a keystore password. Answer them and copy the file
-   into the project root.
-
-2. **Use a keystore you already have** (for example the same you use for other apps).
-
-Once the store is ready, tell the build where it is and what passwords to use. Create or edit
-`gradle.properties` in the project root and add (replace the paths with your real values):
-
-```properties
-# Release keystore
-RELEASE_STORE_FILE=my-release-key.jks
-RELEASE_KEY_ALIAS=mykey
-RELEASE_KEY_PASSWORD=your-key-password
-RELEASE_STORE_PASSWORD=your-store-password
-```
-
-Then build the release APK as usual. Android Studio will sign it automatically; the terminal
-build will do the same if the `RELEASE_*` properties are defined in `gradle.properties`.
+If you want to sign with a **different** key, replace `keystore/anisu.jks` and update the
+`signingConfigs` block in `app/build.gradle.kts`. The committed keystore is an ordinary JKS
+holding a single key; the default alias and passwords are listed in the *Signing* section
+below. If you only want to change the passwords or alias, pass the overrides on the command
+line instead of editing anything.
 
 > The `debug` build type stays `isMinifyEnabled = false`, so you can always build a debug APK
 > as a fallback: `./gradlew assembleDebug`.
@@ -313,7 +294,7 @@ The terminal will show `INSTALL SUCCESS`.
 
 ### Using an emulator (Android Studio)
 
-1. Open **_device_ → **AVD Manager**.
+1. Open **Tools → Device Manager** (in older Android Studio this was the **AVD Manager**).
 2. Create a virtual device (a Pixel 6/7 works well for this app).
 3. Download a system image and start the emulator.
 4. Run the app from Android Studio, or:
@@ -365,10 +346,9 @@ sync and accept the suggested updates.
 
 ### "Runner app has stopped" (app crashes on launch)
 
-The first build is likely to have issues, as noted in the repository README:
-dependency versions, route/route-name collisions, or a missing API key can make the
-first build fail or the app crash on launch. The README includes a list of known
-rough edges. Resolve them one by one and rebuild.
+Check `adb logcat` first. The usual culprits are a class/package-name mismatch in
+`AndroidManifest.xml`, or no AniList client ID — the app still starts without one,
+but the login screen will not complete until you paste it (see above).
 
 ---
 
@@ -378,22 +358,19 @@ The build alone is not enough to use the app end-to-end. You need to fill in a
 client ID from AniList:
 
 1. Open https://anilist.co/settings/developer and register a new OAuth2 client.
-2. Set the **redirect URI** to `anisu://anilist-auth`.
-3. Copy the **client ID** into `app/src/main/java/com/ansu/anime/anilist/AniListAuthManager.kt`,
-   replacing the placeholder in the `companion object`:
+2. Set the **redirect URI** to `ansu://anilist-auth`.
+3. Copy the **client ID** into `app/build.gradle.kts`, replacing the placeholder in the
+   `buildConfigField`:
 
    ```kotlin
-   companion object {
-       const val ANILIST_CLIENT_ID = "YOUR_ANILIST_CLIENT_ID"  // <-- your real ID here
-       private const val KEY_TOKEN = "access_token"
-   }
+   buildConfigField("String", "ANILIST_CLIENT_ID", "\"YOUR_ANILIST_CLIENT_ID\"")
    ```
 
 4. Rebuild: `./gradlew assembleDebug`.
 
-> The redirect URI `anisu://anilist-auth` is already declared in
-> `AndroidManifest.xml` and hard-coded in `AniListAuthManager`, so you only need
-> to paste the client ID.
+> The redirect URI `ansu://anilist-auth` is already declared in `AndroidManifest.xml`
+> and mirrored by the `ANILIST_REDIRECT_URI` `buildConfigField`, so you only need to
+> paste the client ID.
 
 The versions this project is pinned to (in `gradle/libs.versions.toml`) are:
 
@@ -423,9 +400,9 @@ Expected artifacts:
 
 The built APK reports:
 
-- **App name:** Anisu
+- **App name:** Ansu
 - **Package name:** `com.ansu.anime`
-- **Minimum Android:** 7.0 (API 24)
+- **Minimum Android:** 8.0 (API 26)
 - **Target Android:** 15 (API 35)
 
 Both variants are signed, so the release build is `app-release.apk` (not
@@ -449,9 +426,9 @@ You can override the passwords without editing any file:
 
 ```bash
 ./gradlew assembleRelease \
-  -PANISU_STORE_PASSWORD=yourpass \
-  -PANISU_KEY_ALIAS=youralias \
-  -PANISU_KEY_PASSWORD=yourpass
+  -PANSU_STORE_PASSWORD=yourpass \
+  -PANSU_KEY_ALIAS=youralias \
+  -PANSU_KEY_PASSWORD=yourpass
 ```
 
 Verifiy a signed APK:
@@ -472,7 +449,7 @@ Two GitHub Actions workflows are included under `.github/workflows/`.
 ### `apk-nightly.yml` — hourly nightly APK
 
 - **Runs:** every hour (`0 * * * *`) and manually
-  (**Actions → Anisu Nightly APK → Run workflow**).
+  (**Actions → Ansu Nightly APK → Run workflow**).
 - **Does:** builds the signed debug + release APKs with a timestamped version
   (`versionName=YYYY.MM.DD.HHMM`, `versionCode=YYYYMMDDHH`), verifies the
   signatures, then **force-pushes** them to the `apk-nightly` branch. The branch is
@@ -481,22 +458,22 @@ Two GitHub Actions workflows are included under `.github/workflows/`.
 
   | File | Description |
   |---|---|
-  | `Anisu-nightly.apk` | Signed release build. |
-  | `Anisu-nightly-debug.apk` | Signed debug build. |
+  | `Ansu-nightly.apk` | Signed release build. |
+  | `Ansu-nightly-debug.apk` | Signed debug build. |
   | `nightly.json` | Version / build metadata. |
   | `README.md` | Short note explaining the branch. |
 
-- **Install:** open `https://github.com/<owner>/<repo>/raw/apk-nightly/Anisu-nightly.apk`
+- **Install:** open `https://github.com/<owner>/<repo>/raw/apk-nightly/Ansu-nightly.apk`
   on your phone, or browse the
   [`apk-nightly` branch](https://github.com/Ansu216/Anisu/tree/apk-nightly).
 
 ### `release-apk.yml` — automatic release
 
 - **Runs:** when you push a tag like `v1.0.0`, or manually
-  (**Actions → Anisu Release APK → Run workflow**, with an optional tag).
+  (**Actions → Ansu Release APK → Run workflow**, with an optional tag).
 - **Does:** builds and signs the APKs, verifies signatures, and creates a GitHub
-  Release named after the tag with `Anisu-<version>.apk` and
-  `Anisu-<version>-debug.apk` attached.
+  Release named after the tag with `Ansu-<version>.apk` and
+  `Ansu-<version>-debug.apk` attached.
 
 ### One-time repository setting
 

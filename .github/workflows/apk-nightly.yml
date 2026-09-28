@@ -1,4 +1,4 @@
-name: Anisu Nightly APK
+name: Ansu Nightly APK
 
 # Builds a signed APK every hour and force-publishes it to the `apk-nightly`
 # branch (the branch contents are fully replaced on every run).
@@ -102,15 +102,15 @@ jobs:
           echo "dir=$STAGE" >> "$GITHUB_OUTPUT"
 
           if [ "$VARIANT" = "release" ] || [ "$VARIANT" = "both" ]; then
-            cp app/build/outputs/apk/release/app-release.apk "$STAGE/Anisu-nightly.apk"
+            cp app/build/outputs/apk/release/app-release.apk "$STAGE/Ansu-nightly.apk"
           fi
           if [ "$VARIANT" = "debug" ] || [ "$VARIANT" = "both" ]; then
-            cp app/build/outputs/apk/debug/app-debug.apk "$STAGE/Anisu-nightly-debug.apk"
+            cp app/build/outputs/apk/debug/app-debug.apk "$STAGE/Ansu-nightly-debug.apk"
           fi
 
           cat > "$STAGE/nightly.json" <<JSON
           {
-            "app": "Anisu",
+            "app": "Ansu",
             "package": "com.ansu.anime",
             "versionName": "${{ steps.stamp.outputs.version_name }}",
             "versionCode": ${{ steps.stamp.outputs.version_code }},
@@ -121,26 +121,26 @@ jobs:
           JSON
 
           cat > "$STAGE/README.md" <<'MD'
-          # Anisu — nightly APK
+          # Ansu — nightly APK
 
-          [![Download the release APK](https://img.shields.io/badge/Download-Anisu--nightly.apk-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://raw.githubusercontent.com/Ansu216/Anisu/apk-nightly/Anisu-nightly.apk)
-          [![Download the debug APK](https://img.shields.io/badge/Download-Anisu--nightly--debug.apk-FF6D00?style=for-the-badge&logo=android&logoColor=white)](https://raw.githubusercontent.com/Ansu216/Anisu/apk-nightly/Anisu-nightly-debug.apk)
+          [![Download the release APK](https://img.shields.io/badge/Download-Ansu--nightly.apk-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://raw.githubusercontent.com/Ansu216/Anisu/apk-nightly/Ansu-nightly.apk)
+          [![Download the debug APK](https://img.shields.io/badge/Download-Ansu--nightly--debug.apk-FF6D00?style=for-the-badge&logo=android&logoColor=white)](https://raw.githubusercontent.com/Ansu216/Anisu/apk-nightly/Ansu-nightly-debug.apk)
 
           This branch is **generated automatically** by the
-          [`Anisu Nightly APK`](../actions/workflows/apk-nightly.yml) workflow.
+          [`Ansu Nightly APK`](../actions/workflows/apk-nightly.yml) workflow.
           Every run wipes the branch and replaces it with the newest build.
 
           | File | Description |
           |---|---|
-          | `Anisu-nightly.apk` | Signed **release** build (smaller, minified, R8). |
-          | `Anisu-nightly-debug.apk` | Signed **debug** build (easier to read stack traces). |
+          | `Ansu-nightly.apk` | Signed **release** build (smaller, minified, R8). |
+          | `Ansu-nightly-debug.apk` | Signed **debug** build (easier to read stack traces). |
           | `nightly.json` | Version / build metadata for this run. |
 
           **Do not commit to this branch by hand — it is overwritten on every run.**
 
           ## Install
 
-          Download `Anisu-nightly.apk` on your phone and open it. Android will ask
+          Download `Ansu-nightly.apk` on your phone and open it. Android will ask
           you to allow installing unknown apps for your browser/file manager.
 
           Both APKs are signed with the same key, so each nightly installs as a
@@ -170,7 +170,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: anisu-nightly-${{ steps.stamp.outputs.version_code }}
+          name: ansu-nightly-${{ steps.stamp.outputs.version_code }}
           path: |
             app/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/debug/app-debug.apk

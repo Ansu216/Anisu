@@ -4,6 +4,11 @@
 that every APK we publish (nightly and release) has the same signature and installs
 as a normal upgrade over the previous one.
 
+> The file name, key alias and certificate subject still say "Anisu": the keystore
+> predates the app's rename to **Ansu**. They are kept on purpose — changing them
+> would change the signing certificate, and then no existing install could ever be
+> updated in place. The application id is, and stays, `com.ansu.anime`.
+
 | Field | Value |
 |---|---|
 | File | `keystore/anisu.jks` |
@@ -23,7 +28,7 @@ APK installable as an update.
 ## Security note
 
 `android` is a well-known password. Because the keystore is in this repository, anyone
-with read access can build APKs signed as Anisu. That is fine for a personal / nightly
+with read access can build APKs signed with this certificate. That is fine for a personal / nightly
 project, but **do not ship this to the Play Store** — Play requires a private upload key.
 
 ### Rotating to secrets (recommended if the repo is/should be private)
@@ -46,9 +51,9 @@ project, but **do not ship this to the Play Store** — Play requires a private 
 
    ```
    ./gradlew assembleRelease \
-     -PANISU_STORE_PASSWORD="${{ secrets.STORE_PASSWORD }}" \
-     -PANISU_KEY_ALIAS="${{ secrets.KEY_ALIAS }}" \
-     -PANISU_KEY_PASSWORD="${{ secrets.KEY_PASSWORD }}"
+     -PANSU_STORE_PASSWORD="${{ secrets.STORE_PASSWORD }}" \
+     -PANSU_KEY_ALIAS="${{ secrets.KEY_ALIAS }}" \
+     -PANSU_KEY_PASSWORD="${{ secrets.KEY_PASSWORD }}"
    ```
 
 5. Delete `keystore/anisu.jks` from the repository and add `keystore/*.jks` to

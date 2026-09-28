@@ -46,8 +46,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.ansu.anime.anilist.AniListMedia
-import com.ansu.anime.core.model.MediaOrigin
 import com.ansu.anime.core.model.SAnime
+import com.ansu.anime.data.repository.toSAnime
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.AppBottomBar
 import com.ansu.anime.ui.components.FrostedGlassCard
@@ -253,16 +253,3 @@ private fun CenteredMessage(message: String) {
         Text(message, color = AnsuColors.TextSecondary, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
     }
 }
-
-private fun AniListMedia.toSAnime(): SAnime = SAnime(
-    id = id.toString(),
-    title = title,
-    posterUrl = posterUrl,
-    bannerUrl = bannerUrl,
-    description = description,
-    genres = genres,
-    releaseYear = year,
-    rating = averageScore?.div(10.0),
-    anilistId = id,
-    origin = MediaOrigin.Extension(sourceId = 1L, urlPath = id.toString()),
-)
