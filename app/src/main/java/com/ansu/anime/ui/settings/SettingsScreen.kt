@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -105,6 +106,12 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                 title = "Addons",
                 subtitle = "Manage Stremio/Nuvio-protocol addons",
                 onClick = { navController.navigate(Dest.ADDONS) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Info,
+                title = "About",
+                subtitle = "Version, updates and developer",
+                onClick = { navController.navigate(Dest.ABOUT) },
             )
         }
     }

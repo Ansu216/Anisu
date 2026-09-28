@@ -112,6 +112,8 @@ jobs:
           {
             "app": "Ansu",
             "package": "com.ansu.anime",
+            "apk": "Ansu-nightly.apk",
+            "apkDebug": "Ansu-nightly-debug.apk",
             "versionName": "${{ steps.stamp.outputs.version_name }}",
             "versionCode": ${{ steps.stamp.outputs.version_code }},
             "builtAt": "${{ steps.stamp.outputs.iso }}",

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ansu.anime.ui.about.AboutScreen
 import com.ansu.anime.ui.appearance.AppearanceScreen
 import com.ansu.anime.ui.components.LocalNavBarRoundness
 import androidx.navigation.NavHostController
@@ -28,6 +29,7 @@ object Dest {
     const val SCHEDULE = "schedule"
     const val SETTINGS = "settings"
     const val APPEARANCE = "appearance"
+    const val ABOUT = "about"
     const val MY_SPACE = "my_space"
     const val DETAILS = "details"
     const val PLAYER = "player"
@@ -89,6 +91,9 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         }
         composable(Dest.APPEARANCE) {
             AppearanceScreen(container = container, navController = navController)
+        }
+        composable(Dest.ABOUT) {
+            AboutScreen(container = container, navController = navController)
         }
         composable(Dest.MY_SPACE) {
             MySpaceScreen(

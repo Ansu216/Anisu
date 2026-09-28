@@ -11,6 +11,7 @@ import com.ansu.anime.data.db.AppDatabase
 import com.ansu.anime.data.prefs.AppearancePrefs
 import com.ansu.anime.data.repository.CatalogRepository
 import com.ansu.anime.data.repository.ContinueWatchingRepository
+import com.ansu.anime.data.update.UpdateManager
 import com.ansu.anime.core.util.SelectionHolder
 import com.ansu.anime.extension.ExtensionManager
 import com.ansu.anime.extension.ExtensionRepo
@@ -64,6 +65,8 @@ class AppContainer(context: Context) {
     val selectionHolder: SelectionHolder = SelectionHolder()
 
     val appearancePrefs: AppearancePrefs = AppearancePrefs(appContext)
+
+    val updateManager: UpdateManager = UpdateManager(appContext, okHttpClient)
 
     init {
         // The demo source ships built into the app so there's content on

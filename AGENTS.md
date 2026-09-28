@@ -14,7 +14,8 @@ extensions).
 - **Language/build**: Kotlin 2.1.0, Java 17 bytecode target, JDK 21 toolchain,
   Gradle Kotlin DSL, Gradle 8.9 (wrapper committed), AGP 8.7.2.
 - **UI**: Jetpack Compose + Material 3, Navigation Compose, Coil for images.
-- **Data**: Room (KSP codegen), DataStore Preferences, `EncryptedSharedPreferences`.
+- **Data**: Room (KSP codegen), plain `SharedPreferences` for settings,
+  `EncryptedSharedPreferences` for the AniList token.
 - **Network**: OkHttp + Retrofit + `kotlinx.serialization`.
 - **Playback**: Media3 / ExoPlayer.
 - **SDK levels**: `minSdk 26` (Android 8.0), `targetSdk`/`compileSdk` 35.
@@ -41,6 +42,7 @@ Source root: `app/src/main/java/com/ansu/anime/`
 | `ui/schedule` | Schedule **and** News tab, its view model and UI models |
 | `ui/myspace` | "My Space" profile tab (Liked / Watching / Completed lists) |
 | `ui/appearance` | Appearance settings (nav-bar roundness) |
+| `ui/about` | About: version, update channel + install, developer credit and links |
 | `ui/search`, `ui/details`, `ui/player` | Search, details (cast/crew sheet) and playback |
 | `ui/extensions`, `ui/addons`, `ui/settings`, `ui/auth` | Extensions, addons, settings, AniList login |
 | `core/model/AnimeModels.kt` | `SAnime`, `SEpisode`, `MediaOrigin`, `Shelf` |
@@ -48,7 +50,8 @@ Source root: `app/src/main/java/com/ansu/anime/`
 | `data/db/AppDatabase.kt` | Room database |
 | `data/repository/` | Catalogue and continue-watching repositories |
 | `data/news/NewsRepository.kt` | News feed backing the Schedule screen's News tab |
-| `data/prefs/AppearancePrefs.kt` | DataStore-backed appearance preferences |
+| `data/prefs/` | `SharedPreferences`-backed settings: `AppearancePrefs`, `UpdatePrefs` |
+| `data/update/` | Self-updater: `UpdateChecker` (GitHub Releases + `apk-nightly`), `UpdateInstaller`, `UpdateManager` |
 | `extension/` | Extension manager, repo and the `AnimeCatalogueSource` API |
 | `addon/` | Stremio addon client and models |
 | `anilist/` | AniList GraphQL API (`AniListApi`), models, repository, OAuth manager |
@@ -196,6 +199,10 @@ Notes for anyone editing these:
 - The nightly README is generated inside the workflow heredoc, so its two
   download badges must be edited there — not on the branch, which is
   overwritten on every run.
+- The nightly workflow also writes `nightly.json`, including the published APK's
+  file name under `apk`. The in-app updater reads that file, so keep its fields
+  in sync with `NightlyManifest` in `data/update/UpdateModels.kt` — that is what
+  lets the APK be renamed without breaking updates.
 - Pushing to `apk-nightly` requires `permissions: contents: write` and the
   repository setting *Actions → General → Workflow permissions → Read and write*.
 

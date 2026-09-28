@@ -55,7 +55,13 @@ extension APKs and Stremio/Nuvio-protocol HTTP addons.
   controls (no default Android controller) and a source-picker sheet for
   switching between addon/extension results.
 - **Appearance** (`ui/appearance/`, `data/prefs/`) — nav-bar roundness stored in
-  DataStore, applied live through a `CompositionLocal`.
+  `SharedPreferences`, applied live through a `CompositionLocal`.
+- **About & built-in updater** (`ui/about/`, `data/update/`) — app version, the
+  update channel (tagged GitHub **Releases** or the hourly **`apk-nightly`**
+  branch), an optional check when the app opens, the release notes, and one-tap
+  download that hands the APK to Android's installer through the same
+  `FileProvider` flow the extension installs use. It also carries the developer
+  credit and links to the repo, issues and releases.
 - **DI** — a single hand-written `AppContainer` (`di/AppContainer.kt`) instead
   of Hilt/Dagger, to keep the first build simple.
 
@@ -98,6 +104,11 @@ a beginner, click-by-click version of these instructions.
 - The News tab reads from `NewsRepository`, which returns fixture data: AniList
   has no news endpoint. Swap the implementation for a real feed (RSS/JSON, or a
   backend) when you have one — the screen needs no changes.
+- The built-in updater can only offer what has actually been published: the
+  **Releases** channel stays empty until you push a `v*` tag (which runs
+  `release-apk.yml`), and the **Nightly** channel until the first nightly run
+  after your changes. Until then About reports "nothing published yet" instead
+  of an update.
 - No app icon PNGs were generated (only a simple vector adaptive icon), and
   no custom font files are bundled — the type scale uses the system font
   with deliberate weights/sizes instead. Both are easy to swap in.
@@ -113,11 +124,12 @@ app/src/main/java/com/ansu/anime/
 ├── anilist/            OAuth, GraphQL client, models, repository
 ├── data/db/            Room entities/DAOs (continue watching, addons)
 ├── data/news/          NewsRepository (News tab seam)
-├── data/prefs/         AppearancePrefs (DataStore)
+├── data/prefs/         AppearancePrefs, UpdatePrefs (SharedPreferences)
 ├── data/repository/    CatalogRepository (home feed), ContinueWatchingRepository
+├── data/update/        UpdateChecker / UpdateInstaller / UpdateManager (self-updater)
 ├── di/AppContainer.kt  Manual dependency graph
 └── ui/                 Compose screens: home, search, schedule, myspace,
-                        appearance, details, player, extensions, addons,
+                        appearance, about, details, player, extensions, addons,
                         settings, auth + shared components and theme
 ```
 

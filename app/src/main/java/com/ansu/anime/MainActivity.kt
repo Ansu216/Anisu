@@ -22,6 +22,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         handleIntent(intent)
 
+        // Automatic update check; a no-op when the user turned it off in About.
+        container.updateManager.checkIfEnabled()
+
         setContent {
             AnsuTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
