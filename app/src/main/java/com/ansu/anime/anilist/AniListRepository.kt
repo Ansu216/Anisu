@@ -61,7 +61,17 @@ class AniListRepository(
     suspend fun getTopThisSeason(season: String, seasonYear: Int) =
         runCatching { api.getTopThisSeason(season, seasonYear) }.getOrDefault(emptyList())
 
+    /** One page of a home-screen feed; null means the request failed (as opposed to an empty page). */
+    suspend fun getFeedPage(feed: AniListFeed, page: Int, perPage: Int): AniListMediaPage? =
+        runCatching { api.getMediaPage(page, perPage, feed.sort, feed.status, feed.formats) }.getOrNull()
+
+    suspend fun getStreamingEpisodes(mediaId: Int) = runCatching { api.getStreamingEpisodes(mediaId) }.getOrDefault(emptyList())
+
     suspend fun search(query: String, page: Int = 1) = runCatching { api.searchMedia(query, page) }.getOrDefault(emptyList())
+
+    /** One page of the Search screen's query with filters; null means the request failed. */
+    suspend fun searchPage(query: String, filters: AniListSearchFilters, page: Int): AniListMediaPage? =
+        runCatching { api.searchMediaPage(query, filters, page) }.getOrNull()
 
     suspend fun reportProgress(mediaId: Int, episode: Int) {
         if (authManager.isLoggedIn) runCatching { api.updateProgress(mediaId, episode) }
@@ -73,6 +83,20 @@ class AniListRepository(
     suspend fun toggleFavourite(mediaId: Int): Boolean {
         if (!authManager.isLoggedIn) return false
         return runCatching { api.toggleFavourite(mediaId) }.getOrDefault(false)
+    }
+
+    /** The user's heart and list entry for a show; null when signed out or the request failed. */
+    suspend fun getUserState(mediaId: Int): AniListUserState? {
+        if (!authManager.isLoggedIn) return null
+        return runCatching { api.getUserState(mediaId) }.getOrNull()
+    }
+
+    /** Puts the show in an AniList list ([status] = CURRENT/PLANNING/COMPLETED), or removes it when null. */
+    suspend fun setListStatus(mediaId: Int, status: String?, progress: Int? = null): Boolean {
+        if (!authManager.isLoggedIn) return false
+        return runCatching {
+            if (status == null) api.removeFromList(mediaId) else api.saveListStatus(mediaId, status, progress)
+        }.getOrDefault(false)
     }
 
     /** Episodes airing in the given window — public data, works logged out too. */

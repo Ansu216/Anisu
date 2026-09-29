@@ -17,26 +17,34 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -61,6 +69,7 @@ import com.ansu.anime.core.model.MediaOrigin
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.SEpisode
 import com.ansu.anime.core.util.formatEpisodeNumber
+import com.ansu.anime.data.repository.ListStatus
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.BottomScrim
 import com.ansu.anime.ui.components.FrostedGlassCard
@@ -85,7 +94,7 @@ fun DetailsScreen(
     val viewModel: DetailsViewModel = viewModel(
         factory = viewModelFactory {
             initializer {
-                DetailsViewModel(container.extensionManager, container.addonManager, container.aniListRepository, container.selectionHolder)
+                DetailsViewModel(container.extensionManager, container.addonManager, container.aniListRepository, container.episodeMetadataRepository, container.localListRepository, container.selectionHolder)
             }
         },
     )
@@ -93,6 +102,7 @@ fun DetailsScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var expandSynopsis by remember { mutableStateOf(false) }
     var selectedPerson by remember { mutableStateOf<PersonDetail?>(null) }
+    var selectedGroup by remember(anime?.id) { mutableIntStateOf(0) }
 
     val details = state.aniListDetails
 
@@ -112,8 +122,12 @@ fun DetailsScreen(
                     playLabel = firstEpisode?.let { "Play Ep. ${it.episodeNumber.formatEpisodeNumber()}" } ?: "No episodes yet",
                     playEnabled = firstEpisode != null,
                     onPlay = { firstEpisode?.let(onEpisodeSelected) },
-                    isLiked = state.isFavourite,
+                    isLiked = state.liked,
                     onToggleLike = { viewModel.toggleFavourite() },
+                    // Signed in it edits the AniList list; signed out it edits the on-device list.
+                    showListButton = anime?.anilistId != null,
+                    listStatus = state.shownListStatus,
+                    onSetListStatus = { viewModel.setListStatus(it) },
                 )
             }
 
@@ -170,8 +184,19 @@ fun DetailsScreen(
                     )
                 }
             } else {
-                items(state.episodes, key = { it.id }) { episode ->
-                    EpisodeRow(episode = episode, synopsis = synopsis, onClick = { onEpisodeSelected(episode) })
+                val groups = state.episodes.chunked(EPISODE_GROUP_SIZE)
+                val groupIndex = selectedGroup.coerceIn(0, groups.lastIndex)
+                if (groups.size > 1) {
+                    item {
+                        EpisodeGroupChips(
+                            groups = groups,
+                            selected = groupIndex,
+                            onSelect = { selectedGroup = it },
+                        )
+                    }
+                }
+                items(groups[groupIndex], key = { it.id }) { episode ->
+                    EpisodeRow(episode = episode, synopsis = episode.description, onClick = { onEpisodeSelected(episode) })
                     androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
                 }
             }
@@ -268,7 +293,16 @@ private fun DetailsHero(title: String, imageUrl: String?, onBack: () -> Unit) {
 
 /** White "Play" CTA with a circular frosted-glass like button to its right. */
 @Composable
-private fun PlayLikeRow(playLabel: String, playEnabled: Boolean, onPlay: () -> Unit, isLiked: Boolean, onToggleLike: () -> Unit) {
+private fun PlayLikeRow(
+    playLabel: String,
+    playEnabled: Boolean,
+    onPlay: () -> Unit,
+    isLiked: Boolean,
+    onToggleLike: () -> Unit,
+    showListButton: Boolean,
+    listStatus: String?,
+    onSetListStatus: (String?) -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -293,6 +327,39 @@ private fun PlayLikeRow(playLabel: String, playEnabled: Boolean, onPlay: () -> U
                 )
             }
         }
+        if (showListButton) {
+            var menuOpen by remember { mutableStateOf(false) }
+            Box {
+                FrostedGlassCard(modifier = Modifier.size(50.dp), shape = CircleShape, tintAlpha = 0.5f) {
+                    IconButton(onClick = { menuOpen = true }, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            imageVector = if (listStatus != null) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                            contentDescription = ListStatus.label(listStatus),
+                            tint = if (listStatus != null) AnsuColors.Accent else AnsuColors.TextPrimary,
+                        )
+                    }
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    listOf(ListStatus.CURRENT, ListStatus.PLANNING, ListStatus.COMPLETED).forEach { status ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    ListStatus.label(status),
+                                    fontWeight = if (status == listStatus) FontWeight.Bold else FontWeight.Normal,
+                                )
+                            },
+                            onClick = { menuOpen = false; onSetListStatus(status) },
+                        )
+                    }
+                    if (listStatus != null) {
+                        DropdownMenuItem(
+                            text = { Text("Remove from list") },
+                            onClick = { menuOpen = false; onSetListStatus(null) },
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -305,6 +372,41 @@ private fun DetailsSectionHeader(title: String) {
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(start = 20.dp, top = 22.dp, bottom = 12.dp),
     )
+}
+
+/** Episodes per chip: shows longer than this are split into 1-50, 51-100, … pages. */
+private const val EPISODE_GROUP_SIZE = 50
+
+/** Horizontally scrolling pill row that switches between groups of [EPISODE_GROUP_SIZE] episodes. */
+@Composable
+private fun EpisodeGroupChips(groups: List<List<SEpisode>>, selected: Int, onSelect: (Int) -> Unit) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(selected) { listState.animateScrollToItem(selected) }
+    LazyRow(
+        state = listState,
+        contentPadding = PaddingValues(horizontal = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.padding(bottom = 16.dp),
+    ) {
+        itemsIndexed(groups) { index, group ->
+            val start = index * EPISODE_GROUP_SIZE + 1
+            val isSelected = index == selected
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(if (isSelected) AnsuColors.Accent else AnsuColors.SurfaceGlassBase)
+                    .clickable { onSelect(index) }
+                    .padding(horizontal = 22.dp, vertical = 10.dp),
+            ) {
+                Text(
+                    text = "$start-${start + group.size - 1}",
+                    color = if (isSelected) AnsuColors.Background else AnsuColors.TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -328,14 +430,35 @@ private fun EpisodeRow(episode: SEpisode, synopsis: String?, onClick: () -> Unit
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Episode ${episode.episodeNumber.formatEpisodeNumber()}" +
-                    episode.name.takeIf { it.isNotBlank() && !it.startsWith("Episode") }?.let { " - $it" }.orEmpty(),
+                text = episode.name.takeIf { it.isNotBlank() && !it.startsWith("Episode") } ?: "Untitled",
                 color = AnsuColors.TextPrimary,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            Row(
+                modifier = Modifier.padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(AnsuColors.SurfaceGlassBase)
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                ) {
+                    Text(
+                        text = "E${episode.episodeNumber.formatEpisodeNumber()}",
+                        color = AnsuColors.TextPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                if (!episode.airDate.isNullOrBlank()) {
+                    Text(text = episode.airDate, color = AnsuColors.TextTertiary, fontSize = 12.sp)
+                }
+            }
             if (!synopsis.isNullOrBlank()) {
                 Text(
                     text = synopsis,

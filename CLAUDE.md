@@ -75,7 +75,7 @@ Source root: `app/src/main/java/com/ansu/anime/`
 | `ui/home` | Home screen + view model (continue watching, trending, season picks, shelves) |
 | `ui/schedule` | Schedule **and** News tab, its view model and UI models |
 | `ui/myspace` | "My Space" profile tab (Liked / Watching / Completed lists) |
-| `ui/appearance` | Appearance settings (nav-bar roundness) |
+| `ui/appearance` | Appearance settings (nav-bar roundness, frostiness) |
 | `ui/about` | About: version, update channel + install, developer credit and links |
 | `ui/search`, `ui/details`, `ui/player` | Search, details (cast/crew sheet) and playback |
 | `ui/extensions`, `ui/addons`, `ui/settings`, `ui/auth` | Extensions, addons, settings, AniList login |

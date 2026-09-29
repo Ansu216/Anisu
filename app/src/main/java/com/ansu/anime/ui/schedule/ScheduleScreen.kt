@@ -1,6 +1,7 @@
 package com.ansu.anime.ui.schedule
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,11 +19,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -47,27 +51,15 @@ import com.ansu.anime.ui.components.AppBottomBar
 import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
 
 private enum class ScheduleTab { SCHEDULE, NEWS }
 
-private val weekDayLabels: List<String> =
-    listOf(
-        DayOfWeek.MONDAY,
-        DayOfWeek.TUESDAY,
-        DayOfWeek.WEDNESDAY,
-        DayOfWeek.THURSDAY,
-        DayOfWeek.FRIDAY,
-        DayOfWeek.SATURDAY,
-        DayOfWeek.SUNDAY,
-    ).map { it.getDisplayName(TextStyle.FULL, Locale.getDefault()) }
-
 /**
  * Schedule + News, sharing one screen: the pill toggle at the bottom switches
- * between AniList's real airing schedule (grouped by weekday) and the news feed.
+ * between AniList's real airing schedule (the next seven days, grouped by date) and the news feed.
  */
 @Composable
 fun ScheduleScreen(
@@ -80,18 +72,17 @@ fun ScheduleScreen(
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(ScheduleTab.NEWS) }
-    var selectedDay by remember {
-        mutableStateOf(LocalDate.now().dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault()))
-    }
+    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
 
     Scaffold(
         containerColor = AnsuColors.Background,
         bottomBar = { AppBottomBar(navController, Dest.SCHEDULE) },
     ) { padding ->
+        val barInset = padding.calculateBottomPadding()
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(top = padding.calculateTopPadding())
                 .background(AnsuColors.Background),
         ) {
             Text(
@@ -109,12 +100,13 @@ fun ScheduleScreen(
                     }
                 } else {
                     when (tab) {
-                        ScheduleTab.NEWS -> NewsList(articles = state.news)
+                        ScheduleTab.NEWS -> NewsList(articles = state.news, bottomInset = barInset)
                         ScheduleTab.SCHEDULE -> ScheduleList(
                             entries = state.schedule,
-                            selectedDay = selectedDay,
-                            onSelectDay = { selectedDay = it },
+                            selectedDate = selectedDate,
+                            onSelectDate = { selectedDate = it },
                             onClick = onEntrySelected,
+                            bottomInset = barInset,
                         )
                     }
                 }
@@ -124,7 +116,7 @@ fun ScheduleScreen(
                     onSelect = { tab = it },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 16.dp),
+                        .padding(bottom = barInset + 16.dp),
                 )
             }
         }
@@ -186,14 +178,14 @@ private fun ToggleSegment(
 }
 
 @Composable
-private fun NewsList(articles: List<NewsArticle>) {
+private fun NewsList(articles: List<NewsArticle>, bottomInset: Dp) {
     if (articles.isEmpty()) {
         EmptyState(text = "No news yet — check back soon.")
         return
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 72.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = bottomInset + 72.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(articles, key = { it.id }) { article ->
@@ -253,19 +245,20 @@ private fun NewsCard(article: NewsArticle) {
 @Composable
 private fun ScheduleList(
     entries: List<ScheduleEntry>,
-    selectedDay: String,
-    onSelectDay: (String) -> Unit,
+    selectedDate: LocalDate,
+    onSelectDate: (LocalDate) -> Unit,
     onClick: (ScheduleEntry) -> Unit,
+    bottomInset: Dp,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        DayChipRow(selectedDay = selectedDay, onSelectDay = onSelectDay)
+        DayPillBar(selectedDate = selectedDate, onSelectDate = onSelectDate)
 
-        val dayEntries = entries.filter { it.dayOfWeek == selectedDay }
+        val dayEntries = entries.filter { it.date == selectedDate }
         if (dayEntries.isEmpty()) {
-            EmptyState(text = "Nothing airing on $selectedDay.")
+            EmptyState(text = "Nothing airing on ${selectedDate.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())}.")
         } else {
             LazyColumn(
-                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 72.dp),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = bottomInset + 72.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(dayEntries, key = { "${it.animeId}-${it.episodeNumber}" }) { entry ->
@@ -276,27 +269,57 @@ private fun ScheduleList(
     }
 }
 
+/** One rounded pill holding the next [SCHEDULE_DAYS] days (weekday over day-of-month); scrolls sideways and centres today's selection. */
 @Composable
-private fun DayChipRow(selectedDay: String, onSelectDay: (String) -> Unit) {
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+private fun DayPillBar(selectedDate: LocalDate, onSelectDate: (LocalDate) -> Unit) {
+    val today = remember { LocalDate.now() }
+    val days = remember(today) { List(SCHEDULE_DAYS) { today.plusDays(it.toLong()) } }
+    val listState = rememberLazyListState()
+    val pillShape = RoundedCornerShape(28.dp)
+
+    LaunchedEffect(selectedDate) {
+        val index = days.indexOf(selectedDate)
+        if (index >= 0) listState.animateScrollToItem((index - 1).coerceAtLeast(0))
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .clip(pillShape)
+            .background(AnsuColors.BackgroundElevated)
+            .border(1.dp, AnsuColors.StrokeGlass, pillShape),
     ) {
-        items(weekDayLabels) { day ->
-            val isSelected = day == selectedDay
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (isSelected) AnsuColors.Accent else AnsuColors.SurfaceGlassBase)
-                    .clickable { onSelectDay(day) }
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    text = day.take(3).uppercase(),
-                    color = if (isSelected) AnsuColors.Background else AnsuColors.TextSecondary,
-                    fontSize = 12.sp,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                )
+        LazyRow(
+            state = listState,
+            contentPadding = PaddingValues(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            items(days, key = { it.toEpochDay() }) { date ->
+                val isSelected = date == selectedDate
+                Column(
+                    modifier = Modifier
+                        .width(62.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(if (isSelected) AnsuColors.Accent else Color.Transparent)
+                        .clickable { onSelectDate(date) }
+                        .padding(vertical = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()).uppercase(),
+                        color = if (isSelected) AnsuColors.Background else AnsuColors.TextTertiary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = date.dayOfMonth.toString(),
+                        color = if (isSelected) AnsuColors.Background else AnsuColors.TextPrimary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                    )
+                }
             }
         }
     }

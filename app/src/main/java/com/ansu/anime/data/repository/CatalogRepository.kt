@@ -5,11 +5,15 @@ import com.ansu.anime.addon.model.StremioMeta
 import com.ansu.anime.anilist.AniListMedia
 import com.ansu.anime.anilist.AniListMediaListEntry
 import com.ansu.anime.anilist.AniListRepository
+import com.ansu.anime.anilist.AniListSearchFilters
 import com.ansu.anime.core.model.MediaOrigin
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.Shelf
+import com.ansu.anime.core.util.ageRatingFor
+import com.ansu.anime.core.util.formatLabel
 import com.ansu.anime.extension.ExtensionManager
 import com.ansu.anime.extension.api.AnimeCatalogueSource
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
@@ -64,11 +68,37 @@ class CatalogRepository(
         )
     }
 
-    suspend fun search(query: String): List<SAnime> = coroutineScope {
-        val extensionResults = extensionManager.allSources().map { source ->
-            async { runCatching { source.getSearchAnime(1, query, source.getFilterList()) }.getOrNull()?.animes.orEmpty() }
-        }.flatMap { it.await() }
-        extensionResults
+    /**
+     * Searches AniList directly, so results appear even with no extension or
+     * addon installed, and adds whatever installed sources return on top.
+     * [query] may be empty when [filters] alone drive the search (browse by genre, format, ...).
+     * Installed sources only answer the first page of a plain text search, because they cannot
+     * apply the filters. Source calls run on [Dispatchers.IO] (extensions use blocking HTTP) and a
+     * source result for a show AniList already returned is dropped.
+     * Returns null when nothing could be loaded because the request failed.
+     */
+    suspend fun search(
+        query: String,
+        filters: AniListSearchFilters = AniListSearchFilters(),
+        page: Int = 1,
+    ): SearchPage? = coroutineScope {
+        val aniListResults = async { aniList.searchPage(query, filters, page) }
+        val useSources = page == 1 && query.isNotBlank() && !filters.isActive
+        val sourceResults = if (useSources) {
+            extensionManager.allSources().map { source ->
+                async(Dispatchers.IO) {
+                    runCatching { source.getSearchAnime(1, query, source.getFilterList()) }.getOrNull()?.animes.orEmpty()
+                }
+            }
+        } else {
+            emptyList()
+        }
+        val aniListPage = aniListResults.await()
+        val fromAniList = aniListPage?.media.orEmpty().map { it.toSAnime(sourceId = defaultSource()?.id ?: 1L) }
+        val seen = fromAniList.mapNotNullTo(mutableSetOf<Int>()) { it.anilistId }
+        val fromSources = sourceResults.flatMap { it.await() }.filter { it.anilistId == null || seen.add(it.anilistId) }
+        val items = fromAniList + fromSources
+        if (aniListPage == null && items.isEmpty()) null else SearchPage(items, aniListPage?.hasNextPage == true)
     }
 
     /** The default source to resolve an AniList-only entry against until real per-title source matching exists. */
@@ -87,6 +117,8 @@ class CatalogRepository(
         releaseYear = releaseInfo?.take(4)?.toIntOrNull(),
         rating = imdbRating?.toDoubleOrNull(),
         anilistId = null,
+        format = if (type == "movie") "Movie" else "TV",
+        ageRating = ageRatingFor(genres.orEmpty(), isAdult = false),
         origin = MediaOrigin.Addon(addonId = addonId, addonBaseUrl = addonBaseUrl, type = type, stremioId = id),
     )
 }
@@ -107,5 +139,11 @@ fun AniListMedia.toSAnime(sourceId: Long = 1L): SAnime = SAnime(
     releaseYear = year,
     rating = averageScore?.div(10.0),
     anilistId = id,
+    episodes = episodes,
+    format = formatLabel(format),
+    ageRating = ageRatingFor(genres, isAdult),
     origin = MediaOrigin.Extension(sourceId = sourceId, urlPath = id.toString()),
 )
+
+/** One page of Search results plus whether AniList has more after it. */
+data class SearchPage(val items: List<SAnime>, val hasNextPage: Boolean)

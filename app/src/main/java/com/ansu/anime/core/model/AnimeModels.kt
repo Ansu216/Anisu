@@ -15,6 +15,11 @@ data class SAnime(
     val releaseYear: Int? = null,
     val rating: Double? = null,
     val anilistId: Int? = null,
+    val episodes: Int? = null,
+    /** Display label such as "TV", "Movie", "OVA"; null when the source did not say. */
+    val format: String? = null,
+    /** Age-rating chip text ("PG", "PG-13", "R-17+", "R+", "Rx", "NR"); null means derive it from [genres]. */
+    val ageRating: String? = null,
     val origin: MediaOrigin,
 )
 
@@ -30,6 +35,8 @@ data class SEpisode(
     val episodeNumber: Float,
     val thumbnailUrl: String? = null,
     val dateUpload: Long = 0L,
+    val description: String? = null,
+    val airDate: String? = null,
 )
 
 data class Video(

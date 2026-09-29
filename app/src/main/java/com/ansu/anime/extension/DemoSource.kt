@@ -7,6 +7,8 @@ import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.SEpisode
 import com.ansu.anime.core.model.Video
 import com.ansu.anime.extension.api.AnimeCatalogueSource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -49,19 +51,54 @@ class DemoSource : AnimeCatalogueSource {
             }
             $ANIME_FIELDS
         """.trimIndent()
-        return runQuery(gql, mapOf("page" to page, "search" to query))
+        return withContext(Dispatchers.IO) { runQuery(gql, mapOf("page" to page, "search" to query)) }
     }
 
     override suspend fun getEpisodeList(anime: SAnime): List<SEpisode> {
         // AniList doesn't expose a stream-ready episode list; a real source
-        // would scrape or call its own site's API here. We synthesize a
-        // short demo run so playback can still be exercised end to end.
-        return (1..12).map { ep ->
+        // would scrape or call its own site's API here. We synthesize one
+        // entry per real episode (count looked up from AniList) so playback
+        // can still be exercised end to end for the whole show.
+        val count = fetchEpisodeCount(anime.anilistId ?: anime.id.toIntOrNull()) ?: FALLBACK_EPISODE_COUNT
+        return (1..count).map { ep ->
             SEpisode(
                 id = "${anime.id}-ep$ep",
                 name = "Episode $ep",
                 episodeNumber = ep.toFloat(),
             )
+        }
+    }
+
+    /**
+     * Total episodes AniList knows about: the final count for finished shows,
+     * or the number already aired (next airing episode - 1) for shows that are
+     * still running and have no fixed total. Null when it can't be determined.
+     */
+    private suspend fun fetchEpisodeCount(anilistId: Int?): Int? {
+        if (anilistId == null) return null
+        val gql = """
+            query (${'$'}id: Int) {
+              Media(id: ${'$'}id, type: ANIME) { episodes nextAiringEpisode { episode } }
+            }
+        """.trimIndent()
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val bodyJson = """{"query": ${json.encodeToString(kotlinx.serialization.serializer<String>(), gql)}, "variables": ${buildJsonVariables(mapOf("id" to anilistId))}}"""
+                val request = Request.Builder()
+                    .url(baseUrl)
+                    .post(bodyJson.toRequestBody("application/json".toMediaType()))
+                    .build()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    val media = json.parseToJsonElement(response.body?.string().orEmpty())
+                        .jsonObject["data"]?.jsonObject?.get("Media")?.jsonObject ?: return@use null
+                    val total = media["episodes"]?.jsonPrimitive?.content?.toIntOrNull()
+                    val aired = media["nextAiringEpisode"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }
+                        ?.jsonObject?.get("episode")?.jsonPrimitive?.content?.toIntOrNull()?.minus(1)
+                    // A running show's total can be a planned figure; never list more than has aired.
+                    (if (aired != null && aired > 0) aired else total)?.takeIf { it > 0 }
+                }
+            }.getOrNull()
         }
     }
 
@@ -85,7 +122,7 @@ class DemoSource : AnimeCatalogueSource {
             }
             $ANIME_FIELDS
         """.trimIndent()
-        return runQuery(gql, mapOf("page" to page, "sort" to sort))
+        return withContext(Dispatchers.IO) { runQuery(gql, mapOf("page" to page, "sort" to sort)) }
     }
 
     private fun runQuery(query: String, variables: Map<String, Any?>): AnimesPage {
@@ -142,6 +179,9 @@ class DemoSource : AnimeCatalogueSource {
     }
 
     companion object {
+        /** Used only when AniList can't tell us how many episodes a show has. */
+        private const val FALLBACK_EPISODE_COUNT = 12
+
         private const val ANIME_FIELDS = """
             fragment fields on Media {
               id

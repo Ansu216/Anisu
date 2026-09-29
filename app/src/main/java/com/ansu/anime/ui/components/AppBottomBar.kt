@@ -1,12 +1,15 @@
 package com.ansu.anime.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -15,15 +18,13 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.ansu.anime.data.prefs.AppearancePrefs
 import com.ansu.anime.ui.navigation.Dest
@@ -46,73 +47,93 @@ private val barItems = listOf(
  */
 val LocalNavBarRoundness = compositionLocalOf { AppearancePrefs.DEFAULT_NAV_ROUNDNESS }
 
+/**
+ * Current nav bar frostiness (0f clear … 1f heavily frosted), provided next to
+ * [LocalNavBarRoundness] so the real bar follows the setting live.
+ */
+val LocalNavBarFrostiness = compositionLocalOf { AppearancePrefs.DEFAULT_NAV_FROSTINESS }
+
+/** Maps frostiness 0..1 to the background tint opacity: 0.1 (see-through) … 0.95 (almost solid). */
+fun navBarTintAlpha(frostiness: Float): Float = 0.1f + frostiness.coerceIn(0f, 1f) * 0.85f
+
 /** Maps roundness 0..1 to a corner radius that scales with the bar's own height (50% = full pill). */
 fun navBarShape(roundness: Float): RoundedCornerShape =
     RoundedCornerShape(percent = (roundness.coerceIn(0f, 1f) * 50f).roundToInt())
 
-/** Frosted-glass bottom nav bar — visual replacement for the old plain KernelBottomBar. */
+/** Frosted-glass bottom nav bar: a compact, icon-only floating pill. */
 @Composable
 fun AppBottomBar(navController: NavHostController, currentRoute: String?) {
-    NavBarSurface(
-        currentRoute = currentRoute,
-        roundness = LocalNavBarRoundness.current,
-        // The app draws edge to edge and a Scaffold lays its bottomBar slot
-        // flush against the window, so a custom (non-Material) bar has to keep
-        // clear of the system navigation bar itself. Without this the floating
-        // card sits underneath the gesture / three-button bar and its labels
-        // are unreachable. The inset goes on the outside so the card still
-        // floats above the system bar with its own 8dp gap.
-        modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
-        onItemClick = { route ->
-            navController.navigate(route) {
-                popUpTo(Dest.HOME) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
-            }
-        },
-    )
+    // The Scaffold's bottomBar slot has no background of its own, so only the
+    // pill itself is drawn and the screen content shows around it.
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            // The app draws edge to edge and a Scaffold lays its bottomBar slot
+            // flush against the window, so a custom (non-Material) bar has to keep
+            // clear of the system navigation bar itself.
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(bottom = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        NavBarSurface(
+            currentRoute = currentRoute,
+            roundness = LocalNavBarRoundness.current,
+            frostiness = LocalNavBarFrostiness.current,
+            onItemClick = { route ->
+                navController.navigate(route) {
+                    popUpTo(Dest.HOME) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            },
+        )
+    }
 }
 
 /**
  * The bar itself, decoupled from navigation so Settings can render an
- * identical, non-navigating copy as a live preview.
+ * identical, non-navigating copy as a live preview. It wraps its content
+ * (four 70dp x 40dp slots) instead of spanning the screen.
  */
 @Composable
 fun NavBarSurface(
     currentRoute: String?,
     roundness: Float,
+    frostiness: Float,
     modifier: Modifier = Modifier,
     onItemClick: ((String) -> Unit)? = null,
 ) {
+    val shape = navBarShape(roundness)
     FrostedGlassCard(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        shape = navBarShape(roundness),
-        tintAlpha = 0.55f,
+        modifier = modifier,
+        shape = shape,
+        tintAlpha = navBarTintAlpha(frostiness),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                // Pull items inward as corners round off so edge icons never touch the curve.
-                .padding(horizontal = (roundness * 12f).dp, vertical = 10.dp),
-        ) {
+        Row(modifier = Modifier.padding(5.dp)) {
             barItems.forEach { item ->
                 val selected = currentRoute == item.route
-                val tint = if (selected) AnsuColors.Accent else AnsuColors.TextTertiary
-                Column(
+                Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .then(if (onItemClick != null) Modifier.clickable { onItemClick(item.route) } else Modifier)
-                        .padding(vertical = 4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                        .size(width = 70.dp, height = 40.dp)
+                        .clip(shape)
+                        // Translucent "glass" pill marking the current tab.
+                        .then(
+                            if (selected) {
+                                Modifier
+                                    .background(AnsuColors.Accent.copy(alpha = 0.16f))
+                                    .border(1.dp, AnsuColors.Accent.copy(alpha = 0.14f), shape)
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .then(if (onItemClick != null) Modifier.clickable { onItemClick(item.route) } else Modifier),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Icon(imageVector = item.icon, contentDescription = item.label, tint = tint, modifier = Modifier.padding(bottom = 4.dp))
-                    Text(
-                        text = item.label,
-                        color = tint,
-                        fontSize = 10.sp,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    Icon(
+                        imageVector = item.icon,
+                        contentDescription = item.label,
+                        tint = if (selected) AnsuColors.Accent else AnsuColors.TextTertiary,
+                        modifier = Modifier.size(24.dp),
                     )
                 }
             }

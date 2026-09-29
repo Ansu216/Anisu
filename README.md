@@ -54,7 +54,7 @@ extension APKs and Stremio/Nuvio-protocol HTTP addons.
 - **Player** (`ui/player/`) — a Media3 `ExoPlayer` with fully custom overlay
   controls (no default Android controller) and a source-picker sheet for
   switching between addon/extension results.
-- **Appearance** (`ui/appearance/`, `data/prefs/`) — nav-bar roundness stored in
+- **Appearance** (`ui/appearance/`, `data/prefs/`) — nav-bar roundness and frostiness stored in
   `SharedPreferences`, applied live through a `CompositionLocal`.
 - **About & built-in updater** (`ui/about/`, `data/update/`) — app version, the
   update channel (tagged GitHub **Releases** or the hourly **`apk-nightly`**

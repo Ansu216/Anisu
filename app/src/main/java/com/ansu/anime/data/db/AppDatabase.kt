@@ -8,6 +8,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
@@ -85,18 +87,88 @@ interface InstalledAddonDao {
     suspend fun setEnabled(id: String, enabled: Boolean)
 }
 
+// ---------------------------------------------------------------------------
+// Local library — favourites and watch lists kept on the device, used when the
+// user is not signed in to AniList. One row per show: [isFavourite] is the
+// heart, [status] is the list it sits in (AniList's CURRENT / PLANNING /
+// COMPLETED strings, or null for "not in a list").
+// ---------------------------------------------------------------------------
+
+@Entity(tableName = "local_list_entries")
+data class LocalListEntity(
+    @PrimaryKey val anilistId: Int,
+    val title: String,
+    val posterUrl: String?,
+    val bannerUrl: String?,
+    val description: String?,
+    val genresCsv: String,
+    val year: Int?,
+    val averageScore: Int?,
+    val episodes: Int?,
+    val isFavourite: Boolean,
+    val status: String?,
+    val progress: Int,
+    val updatedAt: Long,
+)
+
+@Dao
+interface LocalListDao {
+    @Query("SELECT * FROM local_list_entries ORDER BY updatedAt DESC")
+    fun observeAll(): Flow<List<LocalListEntity>>
+
+    @Query("SELECT * FROM local_list_entries")
+    suspend fun getAll(): List<LocalListEntity>
+
+    @Query("SELECT * FROM local_list_entries WHERE anilistId = :anilistId LIMIT 1")
+    fun observe(anilistId: Int): Flow<LocalListEntity?>
+
+    @Query("SELECT * FROM local_list_entries WHERE anilistId = :anilistId LIMIT 1")
+    suspend fun get(anilistId: Int): LocalListEntity?
+
+    @Upsert
+    suspend fun upsert(entity: LocalListEntity)
+
+    @Query("DELETE FROM local_list_entries WHERE anilistId = :anilistId")
+    suspend fun remove(anilistId: Int)
+}
+
 @Database(
-    entities = [ContinueWatchingEntity::class, InstalledAddonEntity::class],
-    version = 1,
+    entities = [ContinueWatchingEntity::class, InstalledAddonEntity::class, LocalListEntity::class],
+    version = 2,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun continueWatchingDao(): ContinueWatchingDao
     abstract fun installedAddonDao(): InstalledAddonDao
+    abstract fun localListDao(): LocalListDao
 
     companion object {
+        /** v1 -> v2: adds the local library table without touching continue-watching or addons. */
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `local_list_entries` (" +
+                        "`anilistId` INTEGER NOT NULL, " +
+                        "`title` TEXT NOT NULL, " +
+                        "`posterUrl` TEXT, " +
+                        "`bannerUrl` TEXT, " +
+                        "`description` TEXT, " +
+                        "`genresCsv` TEXT NOT NULL, " +
+                        "`year` INTEGER, " +
+                        "`averageScore` INTEGER, " +
+                        "`episodes` INTEGER, " +
+                        "`isFavourite` INTEGER NOT NULL, " +
+                        "`status` TEXT, " +
+                        "`progress` INTEGER NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`anilistId`))",
+                )
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "ansu.db")
+                .addMigrations(MIGRATION_1_2)
                 .fallbackToDestructiveMigration()
                 .build()
     }

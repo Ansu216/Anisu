@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ansu.anime.ui.about.AboutScreen
 import com.ansu.anime.ui.appearance.AppearanceScreen
+import com.ansu.anime.ui.components.LocalNavBarFrostiness
 import com.ansu.anime.ui.components.LocalNavBarRoundness
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -44,7 +45,11 @@ val bottomNavDestinations = listOf(Dest.HOME, Dest.SEARCH, Dest.SCHEDULE, Dest.M
 @Composable
 fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rememberNavController()) {
     val navBarRoundness by container.appearancePrefs.navBarRoundness.collectAsStateWithLifecycle()
-    CompositionLocalProvider(LocalNavBarRoundness provides navBarRoundness) {
+    val navBarFrostiness by container.appearancePrefs.navBarFrostiness.collectAsStateWithLifecycle()
+    CompositionLocalProvider(
+        LocalNavBarRoundness provides navBarRoundness,
+        LocalNavBarFrostiness provides navBarFrostiness,
+    ) {
     NavHost(navController = navController, startDestination = Dest.HOME) {
         composable(Dest.HOME) {
             HomeScreen(

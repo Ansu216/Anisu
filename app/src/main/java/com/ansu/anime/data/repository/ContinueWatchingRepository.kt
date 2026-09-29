@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 class ContinueWatchingRepository(
     private val dao: ContinueWatchingDao,
     private val aniList: AniListRepository,
+    private val localList: LocalListRepository,
 ) {
     val entries: Flow<List<ContinueWatchingEntity>> = dao.observeAll()
 
@@ -44,6 +45,10 @@ class ContinueWatchingRepository(
         val watchedThreshold = durationSeconds > 0 && positionSeconds >= durationSeconds * 0.9
         if (watchedThreshold) {
             aniList.reportProgress(anilistId, episode.episodeNumber.toInt())
+        }
+        // Signed out: keep the list on the device instead.
+        if (!aniList.isLoggedIn.value) {
+            localList.recordPlayback(anime, episode.episodeNumber.toInt(), watchedThreshold)
         }
     }
 

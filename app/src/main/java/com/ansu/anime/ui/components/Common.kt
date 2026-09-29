@@ -2,6 +2,7 @@ package com.ansu.anime.ui.components
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -25,14 +27,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
@@ -49,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.ansu.anime.core.model.SAnime
+import com.ansu.anime.core.util.ageRatingFor
 import com.ansu.anime.core.util.formatEpisodeNumber
 import com.ansu.anime.core.util.progressFraction
 import com.ansu.anime.data.db.ContinueWatchingEntity
@@ -78,19 +85,92 @@ fun PosterRow(items: List<SAnime>, onClick: (SAnime) -> Unit, modifier: Modifier
     }
 }
 
+/**
+ * A poster row that never runs dry: when the user scrolls to within a few posters of
+ * the end it calls [onLoadMore], and a trailing spinner shows while the next page is
+ * fetched. If a page fails the spinner becomes a retry button (no automatic retry loop).
+ */
+@Composable
+fun PagedPosterRow(
+    items: List<SAnime>,
+    hasMore: Boolean,
+    isLoadingMore: Boolean,
+    loadFailed: Boolean,
+    onLoadMore: () -> Unit,
+    onClick: (SAnime) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val listState = rememberLazyListState()
+    val nearEnd by remember(hasMore) {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            hasMore && lastVisible >= info.totalItemsCount - 3
+        }
+    }
+    // Keyed on the list size and loading flag too, so a page that lands while the row
+    // is still near the end immediately triggers the next one.
+    LaunchedEffect(nearEnd, items.size, isLoadingMore, loadFailed) {
+        if (nearEnd && !isLoadingMore && !loadFailed) onLoadMore()
+    }
+
+    LazyRow(
+        state = listState,
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        items(items, key = { it.id }) { anime ->
+            AnimeCard(anime = anime, onClick = { onClick(anime) })
+        }
+        if (hasMore) {
+            item(key = "paged-row-footer") {
+                Box(
+                    modifier = Modifier.width(56.dp).height(195.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (loadFailed) {
+                        IconButton(onClick = onLoadMore) {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = "Retry loading more",
+                                tint = AnsuColors.TextPrimary,
+                            )
+                        }
+                    } else {
+                        CircularProgressIndicator(
+                            color = AnsuColors.Accent,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun AnimeCard(anime: SAnime, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Column(modifier = modifier.width(130.dp).clickable(onClick = onClick)) {
-        AsyncImage(
-            model = anime.posterUrl,
-            contentDescription = anime.title,
-            contentScale = ContentScale.Crop,
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
                 .clip(RoundedCornerShape(12.dp))
                 .background(AnsuColors.BackgroundElevated),
-        )
+        ) {
+            AsyncImage(
+                model = anime.posterUrl,
+                contentDescription = anime.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            AgeRatingChip(
+                rating = anime.ageRating ?: ageRatingFor(anime.genres, isAdult = false),
+                modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
+            )
+        }
         Text(
             text = anime.title,
             style = MaterialTheme.typography.bodyMedium,
@@ -98,6 +178,33 @@ fun AnimeCard(anime: SAnime, onClick: () -> Unit, modifier: Modifier = Modifier)
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 6.dp),
+        )
+    }
+}
+
+/**
+ * The small frosted-glass age-rating chip pinned to a poster's top-left corner. Real backdrop
+ * blur is not available without extra plumbing (see [FrostedGlassCard]), so the glass is a dark
+ * tint with a white sheen and a light stroke, which stays legible on both bright and dark art.
+ */
+@Composable
+fun AgeRatingChip(rating: String, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(8.dp)
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(Color.Black.copy(alpha = 0.32f))
+            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.26f), Color.White.copy(alpha = 0.06f))))
+            .border(width = 0.75.dp, color = Color.White.copy(alpha = 0.30f), shape = shape)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = rating,
+            color = AnsuColors.TextPrimary,
+            fontSize = 10.sp,
+            lineHeight = 12.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
         )
     }
 }
@@ -169,7 +276,7 @@ fun ContinueWatchingRow(entries: List<ContinueWatchingEntity>, onClick: (Continu
 }
 
 /**
- * Swipeable hero carousel: art fills the frame, bottom scrim, centered title/genres,
+ * Swipeable hero carousel: the poster fills a 2:3 frame, bottom scrim, centered title/genres,
  * and a centered "View Details" (white) + "Like" (frosted glass) button pair, with
  * page dots below. [onToggleFavourite] calls straight through to the real AniList
  * favourite mutation; since [SAnime] doesn't carry a persisted favourite flag at the
@@ -190,12 +297,15 @@ fun HeroCarousel(
     val likedIds = remember { mutableStateMapOf<String, Boolean>() }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Box(modifier = Modifier.fillMaxWidth().height(440.dp)) {
+        // The frame is exactly poster-shaped (2:3), so the portrait poster fills it edge to
+        // edge with nothing cropped; the banner is only a fallback for titles without a poster.
+        // The hero starts at the very top of the window (behind the status bar).
+        Box(modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)) {
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                 val anime = shown[page]
                 Box(modifier = Modifier.fillMaxSize()) {
                     AsyncImage(
-                        model = anime.bannerUrl ?: anime.posterUrl,
+                        model = anime.posterUrl ?: anime.bannerUrl,
                         contentDescription = anime.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize().background(AnsuColors.BackgroundElevated),
@@ -203,6 +313,15 @@ fun HeroCarousel(
                     BottomScrim(modifier = Modifier.fillMaxSize())
                 }
             }
+
+            // Keeps the status-bar icons legible over bright artwork.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(96.dp)
+                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent))),
+            )
 
             val current = shown[pagerState.currentPage]
             val isLiked = likedIds[current.id] == true

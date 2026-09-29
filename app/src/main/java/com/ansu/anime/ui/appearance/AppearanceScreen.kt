@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,6 +32,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -45,9 +48,19 @@ import kotlin.math.roundToInt
 /** Preset bars shown as tappable options, left to right with increasing roundness. */
 private val presets = listOf(0f, 0.25f, 0.5f, 0.75f, 1f)
 
+/** Vivid bands drawn behind the live preview so the bar's translucency can be seen. */
+private val previewBackdropColors = listOf(
+    Color(0xFFE5484D),
+    Color(0xFFF5A524),
+    Color(0xFF3DD68C),
+    Color(0xFF3E8BFF),
+    Color(0xFFA36CFF),
+)
+
 @Composable
 fun AppearanceScreen(container: AppContainer, navController: NavHostController) {
     val roundness by container.appearancePrefs.navBarRoundness.collectAsStateWithLifecycle()
+    val frostiness by container.appearancePrefs.navBarFrostiness.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -69,16 +82,29 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
 
             // ---- Live preview: the exact same bar composable the app uses ----
             Text("Live preview", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextSecondary)
+            // A flat backdrop would hide the effect of the frostiness setting (a
+            // translucent bar over a solid colour looks the same at any opacity),
+            // so the preview sits on colourful bands like real page content.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(96.dp)
                     .clip(MaterialTheme.shapes.large)
                     .background(AnsuColors.BackgroundElevated)
-                    .border(1.dp, AnsuColors.StrokeGlass, MaterialTheme.shapes.large)
-                    .padding(vertical = 12.dp),
+                    .border(1.dp, AnsuColors.StrokeGlass, MaterialTheme.shapes.large),
                 contentAlignment = Alignment.Center,
             ) {
-                NavBarSurface(currentRoute = Dest.HOME, roundness = roundness)
+                Row(modifier = Modifier.fillMaxSize()) {
+                    previewBackdropColors.forEach { color ->
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .background(Brush.verticalGradient(listOf(color, color.copy(alpha = 0.35f)))),
+                        )
+                    }
+                }
+                NavBarSurface(currentRoute = Dest.HOME, roundness = roundness, frostiness = frostiness)
             }
 
             // ---- Preset bars with increasing roundness ----
@@ -117,8 +143,31 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                     inactiveTrackColor = AnsuColors.AccentSoft,
                 ),
             )
+
+            // ---- Frostiness: how opaque/frosted the bar background is ----
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("Frostiness", style = MaterialTheme.typography.titleSmall)
+                Text("${(frostiness * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary)
+            }
+            Slider(
+                value = frostiness,
+                onValueChange = { container.appearancePrefs.setNavBarFrostiness(it) },
+                valueRange = 0f..1f,
+                colors = SliderDefaults.colors(
+                    thumbColor = AnsuColors.Accent,
+                    activeTrackColor = AnsuColors.Accent,
+                    inactiveTrackColor = AnsuColors.AccentSoft,
+                ),
+            )
             TextButton(
-                onClick = { container.appearancePrefs.setNavBarRoundness(AppearancePrefs.DEFAULT_NAV_ROUNDNESS) },
+                onClick = {
+                    container.appearancePrefs.setNavBarRoundness(AppearancePrefs.DEFAULT_NAV_ROUNDNESS)
+                    container.appearancePrefs.setNavBarFrostiness(AppearancePrefs.DEFAULT_NAV_FROSTINESS)
+                },
                 modifier = Modifier.align(Alignment.End),
             ) { Text("Reset to default") }
         }

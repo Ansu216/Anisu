@@ -8,43 +8,39 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
+import com.ansu.anime.anilist.AniListFeed
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.AppBottomBar
 import com.ansu.anime.ui.components.ContinueWatchingRow
-import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.components.HeroCarousel
+import com.ansu.anime.ui.components.PagedPosterRow
 import com.ansu.anime.ui.components.PosterRow
 import com.ansu.anime.ui.components.ShelfHeader
 import com.ansu.anime.ui.navigation.Dest
@@ -70,16 +66,17 @@ fun HomeScreen(
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val trending = state.feed(AniListFeed.TRENDING_NOW).items
 
     Scaffold(
         containerColor = AnsuColors.Background,
         bottomBar = { AppBottomBar(navController, Dest.HOME) },
     ) { padding ->
-        if (state.isLoading && state.trending.isEmpty() && state.shelves.isEmpty()) {
+        if (state.isLoading && trending.isEmpty() && state.shelves.isEmpty()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
+                    .padding(top = padding.calculateTopPadding())
                     .background(AnsuColors.Background),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -91,15 +88,14 @@ fun HomeScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(top = padding.calculateTopPadding())
                 .background(AnsuColors.Background),
-            contentPadding = PaddingValues(bottom = 24.dp),
+            // Content runs behind the floating bar; the padding lets the last row scroll clear of it.
+            contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 24.dp),
         ) {
-            item { HomeTopBar(onSearch = { navController.navigate(Dest.SEARCH) }) }
-
             // The hero mirrors what's airing/trending right now; if AniList is
             // unreachable it falls back to the first catalogue shelf.
-            val heroSource = state.trending.ifEmpty { state.shelves.firstOrNull()?.items.orEmpty() }
+            val heroSource = trending.ifEmpty { state.shelves.firstOrNull()?.items.orEmpty() }
             if (heroSource.isNotEmpty()) {
                 item {
                     HeroCarousel(
@@ -107,7 +103,14 @@ fun HomeScreen(
                         onClick = onAnimeSelected,
                         onToggleFavourite = { anime ->
                             anime.anilistId?.let { id ->
-                                scope.launch { container.aniListRepository.toggleFavourite(id) }
+                                scope.launch {
+                                    if (container.aniListRepository.isLoggedIn.value) {
+                                        container.aniListRepository.toggleFavourite(id)
+                                    } else {
+                                        // Signed out: keep the favourite on this device.
+                                        container.localListRepository.toggleFavourite(anime)
+                                    }
+                                }
                             }
                         },
                     )
@@ -154,14 +157,29 @@ fun HomeScreen(
                 }
             }
 
-            if (state.trending.isNotEmpty()) {
-                item { ShelfHeader("Trending Now") }
-                item { PosterRow(items = state.trending, onClick = onAnimeSelected) }
+            item(key = "feed:${AniListFeed.TRENDING_NOW.name}") {
+                FeedShelf(
+                    row = state.feed(AniListFeed.TRENDING_NOW),
+                    onLoadMore = { viewModel.loadMore(AniListFeed.TRENDING_NOW) },
+                    onClick = onAnimeSelected,
+                )
             }
 
             if (state.topPicks.isNotEmpty()) {
                 item { ShelfHeader("Top Picks For You") }
                 item { TopPicksGrid(items = state.topPicks.take(9), onClick = onAnimeSelected) }
+            }
+
+            // Every other endless row loads its first page when it scrolls into view.
+            items(
+                items = state.feeds.filter { it.feed != AniListFeed.TRENDING_NOW },
+                key = { "feed:${it.feed.name}" },
+            ) { row ->
+                FeedShelf(
+                    row = row,
+                    onLoadMore = { viewModel.loadMore(row.feed) },
+                    onClick = onAnimeSelected,
+                )
             }
 
             items(state.shelves, key = { it.title }) { shelf ->
@@ -184,36 +202,60 @@ fun HomeScreen(
     }
 }
 
-/** Frosted header holding the app name and a shortcut to Search. */
+/**
+ * One endless catalogue row: header, a placeholder until the first page arrives, then
+ * a [PagedPosterRow] that keeps fetching ten titles at a time as it is scrolled.
+ * Hidden entirely if the feed loaded but had nothing in it.
+ */
 @Composable
-private fun HomeTopBar(onSearch: () -> Unit) {
-    FrostedGlassCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-        shape = RoundedCornerShape(20.dp),
-        tintAlpha = 0.35f,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Ansu",
-                color = AnsuColors.TextPrimary,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.ExtraBold,
-            )
-            IconButton(onClick = onSearch) {
-                Icon(
-                    imageVector = Icons.Filled.Search,
-                    contentDescription = "Search",
-                    tint = AnsuColors.TextPrimary,
+private fun FeedShelf(
+    row: FeedState,
+    onLoadMore: () -> Unit,
+    onClick: (SAnime) -> Unit,
+) {
+    // Runs when the row first composes (i.e. scrolls into view) and again if it
+    // leaves and re-enters composition after a failed first load.
+    LaunchedEffect(row.feed) { if (!row.hasLoaded) onLoadMore() }
+
+    if (row.hasLoaded && row.items.isEmpty()) return
+
+    Column {
+        ShelfHeader(row.feed.title)
+        if (row.items.isEmpty()) {
+            if (row.loadFailed) {
+                Text(
+                    text = "Couldn't load. Tap to retry.",
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .padding(horizontal = 20.dp)
+                        .height(195.dp)
+                        .clickable(onClick = onLoadMore),
                 )
+            } else {
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    repeat(3) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(2f / 3f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(AnsuColors.BackgroundElevated),
+                        )
+                    }
+                }
             }
+        } else {
+            PagedPosterRow(
+                items = row.items,
+                hasMore = row.hasNextPage,
+                isLoadingMore = row.isLoading,
+                loadFailed = row.loadFailed,
+                onLoadMore = onLoadMore,
+                onClick = onClick,
+            )
         }
     }
 }

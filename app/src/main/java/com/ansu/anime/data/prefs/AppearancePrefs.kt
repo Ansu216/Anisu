@@ -26,8 +26,24 @@ class AppearancePrefs(context: Context) {
         prefs.edit().putFloat(KEY_NAV_ROUNDNESS, v).apply()
     }
 
+    private val _navBarFrostiness = MutableStateFlow(
+        prefs.getFloat(KEY_NAV_FROSTINESS, DEFAULT_NAV_FROSTINESS).coerceIn(0f, 1f),
+    )
+
+    /** 0f = clear glass (background shows through), 1f = heavily frosted (nearly opaque). */
+    val navBarFrostiness: StateFlow<Float> = _navBarFrostiness
+
+    fun setNavBarFrostiness(value: Float) {
+        val v = value.coerceIn(0f, 1f)
+        _navBarFrostiness.value = v
+        prefs.edit().putFloat(KEY_NAV_FROSTINESS, v).apply()
+    }
+
     companion object {
         private const val KEY_NAV_ROUNDNESS = "nav_bar_roundness"
         const val DEFAULT_NAV_ROUNDNESS = 0.7f // ≈ the previous fixed 24dp corners
+
+        private const val KEY_NAV_FROSTINESS = "nav_bar_frostiness"
+        const val DEFAULT_NAV_FROSTINESS = 0.5f // = the previous fixed 0.5 tint alpha
     }
 }

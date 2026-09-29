@@ -16,7 +16,36 @@ data class AniListMedia(
     val averageScore: Int?,
     val episodes: Int?,
     val year: Int?,
+    /** AniList's raw format enum (TV, MOVIE, OVA, ...); null when a query did not ask for it. */
+    val format: String? = null,
+    val isAdult: Boolean = false,
 )
+
+/**
+ * The filters of the Search screen's filter sheet. Every value is an AniList enum name or a
+ * genre/tag name taken from a fixed list in the UI, never free user text.
+ * A null [sort] means "best match" (or popularity when there is no search text).
+ */
+data class AniListSearchFilters(
+    val sort: String? = null,
+    val formats: Set<String> = emptySet(),
+    val statuses: Set<String> = emptySet(),
+    val genres: Set<String> = emptySet(),
+    val tags: Set<String> = emptySet(),
+    val season: String? = null,
+    val year: Int? = null,
+    val showAdult: Boolean = false,
+) {
+    /** How many things differ from the default; drives the badge on the filter button. */
+    val activeCount: Int
+        get() = formats.size + statuses.size + genres.size + tags.size +
+            (if (sort != null) 1 else 0) +
+            (if (season != null) 1 else 0) +
+            (if (year != null) 1 else 0) +
+            (if (showAdult) 1 else 0)
+
+    val isActive: Boolean get() = activeCount > 0
+}
 
 /** One row of the signed-in user's list: a media plus their personal progress on it. */
 data class AniListMediaListEntry(
@@ -42,6 +71,15 @@ data class AniListMediaDetails(
     val characters: List<AniListCharacter>,
     val staff: List<AniListStaffMember>,
     val related: List<AniListMedia>,
+    /** The signed-in user's AniList list status for this show (CURRENT/PLANNING/COMPLETED/...), or null. */
+    val listStatus: String? = null,
+)
+
+/** The signed-in user's relationship to one show on AniList: heart plus list entry. */
+data class AniListUserState(
+    val isFavourite: Boolean,
+    val listStatus: String?,
+    val progress: Int,
 )
 
 data class AniListCharacter(
@@ -67,4 +105,16 @@ data class AniListStaffMember(
     val imageUrl: String?,
     val role: String,
     val description: String?,
+)
+
+/** One page of a paged media query, plus whether AniList has more after it. */
+data class AniListMediaPage(
+    val media: List<AniListMedia>,
+    val hasNextPage: Boolean,
+)
+
+/** One entry of AniList's `streamingEpisodes` for a show: a title and thumbnail supplied by its legal streaming site. */
+data class AniListStreamingEpisode(
+    val title: String,
+    val thumbnailUrl: String?,
 )

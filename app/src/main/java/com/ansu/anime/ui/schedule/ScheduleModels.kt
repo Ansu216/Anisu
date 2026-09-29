@@ -1,11 +1,9 @@
 package com.ansu.anime.ui.schedule
 
-import java.time.DayOfWeek
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
-import java.util.Locale
 
 data class NewsArticle(
     val id: String,
@@ -20,17 +18,18 @@ data class ScheduleEntry(
     val animeTitle: String,
     val episodeNumber: Int,
     val airTimeLabel: String,
-    val dayOfWeek: String,
+    val date: LocalDate,
     val imageUrl: String?,
 )
 
-/** Current week's [start, end) bounds as unix-epoch seconds, in the device's local time zone. */
-fun currentWeekBounds(): Pair<Long, Long> {
+/** Number of days the Schedule tab covers, starting today. */
+const val SCHEDULE_DAYS = 7
+
+/** The next [SCHEDULE_DAYS] days from today's midnight as [start, end) unix-epoch seconds, in the device's local time zone. */
+fun scheduleBounds(): Pair<Long, Long> {
     val zone = ZoneId.systemDefault()
-    val now = Instant.now().atZone(zone)
-    val startOfWeek = now.toLocalDate().minusDays((now.dayOfWeek.value - 1).toLong()).atStartOfDay(zone)
-    val endOfWeek = startOfWeek.plusDays(7)
-    return startOfWeek.toEpochSecond() to endOfWeek.toEpochSecond()
+    val start = LocalDate.now(zone).atStartOfDay(zone)
+    return start.toEpochSecond() to start.plusDays(SCHEDULE_DAYS.toLong()).toEpochSecond()
 }
 
 private val scheduleTimeFormatter = DateTimeFormatter.ofPattern("h:mm a")
@@ -43,7 +42,7 @@ fun com.ansu.anime.anilist.AniListAiringEntry.toScheduleEntry(): ScheduleEntry {
         animeTitle = media.title,
         episodeNumber = episode,
         airTimeLabel = zoned.format(scheduleTimeFormatter),
-        dayOfWeek = zoned.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault()),
+        date = zoned.toLocalDate(),
         imageUrl = media.posterUrl ?: media.bannerUrl,
     )
 }

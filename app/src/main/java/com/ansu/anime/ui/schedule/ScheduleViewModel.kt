@@ -26,7 +26,7 @@ class ScheduleViewModel(private val aniListRepository: AniListRepository) : View
     fun refresh() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
-            val (from, to) = currentWeekBounds()
+            val (from, to) = scheduleBounds()
             val schedule = aniListRepository.weeklySchedule(from, to).map { it.toScheduleEntry() }
             val news = NewsRepository.getNews()
             _uiState.value = ScheduleUiState(isLoading = false, schedule = schedule, news = news)
