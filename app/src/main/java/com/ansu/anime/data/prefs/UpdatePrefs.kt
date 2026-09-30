@@ -30,6 +30,15 @@ class UpdatePrefs(context: Context) {
         prefs.edit().putBoolean(KEY_AUTO_CHECK, value).apply()
     }
 
+    /** The last version the user was notified about, so the same build is never announced twice. */
+    fun lastNotifiedVersion(): String? = prefs.getString(KEY_LAST_NOTIFIED, null)
+
+    fun setLastNotifiedVersion(version: String?) {
+        prefs.edit().apply {
+            if (version == null) remove(KEY_LAST_NOTIFIED) else putString(KEY_LAST_NOTIFIED, version)
+        }.apply()
+    }
+
     private fun loadChannel(): UpdateChannel {
         val stored = prefs.getString(KEY_CHANNEL, null) ?: return UpdateChannel.RELEASES
         return UpdateChannel.entries.firstOrNull { it.name == stored } ?: UpdateChannel.RELEASES
@@ -38,5 +47,6 @@ class UpdatePrefs(context: Context) {
     companion object {
         private const val KEY_CHANNEL = "update_channel"
         private const val KEY_AUTO_CHECK = "auto_check"
+        private const val KEY_LAST_NOTIFIED = "last_notified_version"
     }
 }

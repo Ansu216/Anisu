@@ -33,6 +33,7 @@ class UpdateManager(
 
     private val checker = UpdateChecker(client)
     private val installer = UpdateInstaller(context, client, diagnostics)
+    private val notifier = UpdateNotifier(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _state = MutableStateFlow(UpdateState())
@@ -55,10 +56,20 @@ class UpdateManager(
                 installedVersionCode = BuildConfig.VERSION_CODE,
             )
             when (result) {
-                is UpdateCheckResult.UpToDate ->
+                is UpdateCheckResult.UpToDate -> {
                     diagnostics?.log(LogCategory.UPDATE, "Up to date (${result.latestVersionName})")
-                is UpdateCheckResult.Available ->
+                    // Nothing to install any more: drop the notification and allow a future build to notify.
+                    notifier.cancel()
+                    prefs.setLastNotifiedVersion(null)
+                }
+                is UpdateCheckResult.Available -> {
                     diagnostics?.log(LogCategory.UPDATE, "Update available: ${result.update.versionName} (${result.update.channel})")
+                    // Only announce each build once, however often the app checks.
+                    if (prefs.lastNotifiedVersion() != result.update.versionName) {
+                        notifier.notifyUpdate(result.update)
+                        prefs.setLastNotifiedVersion(result.update.versionName)
+                    }
+                }
                 is UpdateCheckResult.Failed ->
                     diagnostics?.log(LogCategory.UPDATE, "Update check failed: ${result.message}")
             }
