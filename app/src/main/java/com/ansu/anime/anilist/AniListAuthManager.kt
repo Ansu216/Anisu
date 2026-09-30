@@ -42,7 +42,9 @@ class AniListAuthManager(private val context: Context) {
         val authorizeUrl = Uri.parse("https://anilist.co/api/v2/oauth/authorize")
             .buildUpon()
             .appendQueryParameter("client_id", BuildConfig.ANILIST_CLIENT_ID)
-            .appendQueryParameter("redirect_uri", BuildConfig.ANILIST_REDIRECT_URI)
+            // Do NOT send redirect_uri: AniList's implicit grant rejects it with
+            // "unsupported_grant_type". The redirect comes from the URL registered
+            // in the AniList developer settings (must be ansu://anilist-auth).
             .appendQueryParameter("response_type", "token")
             .build()
 
