@@ -558,6 +558,12 @@ class AniListApi(
             order to AniListRelation(media = media, label = relationLabel(type, media.format, media.title))
         }.sortedWith(compareBy({ it.first }, { it.second.media.year ?: Int.MAX_VALUE })).map { it.second }.distinctBy { it.media.id }
 
+        val hasPrequel = this["relations"]?.jsonObject?.get("edges")?.jsonArray.orEmpty().any { edge ->
+            val obj = edge.jsonObject
+            obj["relationType"]?.jsonPrimitive?.contentOrNull == "PREQUEL" &&
+                obj["node"]?.jsonObject?.get("type")?.jsonPrimitive?.contentOrNull == "ANIME"
+        }
+
         return AniListMediaDetails(
             id = idValue,
             title = title,
@@ -573,6 +579,7 @@ class AniListApi(
             characters = characters,
             staff = staff,
             related = related,
+            hasPrequel = hasPrequel,
             franchise = franchise,
             listStatus = (this["mediaListEntry"] as? JsonObject)?.get("status")?.jsonPrimitive?.contentOrNull,
         )
