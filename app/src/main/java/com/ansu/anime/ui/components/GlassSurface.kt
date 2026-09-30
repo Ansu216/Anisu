@@ -1,15 +1,19 @@
 package com.ansu.anime.ui.components
 
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ansu.anime.ui.theme.AnsuColors
 
@@ -19,20 +23,42 @@ import com.ansu.anime.ui.theme.AnsuColors
  * Android 12+ RenderEffect plumbing or a blur library; this is the practical,
  * dependency-free approximation used throughout the app for pill buttons,
  * the top bar, and bottom navigation.
+ *
+ * When [blurRadius] is greater than zero the background layer gets a real platform blur on Android 12+
+ * (API 31), while the card's content — icons and labels — is drawn unblurred on top. On Android 8–11,
+ * which has no such effect, the radius is ignored and the card keeps its plain frosted look, so nothing
+ * changes on older devices.
  */
 @Composable
 fun FrostedGlassCard(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(16.dp),
     tintAlpha: Float = 0.35f,
+    blurRadius: Dp = 0.dp,
     content: @Composable () -> Unit,
 ) {
-    Box(
-        modifier = modifier
-            .clip(shape)
-            .background(AnsuColors.SurfaceGlassBase.copy(alpha = tintAlpha))
-            .border(width = 1.dp, color = AnsuColors.StrokeGlass, shape = shape),
-    ) {
+    Box(modifier = modifier.clip(shape)) {
+        // Gradient fill with a touch of vertical structure, so a blur actually reads as softness
+        // instead of acting on one flat colour (which would blur to itself, invisibly).
+        val backgroundModifier = Modifier
+            .matchParentSize()
+            .then(
+                if (blurRadius.value > 0f && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    Modifier.blur(blurRadius, edgeTreatment = BlurredEdgeTreatment.Unbounded)
+                } else {
+                    Modifier
+                },
+            )
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        AnsuColors.SurfaceGlassBase.copy(alpha = tintAlpha),
+                        AnsuColors.SurfaceGlassBase.copy(alpha = (tintAlpha * 0.82f).coerceIn(0f, 1f)),
+                    ),
+                ),
+            )
+            .border(width = 1.dp, color = AnsuColors.StrokeGlass, shape = shape)
+        Box(modifier = backgroundModifier)
         content()
     }
 }

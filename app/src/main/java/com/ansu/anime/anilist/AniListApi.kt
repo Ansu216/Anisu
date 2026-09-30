@@ -39,9 +39,13 @@ class AniListApi(
         """.trimIndent()
         val data = execute(query, emptyMap()) ?: return null
         val viewer = data["Viewer"]?.jsonObject ?: return null
+        // Never use `!!` on a server response: a schema change or a partial payload would
+        // otherwise throw on the main path and take a screen down (or the whole app with it).
+        val id = viewer["id"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: return null
+        val name = viewer["name"]?.jsonPrimitive?.contentOrNull ?: return null
         return AniListViewer(
-            id = viewer["id"]!!.jsonPrimitive.content.toInt(),
-            name = viewer["name"]!!.jsonPrimitive.content,
+            id = id,
+            name = name,
             avatarUrl = viewer["avatar"]?.jsonObject?.get("medium")?.jsonPrimitive?.content,
         )
     }
@@ -69,8 +73,8 @@ class AniListApi(
                 val media = entryObj["media"]?.jsonObject?.toMedia() ?: return@mapNotNull null
                 AniListMediaListEntry(
                     mediaId = media.id,
-                    progress = entryObj["progress"]!!.jsonPrimitive.content.toInt(),
-                    status = entryObj["status"]!!.jsonPrimitive.content,
+                    progress = entryObj["progress"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0,
+                    status = entryObj["status"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                     media = media,
                 )
             }
@@ -354,7 +358,7 @@ class AniListApi(
                 val obj = entry.jsonObject
                 val media = obj["media"]?.jsonObject?.toMedia() ?: return@mapNotNullTo null
                 AniListAiringEntry(
-                    airingAt = obj["airingAt"]!!.jsonPrimitive.content.toLong(),
+                    airingAt = obj["airingAt"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: return@mapNotNullTo null,
                     episode = obj["episode"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
                     media = media,
                 )
@@ -528,16 +532,21 @@ class AniListApi(
             ?: titleObj?.get("english")?.jsonPrimitive?.content
             ?: return null
 
+        // Every one of these lists is drawn with the row's own `id` as the Compose key, and a
+        // LazyRow/LazyColumn throws `Key ... was already used` when two items share one. AniList
+        // can (and does) return the same node twice in `characters`/`staff`/`relations` for a
+        // couple of shows, and that made the details page crash as soon as that row scrolled into
+        // view. Deduplicating by id here keeps every key unique no matter what the API returns.
         val characterEdges = this["characters"]?.jsonObject?.get("edges")?.jsonArray.orEmpty()
-        val characters = characterEdges.mapNotNull { edge -> edge.jsonObject.toCharacter() }
+        val characters = characterEdges.mapNotNull { edge -> edge.jsonObject.toCharacter() }.distinctBy { it.id }
 
         val staffEdges = this["staff"]?.jsonObject?.get("edges")?.jsonArray.orEmpty()
-        val staff = staffEdges.mapNotNull { edge -> edge.jsonObject.toStaffMember() }
+        val staff = staffEdges.mapNotNull { edge -> edge.jsonObject.toStaffMember() }.distinctBy { it.id }
 
         val recommendationNodes = this["recommendations"]?.jsonObject?.get("nodes")?.jsonArray.orEmpty()
         val related = recommendationNodes.mapNotNull { node ->
             node.jsonObject["mediaRecommendation"]?.jsonObject?.toMedia()
-        }
+        }.distinctBy { it.id }
 
         val franchise = this["relations"]?.jsonObject?.get("edges")?.jsonArray.orEmpty().mapNotNull { edge ->
             val obj = edge.jsonObject
@@ -547,7 +556,7 @@ class AniListApi(
             val order = FRANCHISE_RELATIONS.indexOf(type).takeIf { it >= 0 } ?: return@mapNotNull null
             val media = node.toMedia() ?: return@mapNotNull null
             order to AniListRelation(media = media, label = relationLabel(type, media.format, media.title))
-        }.sortedWith(compareBy({ it.first }, { it.second.media.year ?: Int.MAX_VALUE })).map { it.second }
+        }.sortedWith(compareBy({ it.first }, { it.second.media.year ?: Int.MAX_VALUE })).map { it.second }.distinctBy { it.media.id }
 
         return AniListMediaDetails(
             id = idValue,

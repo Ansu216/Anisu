@@ -2,6 +2,7 @@ package com.ansu.anime.anilist
 
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Log
 import androidx.browser.customtabs.CustomTabsIntent
@@ -22,14 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
  */
 class AniListAuthManager(private val context: Context) {
 
-    private val masterKey = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
-    private val prefs = EncryptedSharedPreferences.create(
-        context,
-        "kernel_anilist_auth",
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-    )
+    private val prefs: SharedPreferences = createPrefs(context)
 
     private val _accessToken = MutableStateFlow(prefs.getString(KEY_TOKEN, null))
     val accessToken: StateFlow<String?> = _accessToken
@@ -75,6 +69,25 @@ class AniListAuthManager(private val context: Context) {
     fun logout() {
         prefs.edit().remove(KEY_TOKEN).apply()
         _accessToken.value = null
+    }
+
+    /**
+     * `EncryptedSharedPreferences.create` can throw on some ROMs and after a backup restore. Anything
+     * built in `Application.onCreate` must never be able to crash the app, so a failure falls back to
+     * plain prefs instead of taking the whole process down with it.
+     */
+    private fun createPrefs(context: Context): SharedPreferences = runCatching {
+        val masterKey = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+        EncryptedSharedPreferences.create(
+            context,
+            "kernel_anilist_auth",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        )
+    }.getOrElse {
+        Log.w("AniListAuth", "EncryptedSharedPreferences unavailable, falling back to plain prefs", it)
+        context.getSharedPreferences("kernel_anilist_auth", Context.MODE_PRIVATE)
     }
 
     companion object {

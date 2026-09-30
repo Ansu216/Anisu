@@ -13,11 +13,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -108,9 +111,27 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                 onClick = { navController.navigate(Dest.ADDONS) },
             )
             SettingsRow(
+                icon = Icons.Filled.SystemUpdate,
+                title = "Updates",
+                subtitle = "Channel, automatic checks and install",
+                onClick = { navController.navigate(Dest.UPDATES) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.Group,
+                title = "Contributors",
+                subtitle = "The people who build and test Ansu",
+                onClick = { navController.navigate(Dest.CONTRIBUTORS) },
+            )
+            SettingsRow(
+                icon = Icons.Filled.BugReport,
+                title = "System",
+                subtitle = "Diagnostics and export logs",
+                onClick = { navController.navigate(Dest.SYSTEM) },
+            )
+            SettingsRow(
                 icon = Icons.Filled.Info,
                 title = "About",
-                subtitle = "Version, updates and developer",
+                subtitle = "Version, credits and links",
                 onClick = { navController.navigate(Dest.ABOUT) },
             )
         }

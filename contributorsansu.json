@@ -1,0 +1,46 @@
+{
+"_guide": [
+"HOW TO ADD / EDIT A CONTRIBUTOR",
+"",
+"This file is read LIVE from the repository (branch main) every time",
+"the Contributors screen opens in the app, so there is no need to rebuild",
+"the APK to change it: edit THIS file, commit and push it, and the app picks",
+"the change up on the next launch of the Contributors screen. A copy of",
+"this file is also bundled inside the APK as an offline fallback.",
+"",
+"Each entry inside \"contributors\" looks like this:",
+"",
+" {",
+"   \"username\": \"octocat\",",
+"   \"name\": \"Octo Cat\",",
+"   \"description\": \"One sentence on how this person contributes.\",",
+"   \"url\": \"https://github.com/octocat\"",
+" }",
+"",
+"Fields:",
+"- \"username\": GitHub handle (REQUIRED). The avatar is fetched automatically",
+"  from GitHub by this username.",
+"- \"name\": the person's real name (optional). When set it is shown FIRST as",
+"  \"Octo Cat (@octocat)\"; when missing only \"@octocat\" is shown.",
+"- \"description\": short neutral-English text (not translated by the app).",
+"  Keep it on a single line inside the quotes.",
+"- \"url\": optional; defaults to https://github.com/<username> when missing.",
+"",
+"Notes:",
+"- The order in the file is the order shown in the Contributors screen.",
+"- Add people by inserting a new object between the { } of the contributors",
+"  array (mind the comma after the previous entry)."
+],
+"contributors": [
+{
+"username": "Ansu216",
+"name": "Ansuman Sahu",
+"description": "Lead developer and maintainer of Ansu: the app, its extension system and the AniList integration are all his work."
+},
+{
+"username": "PiBOH",
+"name": "Pietro Bonaldo",
+"description": "Chief contributor, second only to the lead developer: he lent Ansuman his PC to build the APKs, and compiled and tested every single Ansu release."
+}
+]
+}

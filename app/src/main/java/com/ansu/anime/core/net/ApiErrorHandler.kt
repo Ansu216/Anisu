@@ -2,6 +2,8 @@ package com.ansu.anime.core.net
 
 import android.os.SystemClock
 import android.util.Log
+import com.ansu.anime.core.diagnostics.Diagnostics
+import com.ansu.anime.core.diagnostics.LogCategory
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -14,7 +16,7 @@ import kotlinx.coroutines.flow.SharedFlow
  * A screen that fails several requests at once would otherwise stack identical snackbars, so the same
  * [ApiErrorKind] is only published again after [REPEAT_WINDOW_MS].
  */
-class ApiErrorHandler {
+class ApiErrorHandler(private val diagnostics: Diagnostics? = null) {
 
     private val _events = MutableSharedFlow<ApiException>(extraBufferCapacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val events: SharedFlow<ApiException> = _events
@@ -29,6 +31,11 @@ class ApiErrorHandler {
     fun report(what: String, error: Throwable, quiet: Boolean = false): ApiException {
         val apiError = error.toApiException()
         Log.w(TAG, "$what failed: ${apiError.kind}${apiError.httpCode?.let { " (HTTP $it)" }.orEmpty()} ${apiError.message.orEmpty()}")
+        diagnostics?.log(
+            LogCategory.NETWORK,
+            "$what failed: ${apiError.kind}${apiError.httpCode?.let { " (HTTP $it)" }.orEmpty()} ${apiError.message.orEmpty()}",
+            if (apiError.kind == ApiErrorKind.UNKNOWN || apiError.kind == ApiErrorKind.PARSE) error else null,
+        )
         if (!quiet && shouldPublish(apiError.kind)) _events.tryEmit(apiError)
         return apiError
     }

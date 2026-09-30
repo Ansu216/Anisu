@@ -7,7 +7,9 @@ import com.ansu.anime.addon.StremioAddonApi
 import com.ansu.anime.anilist.AniListApi
 import com.ansu.anime.anilist.AniListAuthManager
 import com.ansu.anime.anilist.AniListRepository
+import com.ansu.anime.core.diagnostics.Diagnostics
 import com.ansu.anime.core.net.ApiErrorHandler
+import com.ansu.anime.data.contributors.ContributorsRepository
 import com.ansu.anime.data.db.AppDatabase
 import com.ansu.anime.data.prefs.AppearancePrefs
 import com.ansu.anime.data.repository.CatalogRepository
@@ -38,6 +40,9 @@ class AppContainer(context: Context) {
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    /** Ansu's black box: every crash, navigation, tap, playback and network event. */
+    val diagnostics: Diagnostics = Diagnostics(appContext)
+
     val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
         .build()
@@ -56,7 +61,7 @@ class AppContainer(context: Context) {
     val extensionRepo: ExtensionRepo = ExtensionRepo(appContext, okHttpClient)
     val addonManager: AddonManager = AddonManager(stremioAddonApi, database.installedAddonDao())
 
-    val apiErrorHandler: ApiErrorHandler = ApiErrorHandler()
+    val apiErrorHandler: ApiErrorHandler = ApiErrorHandler(diagnostics)
 
     val aniListAuthManager: AniListAuthManager = AniListAuthManager(appContext)
     val aniListApi: AniListApi = AniListApi(okHttpClient, aniListAuthManager)
@@ -82,7 +87,9 @@ class AppContainer(context: Context) {
 
     val appearancePrefs: AppearancePrefs = AppearancePrefs(appContext)
 
-    val updateManager: UpdateManager = UpdateManager(appContext, okHttpClient)
+    val contributorsRepository: ContributorsRepository = ContributorsRepository(appContext, okHttpClient, apiErrorHandler)
+
+    val updateManager: UpdateManager = UpdateManager(appContext, okHttpClient, diagnostics)
 
     init {
         // The demo source ships built into the app so there's content on

@@ -9,6 +9,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.ansu.anime.addon.AddonManager
 import com.ansu.anime.addon.model.StremioStream
 import com.ansu.anime.core.model.MediaOrigin
+import com.ansu.anime.core.diagnostics.Diagnostics
+import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.SEpisode
 import com.ansu.anime.core.util.SelectionHolder
@@ -45,6 +47,7 @@ class PlayerViewModel(
     private val addonManager: AddonManager,
     private val continueWatchingRepository: ContinueWatchingRepository,
     selectionHolder: SelectionHolder,
+    private val diagnostics: Diagnostics? = null,
 ) : ViewModel() {
 
     val player: ExoPlayer = ExoPlayer.Builder(context).build()
@@ -58,6 +61,11 @@ class PlayerViewModel(
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _uiState.value = _uiState.value.copy(isPlaying = isPlaying)
+                diagnostics?.log(LogCategory.PLAYBACK, if (isPlaying) "Playback started" else "Playback paused")
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                diagnostics?.log(LogCategory.PLAYBACK, "Player error: ${error.errorCodeName}", error)
             }
         })
         loadSources()
@@ -69,19 +77,24 @@ class PlayerViewModel(
         val episode = _uiState.value.episode
         if (anime == null || episode == null) {
             _uiState.value = _uiState.value.copy(isLoadingSources = false, error = "Nothing to play")
+            diagnostics?.log(LogCategory.PLAYBACK, "Nothing to play")
             return
         }
 
+        diagnostics?.log(LogCategory.PLAYBACK, "Resolving sources for ${anime.title} E${episode.episodeNumber}")
         viewModelScope.launch {
             val sources = runCatching { resolveSources(anime, episode) }.getOrElse {
+                diagnostics?.log(LogCategory.PLAYBACK, "Failed to load sources", it)
                 _uiState.value = _uiState.value.copy(isLoadingSources = false, error = it.message ?: "Failed to load sources")
                 return@launch
             }
 
             if (sources.isEmpty()) {
                 _uiState.value = _uiState.value.copy(isLoadingSources = false, error = "No playable sources found")
+                diagnostics?.log(LogCategory.PLAYBACK, "No playable sources found for ${anime.title} E${episode.episodeNumber}")
                 return@launch
             }
+            diagnostics?.log(LogCategory.PLAYBACK, "${sources.size} source(s) found for ${anime.title}")
 
             _uiState.value = _uiState.value.copy(isLoadingSources = false, sources = sources)
             selectSource(sources.first())
@@ -116,6 +129,7 @@ class PlayerViewModel(
     }
 
     fun selectSource(source: PlayableSource) {
+        diagnostics?.log(LogCategory.PLAYBACK, "Source selected: ${source.label} → ${source.url}")
         _uiState.value = _uiState.value.copy(selectedSource = source)
         val mediaItem = MediaItem.Builder().setUri(source.url).build()
         player.setMediaItem(mediaItem)
@@ -124,6 +138,7 @@ class PlayerViewModel(
     }
 
     fun togglePlayPause() {
+        diagnostics?.log(LogCategory.CLICK, if (player.isPlaying) "Pause pressed" else "Play pressed")
         if (player.isPlaying) player.pause() else player.play()
     }
 

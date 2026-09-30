@@ -70,6 +70,7 @@ import coil.compose.AsyncImage
 import com.ansu.anime.anilist.AniListMedia
 import com.ansu.anime.core.model.MediaOrigin
 import com.ansu.anime.core.model.SAnime
+import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.core.model.SEpisode
 import com.ansu.anime.core.util.SynopsisBlock
 import com.ansu.anime.core.util.formatEpisodeNumber
@@ -114,6 +115,11 @@ fun DetailsScreen(
     // Episodes that have not aired yet: shown as compact rows and not playable.
     val upcomingIds = remember(state.episodes) { upcomingEpisodeIds(state.episodes) }
 
+    // One line per opened title, so an exported report shows what the user was looking at.
+    LaunchedEffect(anime?.id) {
+        anime?.let { container.diagnostics.log(LogCategory.CLICK, "Details opened: ${it.title}") }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(AnsuColors.Background)) {
         LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
             item {
@@ -134,13 +140,24 @@ fun DetailsScreen(
                 PlayLikeRow(
                     playLabel = firstEpisode?.let { "Play Ep. ${it.episodeNumber.formatEpisodeNumber()}" } ?: "No episodes yet",
                     playEnabled = firstEpisode != null,
-                    onPlay = { firstEpisode?.let(onEpisodeSelected) },
+                    onPlay = {
+                        firstEpisode?.let { episode ->
+                            container.diagnostics.log(LogCategory.CLICK, "Play pressed: ${anime?.title} E${episode.episodeNumber}")
+                            onEpisodeSelected(episode)
+                        }
+                    },
                     isLiked = state.liked,
-                    onToggleLike = { viewModel.toggleFavourite() },
+                    onToggleLike = {
+                        container.diagnostics.log(LogCategory.CLICK, "Favourite toggled: ${anime?.title}")
+                        viewModel.toggleFavourite()
+                    },
                     // Signed in it edits the AniList list; signed out it edits the on-device list.
                     showListButton = anime?.anilistId != null,
                     listStatus = state.shownListStatus,
-                    onSetListStatus = { viewModel.setListStatus(it) },
+                    onSetListStatus = {
+                        container.diagnostics.log(LogCategory.CLICK, "List status set to $it: ${anime?.title}")
+                        viewModel.setListStatus(it)
+                    },
                 )
             }
 
@@ -199,11 +216,18 @@ fun DetailsScreen(
                 val visible = groups[groupIndex]
                 // Upcoming episodes with no announced date carry no information; they collapse into one line.
                 val undated = visible.filter { it.id in upcomingIds && it.airDate.isNullOrBlank() }
-                items(visible.filterNot { it in undated }, key = { it.id }) { episode ->
+                itemsIndexed(visible.filterNot { it in undated }, key = { index, episode -> "ep:${episode.id}#$index" }) { _, episode ->
                     if (episode.id in upcomingIds) {
                         UpcomingEpisodeRow(episode)
                     } else {
-                        EpisodeRow(episode = episode, synopsis = episode.description, onClick = { onEpisodeSelected(episode) })
+                        EpisodeRow(
+                            episode = episode,
+                            synopsis = episode.description,
+                            onClick = {
+                                container.diagnostics.log(LogCategory.CLICK, "Episode selected: ${anime?.title} E${episode.episodeNumber}")
+                                onEpisodeSelected(episode)
+                            },
+                        )
                         androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
                     }
                 }
@@ -216,7 +240,7 @@ fun DetailsScreen(
                 item { DetailsSectionHeader("More from this Show") }
                 item {
                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(franchise, key = { it.media.id }) { relation ->
+                        itemsIndexed(franchise, key = { index, relation -> "fr:${relation.media.id}#$index" }) { _, relation ->
                             RelatedPoster(
                                 media = relation.media,
                                 badge = relation.label,
@@ -234,7 +258,7 @@ fun DetailsScreen(
                 item { DetailsSectionHeader("Characters") }
                 item {
                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        items(characters, key = { it.id }) { character ->
+                        itemsIndexed(characters, key = { index, character -> "ch:${character.id}#$index" }) { _, character ->
                             PersonCard(
                                 imageUrl = character.imageUrl,
                                 name = character.name,
@@ -250,7 +274,7 @@ fun DetailsScreen(
                 item { DetailsSectionHeader("Staff") }
                 item {
                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        items(staff, key = { it.id }) { member ->
+                        itemsIndexed(staff, key = { index, member -> "st:${member.id}#$index" }) { _, member ->
                             PersonCard(
                                 imageUrl = member.imageUrl,
                                 name = member.name,
@@ -266,7 +290,7 @@ fun DetailsScreen(
                 item { DetailsSectionHeader("More Like This") }
                 item {
                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(related, key = { it.id }) { media ->
+                        itemsIndexed(related, key = { index, media -> "rl:${media.id}#$index" }) { _, media ->
                             RelatedPoster(
                                 media = media,
                                 onClick = {

@@ -1,16 +1,25 @@
 package com.ansu.anime.ui.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.ui.about.AboutScreen
+import com.ansu.anime.ui.about.UpdatesScreen
 import com.ansu.anime.ui.appearance.AppearanceScreen
+import com.ansu.anime.ui.components.LocalNavBarBlur
 import com.ansu.anime.ui.components.LocalNavBarFrostiness
 import com.ansu.anime.ui.components.LocalNavBarRoundness
+import com.ansu.anime.ui.contributors.ContributorsScreen
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.addons.AddonsScreen
@@ -23,6 +32,7 @@ import com.ansu.anime.ui.player.PlayerScreen
 import com.ansu.anime.ui.schedule.ScheduleScreen
 import com.ansu.anime.ui.search.SearchScreen
 import com.ansu.anime.ui.settings.SettingsScreen
+import com.ansu.anime.ui.system.SystemScreen
 
 object Dest {
     const val HOME = "home"
@@ -31,6 +41,9 @@ object Dest {
     const val SETTINGS = "settings"
     const val APPEARANCE = "appearance"
     const val ABOUT = "about"
+    const val UPDATES = "updates"
+    const val CONTRIBUTORS = "contributors"
+    const val SYSTEM = "system"
     const val MY_SPACE = "my_space"
     const val DETAILS = "details"
     const val PLAYER = "player"
@@ -46,11 +59,31 @@ val bottomNavDestinations = listOf(Dest.HOME, Dest.SEARCH, Dest.SCHEDULE, Dest.M
 fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rememberNavController()) {
     val navBarRoundness by container.appearancePrefs.navBarRoundness.collectAsStateWithLifecycle()
     val navBarFrostiness by container.appearancePrefs.navBarFrostiness.collectAsStateWithLifecycle()
+    val navBarBlur by container.appearancePrefs.navBarBlur.collectAsStateWithLifecycle()
+
+    // Every route change is written to the diagnostics log, so an exported report shows where the
+    // user actually went before a problem happened.
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    LaunchedEffect(backStackEntry) {
+        backStackEntry?.destination?.route?.let { route ->
+            container.diagnostics.log(LogCategory.NAVIGATION, "→ $route")
+        }
+    }
+
     CompositionLocalProvider(
         LocalNavBarRoundness provides navBarRoundness,
         LocalNavBarFrostiness provides navBarFrostiness,
+        LocalNavBarBlur provides navBarBlur,
     ) {
-    NavHost(navController = navController, startDestination = Dest.HOME) {
+    // Screen transitions are about half the platform default, which makes the whole app feel snappier.
+    NavHost(
+        navController = navController,
+        startDestination = Dest.HOME,
+        enterTransition = { fadeIn(animationSpec = tween(durationMillis = 175)) },
+        exitTransition = { fadeOut(animationSpec = tween(durationMillis = 150)) },
+        popEnterTransition = { fadeIn(animationSpec = tween(durationMillis = 150)) },
+        popExitTransition = { fadeOut(animationSpec = tween(durationMillis = 150)) },
+    ) {
         composable(Dest.HOME) {
             HomeScreen(
                 container = container,
@@ -99,6 +132,15 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         }
         composable(Dest.ABOUT) {
             AboutScreen(container = container, navController = navController)
+        }
+        composable(Dest.UPDATES) {
+            UpdatesScreen(container = container, navController = navController)
+        }
+        composable(Dest.CONTRIBUTORS) {
+            ContributorsScreen(container = container, navController = navController)
+        }
+        composable(Dest.SYSTEM) {
+            SystemScreen(container = container, navController = navController)
         }
         composable(Dest.MY_SPACE) {
             MySpaceScreen(

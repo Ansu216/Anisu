@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +36,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.ansu.anime.anilist.AniListFeed
+import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.AppBottomBar
@@ -67,6 +69,11 @@ fun HomeScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val trending = state.feed(AniListFeed.TRENDING_NOW).items
+    // Every way into a title goes through here, so one tap line is logged instead of five.
+    val selectAnime: (SAnime) -> Unit = { anime ->
+        container.diagnostics.log(LogCategory.CLICK, "Anime opened: ${anime.title}")
+        onAnimeSelected(anime)
+    }
 
     Scaffold(
         containerColor = AnsuColors.Background,
@@ -100,7 +107,7 @@ fun HomeScreen(
                 item {
                     HeroCarousel(
                         items = heroSource,
-                        onClick = onAnimeSelected,
+                        onClick = selectAnime,
                         logoFor = { id -> container.artworkRepository.get(id).logoUrl },
                         posterFor = { id -> container.artworkRepository.get(id).posterUrl },
                         onToggleFavourite = { anime ->
@@ -163,13 +170,13 @@ fun HomeScreen(
                 FeedShelf(
                     row = state.feed(AniListFeed.TRENDING_NOW),
                     onLoadMore = { viewModel.loadMore(AniListFeed.TRENDING_NOW) },
-                    onClick = onAnimeSelected,
+                    onClick = selectAnime,
                 )
             }
 
             if (state.topPicks.isNotEmpty()) {
                 item { ShelfHeader("Top Picks For You") }
-                item { TopPicksGrid(items = state.topPicks.take(9), onClick = onAnimeSelected) }
+                item { TopPicksGrid(items = state.topPicks.take(9), onClick = selectAnime) }
             }
 
             // Every other endless row loads its first page when it scrolls into view.
@@ -180,14 +187,16 @@ fun HomeScreen(
                 FeedShelf(
                     row = row,
                     onLoadMore = { viewModel.loadMore(row.feed) },
-                    onClick = onAnimeSelected,
+                    onClick = selectAnime,
                 )
             }
 
-            items(state.shelves, key = { it.title }) { shelf ->
+            // Two shelves can share a title (the same addon serving both series and movies, or an
+            // extension and an addon with the same name), so the key is the title plus its position.
+            itemsIndexed(state.shelves, key = { index, shelf -> "${shelf.title}#$index" }) { _, shelf ->
                 Column {
                     ShelfHeader(shelf.title)
-                    PosterRow(items = shelf.items, onClick = onAnimeSelected)
+                    PosterRow(items = shelf.items, onClick = selectAnime)
                 }
             }
 

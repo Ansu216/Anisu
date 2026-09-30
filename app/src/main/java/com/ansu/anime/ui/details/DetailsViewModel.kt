@@ -82,7 +82,11 @@ class DetailsViewModel(
                     current.anilistId?.let { id -> aniListRepository.getMediaDetails(id) }
                 }
                 val meta = metaDeferred.await()
-                val episodes = episodesDeferred.await().map { episode ->
+                // Real sources occasionally repeat an episode or hand back a blank id. Compose keys the
+                // episode list by that id, and a duplicate would crash the page as soon as it scrolled,
+                // so give every episode a unique id and drop the repeats here.
+                val loaded = episodesDeferred.await()
+                val episodes = loaded.map { episode ->
                     val number = episode.episodeNumber.takeIf { it % 1f == 0f }?.toInt()
                     val info = number?.let { meta[it] } ?: return@map episode
                     episode.copy(
@@ -101,9 +105,14 @@ class DetailsViewModel(
                 if (details != null) {
                     runCatching { localListRepository.backfillDetails(details.id, details.format, details.year) }
                 }
+                val uniqueEpisodes = episodes
+                    .mapIndexed { index, episode ->
+                        if (episode.id.isBlank()) episode.copy(id = "${current.id}-ep-${episode.episodeNumber}-$index") else episode
+                    }
+                    .distinctBy { it.id }
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    episodes = episodes,
+                    episodes = uniqueEpisodes,
                     aniListDetails = details,
                     isFavourite = details?.isFavourite ?: false,
                     remoteListStatus = details?.listStatus,
@@ -136,7 +145,7 @@ class DetailsViewModel(
                 extensionManager.getSource(origin.sourceId)?.getEpisodeList(anime).orEmpty()
 
             is MediaOrigin.Addon -> {
-                val addon = addonManager.installedAddons.first().find { it.id == origin.addonId } ?: return@coroutineScope emptyList()
+                val addon = addonManager.installedAddons.first().firstOrNull { it.id == origin.addonId } ?: return@coroutineScope emptyList()
                 val meta = addonManager.getMeta(addon, origin.type, origin.stremioId)
                 meta?.videos.orEmpty().map { video ->
                     SEpisode(

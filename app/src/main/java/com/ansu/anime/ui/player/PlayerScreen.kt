@@ -39,6 +39,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     container.addonManager,
                     container.continueWatchingRepository,
                     container.selectionHolder,
+                    container.diagnostics,
                 )
             }
         },

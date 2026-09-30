@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.appearance
 
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -61,6 +62,7 @@ private val previewBackdropColors = listOf(
 fun AppearanceScreen(container: AppContainer, navController: NavHostController) {
     val roundness by container.appearancePrefs.navBarRoundness.collectAsStateWithLifecycle()
     val frostiness by container.appearancePrefs.navBarFrostiness.collectAsStateWithLifecycle()
+    val blur by container.appearancePrefs.navBarBlur.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -104,7 +106,7 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                         )
                     }
                 }
-                NavBarSurface(currentRoute = Dest.HOME, roundness = roundness, frostiness = frostiness)
+                NavBarSurface(currentRoute = Dest.HOME, roundness = roundness, frostiness = frostiness, blur = blur)
             }
 
             // ---- Preset bars with increasing roundness ----
@@ -125,51 +127,70 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
             }
 
             // ---- Fine control ----
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text("Roundness", style = MaterialTheme.typography.titleSmall)
-                Text("${(roundness * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary)
-            }
-            Slider(
+            SettingSlider(
+                title = "Roundness",
                 value = roundness,
                 onValueChange = { container.appearancePrefs.setNavBarRoundness(it) },
-                valueRange = 0f..1f,
-                colors = SliderDefaults.colors(
-                    thumbColor = AnsuColors.Accent,
-                    activeTrackColor = AnsuColors.Accent,
-                    inactiveTrackColor = AnsuColors.AccentSoft,
-                ),
             )
 
-            // ---- Frostiness: how opaque/frosted the bar background is ----
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text("Frostiness", style = MaterialTheme.typography.titleSmall)
-                Text("${(frostiness * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary)
-            }
-            Slider(
+            // ---- Frostiness (Opacity): how opaque/frosted the bar background is ----
+            SettingSlider(
+                title = "Frostiness (Opacity)",
                 value = frostiness,
                 onValueChange = { container.appearancePrefs.setNavBarFrostiness(it) },
-                valueRange = 0f..1f,
-                colors = SliderDefaults.colors(
-                    thumbColor = AnsuColors.Accent,
-                    activeTrackColor = AnsuColors.Accent,
-                    inactiveTrackColor = AnsuColors.AccentSoft,
-                ),
             )
+            Text(
+                text = "0% is nearly clear glass; 100% is a fully opaque bar.",
+                style = MaterialTheme.typography.labelSmall,
+                color = AnsuColors.TextTertiary,
+            )
+
+            // ---- Blur: a real platform blur on Android 12+, frost only below ----
+            SettingSlider(
+                title = "Blur",
+                value = blur,
+                onValueChange = { container.appearancePrefs.setNavBarBlur(it) },
+            )
+            Text(
+                text = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    "Softens the glass behind the bar."
+                } else {
+                    "Real blur needs Android 12 or newer; this device keeps the frosted look."
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = AnsuColors.TextTertiary,
+            )
+
             TextButton(
                 onClick = {
                     container.appearancePrefs.setNavBarRoundness(AppearancePrefs.DEFAULT_NAV_ROUNDNESS)
                     container.appearancePrefs.setNavBarFrostiness(AppearancePrefs.DEFAULT_NAV_FROSTINESS)
+                    container.appearancePrefs.setNavBarBlur(AppearancePrefs.DEFAULT_NAV_BLUR)
                 },
                 modifier = Modifier.align(Alignment.End),
             ) { Text("Reset to default") }
         }
     }
+}
+
+@Composable
+private fun SettingSlider(title: String, value: Float, onValueChange: (Float) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        Text("${(value * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary)
+    }
+    Slider(
+        value = value,
+        onValueChange = onValueChange,
+        valueRange = 0f..1f,
+        colors = SliderDefaults.colors(
+            thumbColor = AnsuColors.Accent,
+            activeTrackColor = AnsuColors.Accent,
+            inactiveTrackColor = AnsuColors.AccentSoft,
+        ),
+    )
 }

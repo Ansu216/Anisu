@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Settings → System → Export logs produces a complete diagnostic report.** Ansu now keeps a local black box (`Diagnostics`) that records every crash (with its stack trace), playback event, tap, navigation move, update check and network failure, buffered for the session and appended to a rotating file so it survives a crash and a restart. The new **Settings → System** screen shows the log size and the last captured crash, exports the whole thing as one shareable text file (through the app's existing `FileProvider` and the system share sheet) together with device, build and memory details, and can clear the stored log. **Constraint:** the report is generated on-device only and is never uploaded; the user has to share it explicitly, and the log is capped at 512 KB per file with one rotated backup.
+
+- **A new Contributors screen credits the people behind Ansu and is read live from the repository.** `contributorsansu.json` at the root of the project (`Ansu216/Anisu`) lists each person; the screen fetches it when it opens, with the copy bundled in `assets/` used only as an offline fallback, so a name can be added or fixed without shipping a new APK. Lead developer Ansuman Sahu (`@Ansu216`) is listed first, followed by `@PiBOH` (Pietro Bonaldo), who compiled and tested every release on his own PC. Tapping a card opens the person's GitHub profile.
+
+- **About and the updater are rebuilt as two focused screens.** About now leads with the app identity and installed version, then quick actions into Updates and Contributors, the lead-developer card and the repository links. The new **Updates** screen is a proper store page: the installed build, a channel selector with an explanation, the automatic-check switch, a status card (checking / up to date / failed) and, when there is one, an update card with the release notes, a download progress bar and a one-tap *Download & install*. Both stay inside the app's dark glass theme.
+
+- **Appearance has a new Blur control for the floating bar.** It applies a real platform blur to the bar's glass layer on Android 12+ and is ignored on Android 8–11, which have no such effect, so the bar simply keeps its frosted look there.
 
 - **Anime titles now show in their own poster lettering on the home hero and the details banner.** Until now the title was plain white text. The new `ArtworkRepository` asks the ani.zip service (already used for episode thumbnails) for the show's title logo by AniList id and caches the answer for the session, so the carousel and the details page never ask twice. `TitleLogo` draws the logo, and falls back to the old text title when a show has no logo, the image fails to load, or the lookup fails. **Constraint:** the logo comes from ani.zip's artwork list, so a show it has no logo for keeps the text title; no logo is drawn while its lookup is still running, to avoid the text flashing before the lettering appears.
 
@@ -47,6 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The floating bar's "Frostiness" control is now "Frostiness (Opacity)" and can reach a fully opaque bar.** The slider used to stop at a 95% tint; it now maps 0–100% to 5%–100% background opacity, so the bar can be made completely solid while its icons stay crisp. "Reset to default" also clears the new blur value.
+
+- **Screen transitions are about 50% faster.** The navigation graph now uses explicit short fades (175 ms in, 150 ms out) instead of the platform default, which makes moving between tabs and screens noticeably snappier.
+
+- **Updates are downloaded through a resumable `.part` file.** The updater streams the APK into `ansu-update-<version>.apk.part` and only renames it to `.apk` — and hands it to the system installer — once it is complete, resuming an interrupted download with an HTTP `Range` request when the server supports it. Stale `.part`/`.apk` files from older versions are cleaned up. **Constraint:** the APK still comes only from the official `Ansu216/Anisu` repository (`releases/latest` and the `apk-nightly` branch), so Android's signature check guarantees an update can only ever be Ansu itself.
 
 - **The home hero now uses a sharper poster when one is available.** The hero stretched AniList's cover (its largest size is only about 460 px wide) across the whole screen width, so it looked soft. `ArtworkRepository` now also reads the portrait poster from ani.zip (`AnimeArtwork.posterUrl`, cached with the logo, no extra request) and `HeroCarousel` shows it in place of the AniList cover. **Constraint:** if ani.zip has no poster for a show, or the image fails to load, that page falls back to the AniList cover exactly as before.
 
@@ -76,6 +88,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The bottom navigation bar is now a compact, icon-only floating pill.** It used to span the screen width with a label under every icon; it now wraps four 70dp x 40dp slots with 24dp icons and no labels (content descriptions are kept for accessibility), and sits closer to the bottom edge. The current tab is marked with a translucent glass pill instead of only a tint change. **Constraint:** the Appearance roundness slider still drives both the bar and the highlight shape, and the Settings live preview uses the same composable.
 
 ### Fixed
+
+- **The details page no longer crashes when it is scrolled.** The episode list and the character, staff, related and "More from this Show" rows key every item by its id, and AniList (and some sources) can return the same node twice, which made a `LazyColumn`/`LazyRow` throw `Key … was already used` the moment the repeated row scrolled into view. The lists are now de-duplicated (`distinctBy`) and keyed by id **plus position**, and the view model drops repeated or id-less episodes, so the page scrolls no matter what the API answers. **Constraint:** the same fix covers episodes from an extension or addon, whose ids the app does not control.
+
+- **The home screen can no longer crash when two shelves share a title.** Shelves are keyed by title, and the same addon serving both series and movies (or an extension and an addon with the same name) produced two identical keys; the key now includes the shelf's position.
+
+- **The app can no longer be taken down at startup by the AniList token store.** `EncryptedSharedPreferences.create` can throw on some ROMs and after a backup restore; the `runCatching` fallback to plain prefs was missing again and is restored, so `Application.onCreate` can never crash there.
+
+- **Unsafe `!!` casts on AniList responses are gone.** The viewer, list progress/status and schedule entries are now read defensively, so a schema change or a partial payload degrades the extra data instead of throwing.
 
 - **The details page lists every episode of a show instead of stopping at 12.** The built-in demo source returned a hard-coded 12 episodes for every title. It now asks AniList for the real count: the total for finished shows, or the number already aired for shows still running (so a show like One Piece lists all aired episodes). **Constraint:** if AniList cannot report a count, the list falls back to 12.
 

@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.ansu.anime.data.prefs.AppearancePrefs
@@ -48,13 +49,22 @@ private val barItems = listOf(
 val LocalNavBarRoundness = compositionLocalOf { AppearancePrefs.DEFAULT_NAV_ROUNDNESS }
 
 /**
- * Current nav bar frostiness (0f clear … 1f heavily frosted), provided next to
+ * Current nav bar frostiness / opacity (0f clear … 1f fully opaque), provided next to
  * [LocalNavBarRoundness] so the real bar follows the setting live.
  */
 val LocalNavBarFrostiness = compositionLocalOf { AppearancePrefs.DEFAULT_NAV_FROSTINESS }
 
-/** Maps frostiness 0..1 to the background tint opacity: 0.1 (see-through) … 0.95 (almost solid). */
-fun navBarTintAlpha(frostiness: Float): Float = 0.1f + frostiness.coerceIn(0f, 1f) * 0.85f
+/**
+ * Current nav bar blur level (0f none … 1f maximum), provided next to the other two so the bar
+ * follows the setting live. Real blur needs Android 12+; below that it degrades to frost.
+ */
+val LocalNavBarBlur = compositionLocalOf { AppearancePrefs.DEFAULT_NAV_BLUR }
+
+/** Maps frostiness/opacity 0..1 to the background tint opacity: 0.05 (nearly see-through) … 1.0 (solid). */
+fun navBarTintAlpha(frostiness: Float): Float = 0.05f + frostiness.coerceIn(0f, 1f) * 0.95f
+
+/** Maps blur 0..1 to a blur radius in dp (0 … 24dp). */
+fun navBarBlurRadius(blur: Float): Dp = (blur.coerceIn(0f, 1f) * 24f).dp
 
 /** Maps roundness 0..1 to a corner radius that scales with the bar's own height (50% = full pill). */
 fun navBarShape(roundness: Float): RoundedCornerShape =
@@ -79,6 +89,7 @@ fun AppBottomBar(navController: NavHostController, currentRoute: String?) {
             currentRoute = currentRoute,
             roundness = LocalNavBarRoundness.current,
             frostiness = LocalNavBarFrostiness.current,
+            blur = LocalNavBarBlur.current,
             onItemClick = { route ->
                 navController.navigate(route) {
                     popUpTo(Dest.HOME) { saveState = true }
@@ -101,6 +112,7 @@ fun NavBarSurface(
     roundness: Float,
     frostiness: Float,
     modifier: Modifier = Modifier,
+    blur: Float = AppearancePrefs.DEFAULT_NAV_BLUR,
     onItemClick: ((String) -> Unit)? = null,
 ) {
     val shape = navBarShape(roundness)
@@ -108,6 +120,7 @@ fun NavBarSurface(
         modifier = modifier,
         shape = shape,
         tintAlpha = navBarTintAlpha(frostiness),
+        blurRadius = navBarBlurRadius(blur),
     ) {
         Row(modifier = Modifier.padding(5.dp)) {
             barItems.forEach { item ->
