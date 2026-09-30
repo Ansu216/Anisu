@@ -40,19 +40,29 @@ class LocalListRepository(private val dao: LocalListDao) {
 
     fun observe(anilistId: Int): Flow<LocalListEntity?> = dao.observe(anilistId)
 
+    /**
+     * Fills in what a saved show is missing (its format, and its year if none was stored) once the
+     * details page has loaded them. Does nothing for a show that is not saved on this device.
+     */
+    suspend fun backfillDetails(anilistId: Int, format: String?, year: Int?) {
+        if (dao.get(anilistId) == null) return
+        if (format != null) dao.setFormat(anilistId, format)
+        if (year != null) dao.fillYear(anilistId, year)
+    }
+
     /** Flips the heart. Returns the new state, or false when the show has no AniList id. */
-    suspend fun toggleFavourite(anime: SAnime, episodes: Int? = null): Boolean {
+    suspend fun toggleFavourite(anime: SAnime, episodes: Int? = null, format: String? = null): Boolean {
         val id = anime.anilistId ?: return false
-        val current = dao.get(id) ?: anime.toEntity(episodes)
+        val current = dao.get(id) ?: anime.toEntity(episodes, format)
         val updated = current.copy(isFavourite = !current.isFavourite, updatedAt = System.currentTimeMillis())
         save(updated)
         return updated.isFavourite
     }
 
     /** Puts the show in a list, or takes it out of every list when [status] is null. */
-    suspend fun setStatus(anime: SAnime, status: String?, episodes: Int? = null) {
+    suspend fun setStatus(anime: SAnime, status: String?, episodes: Int? = null, format: String? = null) {
         val id = anime.anilistId ?: return
-        val current = dao.get(id) ?: anime.toEntity(episodes)
+        val current = dao.get(id) ?: anime.toEntity(episodes, format)
         save(
             current.copy(
                 status = status,
@@ -87,7 +97,7 @@ class LocalListRepository(private val dao: LocalListDao) {
         if (!entity.isFavourite && entity.status == null) dao.remove(entity.anilistId) else dao.upsert(entity)
     }
 
-    private fun SAnime.toEntity(episodes: Int?) = LocalListEntity(
+    private fun SAnime.toEntity(episodes: Int?, format: String? = null) = LocalListEntity(
         anilistId = anilistId ?: 0,
         title = title,
         posterUrl = posterUrl,
@@ -101,6 +111,7 @@ class LocalListRepository(private val dao: LocalListDao) {
         status = null,
         progress = 0,
         updatedAt = System.currentTimeMillis(),
+        format = format,
     )
 
     private fun LocalListEntity.toMedia() = AniListMedia(
@@ -113,5 +124,6 @@ class LocalListRepository(private val dao: LocalListDao) {
         averageScore = averageScore,
         episodes = episodes,
         year = year,
+        format = format,
     )
 }

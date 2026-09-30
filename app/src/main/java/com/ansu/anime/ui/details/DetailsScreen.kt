@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -51,8 +52,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,14 +71,17 @@ import com.ansu.anime.anilist.AniListMedia
 import com.ansu.anime.core.model.MediaOrigin
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.SEpisode
+import com.ansu.anime.core.util.SynopsisBlock
 import com.ansu.anime.core.util.formatEpisodeNumber
+import com.ansu.anime.core.util.parseSynopsis
 import com.ansu.anime.data.repository.ListStatus
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.components.BottomScrim
 import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.components.GenreChip
 import com.ansu.anime.ui.components.PersonCard
+import com.ansu.anime.ui.components.PosterGlassLabel
 import com.ansu.anime.ui.components.StatItem
+import com.ansu.anime.ui.components.TitleLogo
 import com.ansu.anime.ui.theme.AnsuColors
 
 /**
@@ -94,7 +100,7 @@ fun DetailsScreen(
     val viewModel: DetailsViewModel = viewModel(
         factory = viewModelFactory {
             initializer {
-                DetailsViewModel(container.extensionManager, container.addonManager, container.aniListRepository, container.episodeMetadataRepository, container.localListRepository, container.selectionHolder)
+                DetailsViewModel(container.extensionManager, container.addonManager, container.aniListRepository, container.episodeMetadataRepository, container.localListRepository, container.artworkRepository, container.selectionHolder)
             }
         },
     )
@@ -105,19 +111,26 @@ fun DetailsScreen(
     var selectedGroup by remember(anime?.id) { mutableIntStateOf(0) }
 
     val details = state.aniListDetails
+    // Episodes that have not aired yet: shown as compact rows and not playable.
+    val upcomingIds = remember(state.episodes) { upcomingEpisodeIds(state.episodes) }
 
     Box(modifier = Modifier.fillMaxSize().background(AnsuColors.Background)) {
         LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
             item {
+                // Horizontal art first (16:9 backdrop, then AniList's banner, then the wide strip); the
+                // vertical poster is only the last resort because it never fits the wide frame.
                 DetailsHero(
                     title = anime?.title.orEmpty(),
-                    imageUrl = anime?.bannerUrl ?: details?.bannerUrl ?: anime?.posterUrl,
+                    imageUrl = state.artwork.backdropUrl ?: anime?.bannerUrl ?: details?.bannerUrl
+                        ?: state.artwork.bannerUrl ?: anime?.posterUrl,
+                    logoUrl = state.artwork.logoUrl,
+                    lookupDone = state.artworkLoaded,
                     onBack = { navController.popBackStack() },
                 )
             }
 
             item {
-                val firstEpisode = state.episodes.firstOrNull()
+                val firstEpisode = state.episodes.firstOrNull { it.id !in upcomingIds }
                 PlayLikeRow(
                     playLabel = firstEpisode?.let { "Play Ep. ${it.episodeNumber.formatEpisodeNumber()}" } ?: "No episodes yet",
                     playEnabled = firstEpisode != null,
@@ -149,26 +162,14 @@ fun DetailsScreen(
                 }
             }
 
-            val synopsis = (details?.description ?: anime?.description)?.replace(Regex("<[^>]*>"), "")
-            if (!synopsis.isNullOrBlank()) {
+            val synopsisBlocks = parseSynopsis(details?.description ?: anime?.description)
+            if (synopsisBlocks.isNotEmpty()) {
                 item {
-                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-                        Text(
-                            text = synopsis,
-                            color = AnsuColors.TextSecondary,
-                            fontSize = 14.sp,
-                            lineHeight = 21.sp,
-                            maxLines = if (expandSynopsis) Int.MAX_VALUE else 4,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = if (expandSynopsis) "Show Less" else "Read More",
-                            color = AnsuColors.TextPrimary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(top = 6.dp).clickable { expandSynopsis = !expandSynopsis },
-                        )
-                    }
+                    Synopsis(
+                        blocks = synopsisBlocks,
+                        expanded = expandSynopsis,
+                        onToggle = { expandSynopsis = !expandSynopsis },
+                    )
                 }
             }
 
@@ -195,9 +196,37 @@ fun DetailsScreen(
                         )
                     }
                 }
-                items(groups[groupIndex], key = { it.id }) { episode ->
-                    EpisodeRow(episode = episode, synopsis = episode.description, onClick = { onEpisodeSelected(episode) })
-                    androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
+                val visible = groups[groupIndex]
+                // Upcoming episodes with no announced date carry no information; they collapse into one line.
+                val undated = visible.filter { it.id in upcomingIds && it.airDate.isNullOrBlank() }
+                items(visible.filterNot { it in undated }, key = { it.id }) { episode ->
+                    if (episode.id in upcomingIds) {
+                        UpcomingEpisodeRow(episode)
+                    } else {
+                        EpisodeRow(episode = episode, synopsis = episode.description, onClick = { onEpisodeSelected(episode) })
+                        androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
+                    }
+                }
+                if (undated.isNotEmpty()) {
+                    item { UndatedUpcomingRow(undated) }
+                }
+            }
+
+            details?.franchise?.takeIf { it.isNotEmpty() }?.let { franchise ->
+                item { DetailsSectionHeader("More from this Show") }
+                item {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        items(franchise, key = { it.media.id }) { relation ->
+                            RelatedPoster(
+                                media = relation.media,
+                                badge = relation.label,
+                                onClick = {
+                                    container.selectionHolder.selectAnime(relation.media.toSAnime())
+                                    navController.navigate(com.ansu.anime.ui.navigation.Dest.DETAILS)
+                                },
+                            )
+                        }
+                    }
                 }
             }
 
@@ -257,17 +286,41 @@ fun DetailsScreen(
     }
 }
 
-/** Banner hero with back button and overlaid title — sized like the reference (320dp). */
+/**
+ * Banner hero with back button and the title lettering. The frame is 16:9, so a horizontal
+ * banner/backdrop fills it edge to edge without being cropped. The title is the show's logo when
+ * one exists and plain text otherwise.
+ */
 @Composable
-private fun DetailsHero(title: String, imageUrl: String?, onBack: () -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
+private fun DetailsHero(title: String, imageUrl: String?, logoUrl: String?, lookupDone: Boolean, onBack: () -> Unit) {
+    // Taller than the art's 16:9 so the fade has room; the banner melts into the page like the home hero.
+    Box(modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f)) {
         AsyncImage(
             model = imageUrl,
             contentDescription = title,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize().background(AnsuColors.BackgroundElevated),
         )
-        BottomScrim(modifier = Modifier.fillMaxSize())
+        // Long, eased fade into the page background (no hard bottom edge), same colour the home hero ends in.
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    0.35f to Color.Black.copy(alpha = 0.08f),
+                    0.6f to AnsuColors.Background.copy(alpha = 0.55f),
+                    0.82f to AnsuColors.Background.copy(alpha = 0.92f),
+                    1f to AnsuColors.Background,
+                ),
+            ),
+        )
+        // Keeps the status-bar icons legible over bright artwork, as on the home hero.
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(96.dp)
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.4f), Color.Transparent))),
+        )
         IconButton(
             onClick = onBack,
             modifier = Modifier
@@ -279,15 +332,78 @@ private fun DetailsHero(title: String, imageUrl: String?, onBack: () -> Unit) {
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = AnsuColors.TextPrimary)
         }
-        Text(
-            text = title.uppercase(),
-            color = AnsuColors.TextPrimary,
+        TitleLogo(
+            title = title,
+            logoUrl = logoUrl,
+            lookupDone = lookupDone,
+            alignment = Alignment.CenterStart,
+            textAlign = TextAlign.Start,
             fontSize = 24.sp,
-            fontWeight = FontWeight.ExtraBold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+            uppercase = true,
+            maxLogoWidth = 260.dp,
+            maxLogoHeight = 72.dp,
             modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 20.dp, vertical = 16.dp),
         )
+    }
+}
+
+/**
+ * The synopsis laid out as short paragraphs, labelled lists and a credit line instead of one wall of
+ * text. Collapsed it shows the opening paragraph (4 lines); expanded it shows everything with gaps.
+ */
+@Composable
+private fun Synopsis(blocks: List<SynopsisBlock>, expanded: Boolean, onToggle: () -> Unit) {
+    val canExpand = blocks.size > 1 || (blocks.first() as? SynopsisBlock.Paragraph)?.text.orEmpty().length > 200
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+        if (!expanded) {
+            Text(
+                text = when (val first = blocks.first()) {
+                    is SynopsisBlock.Paragraph -> first.text
+                    is SynopsisBlock.Label -> first.text
+                    is SynopsisBlock.Bullet -> first.text
+                    is SynopsisBlock.Source -> first.text
+                },
+                color = AnsuColors.TextSecondary,
+                fontSize = 14.sp,
+                lineHeight = 21.sp,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+            )
+        } else {
+            blocks.forEachIndexed { index, block ->
+                val previous = blocks.getOrNull(index - 1)
+                when (block) {
+                    is SynopsisBlock.Paragraph -> {
+                        if (previous != null) Spacer(Modifier.height(12.dp))
+                        Text(text = block.text, color = AnsuColors.TextSecondary, fontSize = 14.sp, lineHeight = 21.sp)
+                    }
+                    is SynopsisBlock.Label -> {
+                        if (previous != null) Spacer(Modifier.height(18.dp))
+                        Text(text = block.text, color = AnsuColors.TextPrimary, fontSize = 14.sp, lineHeight = 21.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    is SynopsisBlock.Bullet -> {
+                        Spacer(Modifier.height(if (previous is SynopsisBlock.Bullet) 6.dp else 8.dp))
+                        Row {
+                            Text(text = "\u2022", color = AnsuColors.TextTertiary, fontSize = 14.sp, lineHeight = 21.sp, modifier = Modifier.width(16.dp))
+                            Text(text = block.text, color = AnsuColors.TextSecondary, fontSize = 14.sp, lineHeight = 21.sp, modifier = Modifier.weight(1f))
+                        }
+                    }
+                    is SynopsisBlock.Source -> {
+                        Spacer(Modifier.height(14.dp))
+                        Text(text = block.text, color = AnsuColors.TextTertiary, fontSize = 12.sp, lineHeight = 18.sp, fontStyle = FontStyle.Italic)
+                    }
+                }
+            }
+        }
+        if (canExpand) {
+            Text(
+                text = if (expanded) "Show Less" else "Read More",
+                color = AnsuColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 10.dp).clickable(onClick = onToggle),
+            )
+        }
     }
 }
 
@@ -442,19 +558,7 @@ private fun EpisodeRow(episode: SEpisode, synopsis: String?, onClick: () -> Unit
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(AnsuColors.SurfaceGlassBase)
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                ) {
-                    Text(
-                        text = "E${episode.episodeNumber.formatEpisodeNumber()}",
-                        color = AnsuColors.TextPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
+                EpisodeBadge(episode)
                 if (!episode.airDate.isNullOrBlank()) {
                     Text(text = episode.airDate, color = AnsuColors.TextTertiary, fontSize = 12.sp)
                 }
@@ -473,14 +577,90 @@ private fun EpisodeRow(episode: SEpisode, synopsis: String?, onClick: () -> Unit
     }
 }
 
+/**
+ * Ids of the episodes that have not aired yet. An episode is upcoming when its air date is after
+ * today, and so is every later episode with no date at all (a show airs in order, so once one
+ * episode is in the future the rest are too). A show whose episodes simply have no metadata, with
+ * no future date anywhere, is left fully playable.
+ */
+private fun upcomingEpisodeIds(episodes: List<SEpisode>): Set<String> {
+    val today = java.time.LocalDate.now()
+    val result = mutableSetOf<String>()
+    var seenUpcoming = false
+    for (episode in episodes.sortedBy { it.episodeNumber }) {
+        val date = episode.airDate?.take(10)?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }
+        val upcoming = if (date != null) date.isAfter(today) else seenUpcoming
+        if (upcoming) {
+            seenUpcoming = true
+            result += episode.id
+        }
+    }
+    return result
+}
+
+/** One slim line for an episode that has not aired: no empty thumbnail, just the badge and air date. */
 @Composable
-private fun RelatedPoster(media: AniListMedia, onClick: () -> Unit) {
+private fun UpcomingEpisodeRow(episode: SEpisode) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        EpisodeBadge(episode)
+        val title = episode.name.takeIf { it.isNotBlank() && !it.startsWith("Episode") }
+        Column(modifier = Modifier.weight(1f)) {
+            if (title != null) {
+                Text(text = title, color = AnsuColors.TextSecondary, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text(text = "Airs ${episode.airDate}", color = AnsuColors.TextTertiary, fontSize = 12.sp)
+        }
+    }
+}
+
+/** A single summary line for upcoming episodes with no announced date, e.g. "E5-E12 - Not yet scheduled". */
+@Composable
+private fun UndatedUpcomingRow(episodes: List<SEpisode>) {
+    val first = episodes.first().episodeNumber.formatEpisodeNumber()
+    val last = episodes.last().episodeNumber.formatEpisodeNumber()
+    Text(
+        text = (if (episodes.size == 1) "E$first" else "E$first-E$last") + " · Not yet scheduled",
+        color = AnsuColors.TextTertiary,
+        fontSize = 13.sp,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+    )
+}
+
+@Composable
+private fun EpisodeBadge(episode: SEpisode) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(AnsuColors.SurfaceGlassBase)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    ) {
+        Text(
+            text = "E${episode.episodeNumber.formatEpisodeNumber()}",
+            color = AnsuColors.TextPrimary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun RelatedPoster(media: AniListMedia, onClick: () -> Unit, badge: String? = null) {
     Column(modifier = Modifier.width(120.dp).clickable(onClick = onClick)) {
         Box(
             modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)).background(AnsuColors.BackgroundElevated),
         ) {
             if (media.posterUrl != null) {
                 AsyncImage(model = media.posterUrl, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+            if (badge != null) {
+                PosterGlassLabel(
+                    text = badge,
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(6.dp),
+                )
             }
         }
         Text(

@@ -101,6 +101,8 @@ fun HomeScreen(
                     HeroCarousel(
                         items = heroSource,
                         onClick = onAnimeSelected,
+                        logoFor = { id -> container.artworkRepository.get(id).logoUrl },
+                        posterFor = { id -> container.artworkRepository.get(id).posterUrl },
                         onToggleFavourite = { anime ->
                             anime.anilistId?.let { id ->
                                 scope.launch {

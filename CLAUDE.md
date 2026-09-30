@@ -80,7 +80,8 @@ Source root: `app/src/main/java/com/ansu/anime/`
 | `ui/search`, `ui/details`, `ui/player` | Search, details (cast/crew sheet) and playback |
 | `ui/extensions`, `ui/addons`, `ui/settings`, `ui/auth` | Extensions, addons, settings, AniList login |
 | `core/model/AnimeModels.kt` | `SAnime`, `SEpisode`, `MediaOrigin`, `Shelf` |
-| `core/util/` | `Formatting`, `SelectionHolder` |
+| `core/util/` | `Formatting`, `MediaLabels`, `BioText` (cleans AniList bios), `SelectionHolder` |
+| `core/net/` | `ApiException` / `ApiErrorKind` and `ApiErrorHandler`: every API failure is reported here (log + snackbar in `MainActivity`) |
 | `data/db/AppDatabase.kt` | Room database |
 | `data/repository/` | Catalogue and continue-watching repositories |
 | `data/news/NewsRepository.kt` | News feed backing the Schedule screen's News tab |

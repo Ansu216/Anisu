@@ -7,10 +7,12 @@ import com.ansu.anime.addon.StremioAddonApi
 import com.ansu.anime.anilist.AniListApi
 import com.ansu.anime.anilist.AniListAuthManager
 import com.ansu.anime.anilist.AniListRepository
+import com.ansu.anime.core.net.ApiErrorHandler
 import com.ansu.anime.data.db.AppDatabase
 import com.ansu.anime.data.prefs.AppearancePrefs
 import com.ansu.anime.data.repository.CatalogRepository
 import com.ansu.anime.data.repository.ContinueWatchingRepository
+import com.ansu.anime.data.repository.ArtworkRepository
 import com.ansu.anime.data.repository.EpisodeMetadataRepository
 import com.ansu.anime.data.repository.LibrarySyncRepository
 import com.ansu.anime.data.repository.LocalListRepository
@@ -54,9 +56,11 @@ class AppContainer(context: Context) {
     val extensionRepo: ExtensionRepo = ExtensionRepo(appContext, okHttpClient)
     val addonManager: AddonManager = AddonManager(stremioAddonApi, database.installedAddonDao())
 
+    val apiErrorHandler: ApiErrorHandler = ApiErrorHandler()
+
     val aniListAuthManager: AniListAuthManager = AniListAuthManager(appContext)
     val aniListApi: AniListApi = AniListApi(okHttpClient, aniListAuthManager)
-    val aniListRepository: AniListRepository = AniListRepository(aniListApi, aniListAuthManager)
+    val aniListRepository: AniListRepository = AniListRepository(aniListApi, aniListAuthManager, apiErrorHandler)
 
     val localListRepository: LocalListRepository = LocalListRepository(database.localListDao())
 
@@ -70,7 +74,9 @@ class AppContainer(context: Context) {
 
     val catalogRepository: CatalogRepository = CatalogRepository(extensionManager, addonManager, aniListRepository)
 
-    val episodeMetadataRepository: EpisodeMetadataRepository = EpisodeMetadataRepository(okHttpClient, aniListRepository)
+    val episodeMetadataRepository: EpisodeMetadataRepository = EpisodeMetadataRepository(okHttpClient, aniListRepository, apiErrorHandler)
+
+    val artworkRepository: ArtworkRepository = ArtworkRepository(okHttpClient, apiErrorHandler)
 
     val selectionHolder: SelectionHolder = SelectionHolder()
 

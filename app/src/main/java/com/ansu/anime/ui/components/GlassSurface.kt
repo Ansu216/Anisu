@@ -37,14 +37,18 @@ fun FrostedGlassCard(
     }
 }
 
-/** Bottom-anchored gradient so overlaid title/button text stays legible on any art. */
+/**
+ * Bottom-anchored gradient so overlaid title/button text stays legible on any art. [midAlpha] is the
+ * black opacity reached at [midStop] (fraction of the height); lower values let more of the picture
+ * show. The gradient always ends in the page background so the art melts into the content below.
+ */
 @Composable
-fun BottomScrim(modifier: Modifier = Modifier) {
+fun BottomScrim(modifier: Modifier = Modifier, midAlpha: Float = 0.35f, midStop: Float = 0.55f) {
     Box(
         modifier = modifier.background(
             Brush.verticalGradient(
                 0f to Color.Transparent,
-                0.55f to Color.Black.copy(alpha = 0.35f),
+                midStop to Color.Black.copy(alpha = midAlpha),
                 1f to AnsuColors.Background,
             ),
         ),

@@ -1,5 +1,7 @@
 package com.ansu.anime.anilist
 
+import com.ansu.anime.core.net.ApiErrorHandler
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -13,6 +15,7 @@ import kotlinx.coroutines.launch
 class AniListRepository(
     private val api: AniListApi,
     val authManager: AniListAuthManager,
+    private val errors: ApiErrorHandler,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -23,13 +26,28 @@ class AniListRepository(
         .map { it != null }
         .stateIn(scope, kotlinx.coroutines.flow.SharingStarted.Eagerly, authManager.isLoggedIn)
 
+    /**
+     * Runs one API call. A failure is reported to [errors] (log, plus a snackbar unless [quiet]) and
+     * [fallback] is returned so the screen shows its empty state instead of crashing. Cancellation
+     * is rethrown; swallowing it would keep a cancelled coroutine running.
+     */
+    private suspend fun <T> guarded(what: String, fallback: T, quiet: Boolean = false, block: suspend () -> T): T =
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            errors.report(what, e, quiet)
+            fallback
+        }
+
     init {
         scope.launch { refreshViewer() }
     }
 
     suspend fun refreshViewer() {
         if (authManager.isLoggedIn) {
-            _viewer.value = runCatching { api.getViewer() }.getOrNull()
+            _viewer.value = guarded("Loading your AniList profile", null, quiet = true) { api.getViewer() }
         } else {
             _viewer.value = null
         }
@@ -37,71 +55,71 @@ class AniListRepository(
 
     suspend fun getCurrentlyWatching(): List<AniListMediaListEntry> {
         val userId = _viewer.value?.id ?: return emptyList()
-        return runCatching { api.getMediaListCollection(userId, "CURRENT") }.getOrDefault(emptyList())
+        return guarded("Loading your Watching list", emptyList()) { api.getMediaListCollection(userId, "CURRENT") }
     }
 
     suspend fun getPlanning(): List<AniListMediaListEntry> {
         val userId = _viewer.value?.id ?: return emptyList()
-        return runCatching { api.getMediaListCollection(userId, "PLANNING") }.getOrDefault(emptyList())
+        return guarded("Loading your Planning list", emptyList()) { api.getMediaListCollection(userId, "PLANNING") }
     }
 
     suspend fun getCompleted(): List<AniListMediaListEntry> {
         val userId = _viewer.value?.id ?: return emptyList()
-        return runCatching { api.getMediaListCollection(userId, "COMPLETED") }.getOrDefault(emptyList())
+        return guarded("Loading your Completed list", emptyList()) { api.getMediaListCollection(userId, "COMPLETED") }
     }
 
     suspend fun getLiked(): List<AniListMedia> {
         val userId = _viewer.value?.id ?: return emptyList()
-        return runCatching { api.getFavouriteAnime(userId) }.getOrDefault(emptyList())
+        return guarded("Loading your favourites", emptyList()) { api.getFavouriteAnime(userId) }
     }
 
-    suspend fun getTrending(page: Int = 1) = runCatching { api.getTrending(page) }.getOrDefault(emptyList())
+    suspend fun getTrending(page: Int = 1) = guarded("Loading trending anime", emptyList()) { api.getTrending(page) }
 
     /** Most popular anime of the current season, for the home screen's "Top Picks" grid. */
     suspend fun getTopThisSeason(season: String, seasonYear: Int) =
-        runCatching { api.getTopThisSeason(season, seasonYear) }.getOrDefault(emptyList())
+        guarded("Loading this season's top picks", emptyList()) { api.getTopThisSeason(season, seasonYear) }
 
     /** One page of a home-screen feed; null means the request failed (as opposed to an empty page). */
     suspend fun getFeedPage(feed: AniListFeed, page: Int, perPage: Int): AniListMediaPage? =
-        runCatching { api.getMediaPage(page, perPage, feed.sort, feed.status, feed.formats) }.getOrNull()
+        guarded<AniListMediaPage?>("Loading ${feed.title}", null) { api.getMediaPage(page, perPage, feed.sort, feed.status, feed.formats) }
 
-    suspend fun getStreamingEpisodes(mediaId: Int) = runCatching { api.getStreamingEpisodes(mediaId) }.getOrDefault(emptyList())
+    suspend fun getStreamingEpisodes(mediaId: Int) = guarded("Loading episode titles", emptyList(), quiet = true) { api.getStreamingEpisodes(mediaId) }
 
-    suspend fun search(query: String, page: Int = 1) = runCatching { api.searchMedia(query, page) }.getOrDefault(emptyList())
+    suspend fun search(query: String, page: Int = 1) = guarded("Searching", emptyList()) { api.searchMedia(query, page) }
 
     /** One page of the Search screen's query with filters; null means the request failed. */
     suspend fun searchPage(query: String, filters: AniListSearchFilters, page: Int): AniListMediaPage? =
-        runCatching { api.searchMediaPage(query, filters, page) }.getOrNull()
+        guarded<AniListMediaPage?>("Searching", null) { api.searchMediaPage(query, filters, page) }
 
     suspend fun reportProgress(mediaId: Int, episode: Int) {
-        if (authManager.isLoggedIn) runCatching { api.updateProgress(mediaId, episode) }
+        if (authManager.isLoggedIn) guarded("Saving watch progress", false, quiet = true) { api.updateProgress(mediaId, episode) }
     }
 
     /** Full CornCastle-style details: stats, characters, staff, related shows. Public data - works logged out too. */
-    suspend fun getMediaDetails(mediaId: Int): AniListMediaDetails? = runCatching { api.getMediaDetails(mediaId) }.getOrNull()
+    suspend fun getMediaDetails(mediaId: Int): AniListMediaDetails? = guarded<AniListMediaDetails?>("Loading title details", null) { api.getMediaDetails(mediaId) }
 
     suspend fun toggleFavourite(mediaId: Int): Boolean {
         if (!authManager.isLoggedIn) return false
-        return runCatching { api.toggleFavourite(mediaId) }.getOrDefault(false)
+        return guarded("Updating your favourites", false) { api.toggleFavourite(mediaId) }
     }
 
     /** The user's heart and list entry for a show; null when signed out or the request failed. */
     suspend fun getUserState(mediaId: Int): AniListUserState? {
         if (!authManager.isLoggedIn) return null
-        return runCatching { api.getUserState(mediaId) }.getOrNull()
+        return guarded<AniListUserState?>("Loading your list status", null, quiet = true) { api.getUserState(mediaId) }
     }
 
     /** Puts the show in an AniList list ([status] = CURRENT/PLANNING/COMPLETED), or removes it when null. */
     suspend fun setListStatus(mediaId: Int, status: String?, progress: Int? = null): Boolean {
         if (!authManager.isLoggedIn) return false
-        return runCatching {
+        return guarded("Updating your list", false) {
             if (status == null) api.removeFromList(mediaId) else api.saveListStatus(mediaId, status, progress)
-        }.getOrDefault(false)
+        }
     }
 
     /** Episodes airing in the given window — public data, works logged out too. */
     suspend fun weeklySchedule(fromEpochSeconds: Long, toEpochSeconds: Long): List<AniListAiringEntry> =
-        runCatching { api.getAiringSchedule(fromEpochSeconds, toEpochSeconds) }.getOrDefault(emptyList())
+        guarded("Loading the schedule", emptyList()) { api.getAiringSchedule(fromEpochSeconds, toEpochSeconds) }
 
     fun login() = authManager.launchLogin()
 

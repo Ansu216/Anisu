@@ -53,6 +53,7 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import com.ansu.anime.anilist.AniListMedia
 import com.ansu.anime.core.model.SAnime
+import com.ansu.anime.core.util.formatLabel
 import com.ansu.anime.data.repository.ListStatus
 import com.ansu.anime.data.repository.toSAnime
 import com.ansu.anime.di.AppContainer
@@ -313,10 +314,15 @@ private fun ListItemRow(media: AniListMedia, onDetails: () -> Unit) {
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                media.episodes?.let {
-                    Text("$it EP", color = AnsuColors.TextTertiary, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                // Year, episode count and format; whatever AniList did not report is simply left out.
+                val meta = listOfNotNull(
+                    media.year?.toString(),
+                    media.episodes?.let { "$it EP" },
+                    formatLabel(media.format),
+                ).joinToString(" · ")
+                if (meta.isNotEmpty()) {
+                    Text(meta, color = AnsuColors.TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 6.dp))
                 }
-                Text("Details", color = AnsuColors.TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 2.dp))
             }
         }
     }

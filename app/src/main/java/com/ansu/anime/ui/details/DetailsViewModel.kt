@@ -9,6 +9,8 @@ import com.ansu.anime.core.model.MediaOrigin
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.SEpisode
 import com.ansu.anime.core.util.SelectionHolder
+import com.ansu.anime.data.repository.AnimeArtwork
+import com.ansu.anime.data.repository.ArtworkRepository
 import com.ansu.anime.data.repository.EpisodeMetadataRepository
 import com.ansu.anime.data.repository.LocalListRepository
 import com.ansu.anime.extension.ExtensionManager
@@ -23,6 +25,10 @@ data class DetailsUiState(
     val isLoading: Boolean = true,
     val episodes: List<SEpisode> = emptyList(),
     val aniListDetails: AniListMediaDetails? = null,
+    /** Title logo and 16:9 backdrop for the hero; arrives independently of the episode list. */
+    val artwork: AnimeArtwork = AnimeArtwork(),
+    /** True once the artwork lookup has finished (or there is nothing to look up). */
+    val artworkLoaded: Boolean = false,
     val isFavourite: Boolean = false,
     /** Local (signed-out) library state for this show. */
     val localFavourite: Boolean = false,
@@ -45,6 +51,7 @@ class DetailsViewModel(
     private val aniListRepository: AniListRepository,
     private val episodeMetadataRepository: EpisodeMetadataRepository,
     private val localListRepository: LocalListRepository,
+    private val artworkRepository: ArtworkRepository,
     selectionHolder: SelectionHolder,
 ) : ViewModel() {
 
@@ -59,6 +66,13 @@ class DetailsViewModel(
             _uiState.value = _uiState.value.copy(isLoading = false, error = "Nothing selected")
         } else {
             observeLocalLibrary(current)
+            if (current.anilistId == null) _uiState.value = _uiState.value.copy(artworkLoaded = true)
+            current.anilistId?.let { id ->
+                viewModelScope.launch {
+                    val artwork = artworkRepository.get(id)
+                    _uiState.value = _uiState.value.copy(artwork = artwork, artworkLoaded = true)
+                }
+            }
             viewModelScope.launch {
                 val episodesDeferred = async { runCatching { loadEpisodes(current) }.getOrDefault(emptyList()) }
                 val metaDeferred = async {
@@ -82,6 +96,10 @@ class DetailsViewModel(
                     detailsDeferred.await()
                 } catch (e: Exception) {
                     null
+                }
+                // Saved shows made before My Space showed year/format get them filled in here.
+                if (details != null) {
+                    runCatching { localListRepository.backfillDetails(details.id, details.format, details.year) }
                 }
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -138,7 +156,7 @@ class DetailsViewModel(
             // Signed out: the heart lives on the device (the row flow above updates the UI).
             val current = anime.value ?: return
             viewModelScope.launch {
-                localListRepository.toggleFavourite(current, _uiState.value.aniListDetails?.episodes)
+                localListRepository.toggleFavourite(current, _uiState.value.aniListDetails?.episodes, _uiState.value.aniListDetails?.format)
             }
             return
         }
@@ -159,7 +177,7 @@ class DetailsViewModel(
         val id = current.anilistId ?: return
         if (!aniListRepository.isLoggedIn.value) {
             viewModelScope.launch {
-                localListRepository.setStatus(current, status, _uiState.value.aniListDetails?.episodes)
+                localListRepository.setStatus(current, status, _uiState.value.aniListDetails?.episodes, _uiState.value.aniListDetails?.format)
             }
             return
         }

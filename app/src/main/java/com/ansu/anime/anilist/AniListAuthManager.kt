@@ -3,6 +3,7 @@ package com.ansu.anime.anilist
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -35,6 +36,9 @@ class AniListAuthManager(private val context: Context) {
     val isLoggedIn: Boolean get() = _accessToken.value != null
 
     fun launchLogin() {
+        if (BuildConfig.ANILIST_CLIENT_ID.isBlank() || BuildConfig.ANILIST_CLIENT_ID.startsWith("YOUR_")) {
+            Log.e("AniListAuth", "ANILIST_CLIENT_ID is still the placeholder; set it via -PANILIST_CLIENT_ID=<id> or app/build.gradle.kts")
+        }
         val authorizeUrl = Uri.parse("https://anilist.co/api/v2/oauth/authorize")
             .buildUpon()
             .appendQueryParameter("client_id", BuildConfig.ANILIST_CLIENT_ID)
@@ -54,9 +58,11 @@ class AniListAuthManager(private val context: Context) {
         // which Android's Uri parses into getFragment() rather than query params.
         val fragment = uri.fragment ?: return false
         val token = fragment.split("&")
-            .map { it.split("=") }
+            .map { it.split("=", limit = 2) }
             .firstOrNull { it.size == 2 && it[0] == "access_token" }
             ?.get(1)
+            ?.let { Uri.decode(it) }
+            ?.takeIf { it.isNotBlank() }
             ?: return false
 
         prefs.edit().putString(KEY_TOKEN, token).apply()

@@ -11,6 +11,10 @@ plugins {
 val ciVersionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
 val ciVersionName = (project.findProperty("versionName") as String?) ?: "0.1.0"
 
+// Your AniList client id (https://anilist.co/settings/developer). Set it without editing
+// this file via gradle.properties / local command line: -PANILIST_CLIENT_ID=12345
+val aniListClientId = (project.findProperty("ANILIST_CLIENT_ID") as String?) ?: "YOUR_ANILIST_CLIENT_ID"
+
 android {
     namespace = "com.ansu.anime"
     compileSdk = 35
@@ -24,7 +28,7 @@ android {
 
         // Fill these in from https://anilist.co/settings/developer
         // (or override in a non-committed gradle.properties / local.properties entry).
-        buildConfigField("String", "ANILIST_CLIENT_ID", "\"YOUR_ANILIST_CLIENT_ID\"")
+        buildConfigField("String", "ANILIST_CLIENT_ID", "\"$aniListClientId\"")
         buildConfigField("String", "ANILIST_REDIRECT_URI", "\"ansu://anilist-auth\"")
     }
 

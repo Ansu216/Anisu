@@ -1,6 +1,9 @@
 package com.ansu.anime.data.repository
 
 import com.ansu.anime.anilist.AniListRepository
+import com.ansu.anime.core.net.ApiErrorHandler
+import com.ansu.anime.core.net.httpApiException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -30,12 +33,21 @@ data class EpisodeMeta(
 class EpisodeMetadataRepository(
     private val client: OkHttpClient,
     private val aniList: AniListRepository,
+    private val errors: ApiErrorHandler,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
     /** Episode number -> details. Empty when nothing could be fetched. */
     suspend fun getEpisodeMeta(anilistId: Int): Map<Int, EpisodeMeta> {
-        val primary = runCatching { fetchAniZip(anilistId) }.getOrDefault(emptyMap())
+        val primary = try {
+            fetchAniZip(anilistId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Optional extra data: log it, but never interrupt the user over missing thumbnails.
+            errors.report("Loading episode details", e, quiet = true)
+            emptyMap()
+        }
         val fallback = aniList.getStreamingEpisodes(anilistId).let { list ->
             val byNumber = mutableMapOf<Int, EpisodeMeta>()
             list.forEachIndexed { index, entry ->
@@ -61,7 +73,10 @@ class EpisodeMetadataRepository(
     private suspend fun fetchAniZip(anilistId: Int): Map<Int, EpisodeMeta> = withContext(Dispatchers.IO) {
         val request = Request.Builder().url("https://api.ani.zip/mappings?anilist_id=$anilistId").build()
         val text = client.newCall(request).execute().use { response ->
-            if (response.isSuccessful) response.body?.string().orEmpty() else ""
+            // ani.zip answers 404 for shows it has no mapping for; that is "no data", not a failure.
+            if (response.code == 404) return@use ""
+            if (!response.isSuccessful) throw httpApiException(response.code, response.header("Retry-After")?.toLongOrNull(), null)
+            response.body?.string().orEmpty()
         }
         if (text.isBlank()) return@withContext emptyMap()
         val episodes = json.parseToJsonElement(text).jsonObject["episodes"] as? JsonObject

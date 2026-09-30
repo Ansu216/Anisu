@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -41,19 +42,26 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.util.ageRatingFor
 import com.ansu.anime.core.util.formatEpisodeNumber
@@ -209,6 +217,34 @@ fun AgeRatingChip(rating: String, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Frosted-glass label pinned along a poster's bottom edge (e.g. "Season 2", "Sequel · Movie"),
+ * styled like [AgeRatingChip] so the top-left corner stays free for the age rating.
+ */
+@Composable
+fun PosterGlassLabel(text: String, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(8.dp)
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(Color.Black.copy(alpha = 0.32f))
+            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.26f), Color.White.copy(alpha = 0.06f))))
+            .border(width = 0.75.dp, color = Color.White.copy(alpha = 0.30f), shape = shape)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = AnsuColors.TextPrimary,
+            fontSize = 11.sp,
+            lineHeight = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 /** Wide frosted-look continue-watching card: thumbnail with a burned-in progress bar. */
 @Composable
 fun ContinueWatchingCard(entry: ContinueWatchingEntity, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -290,11 +326,28 @@ fun HeroCarousel(
     onClick: (SAnime) -> Unit,
     onToggleFavourite: (SAnime) -> Unit = {},
     modifier: Modifier = Modifier,
+    /** Resolves the title-logo image URL for an AniList id; null (or no logo) shows the plain text title. */
+    logoFor: suspend (Int) -> String? = { null },
+    /** Resolves a sharper portrait poster for an AniList id; null keeps the catalogue's own cover. */
+    posterFor: suspend (Int) -> String? = { null },
 ) {
     if (items.isEmpty()) return
     val shown = items.take(8)
     val pagerState = rememberPagerState(pageCount = { shown.size })
     val likedIds = remember { mutableStateMapOf<String, Boolean>() }
+    // AniList id -> logo URL. A key with a null value means "looked up, no logo", so it is not asked twice.
+    val logos = remember { mutableStateMapOf<Int, String?>() }
+    // AniList id -> higher-resolution poster URL (absent until looked up, or when there is none).
+    val hiResPosters = remember { mutableStateMapOf<Int, String>() }
+    // Posters that failed to load; those pages fall back to the catalogue cover.
+    val failedPosters = remember { mutableStateMapOf<String, Boolean>() }
+    LaunchedEffect(shown) {
+        shown.forEach { anime ->
+            val id = anime.anilistId ?: return@forEach
+            if (!logos.containsKey(id)) launch { logos[id] = logoFor(id) }
+            if (!hiResPosters.containsKey(id)) launch { posterFor(id)?.let { hiResPosters[id] = it } }
+        }
+    }
 
     Column(modifier = modifier.fillMaxWidth()) {
         // The frame is exactly poster-shaped (2:3), so the portrait poster fills it edge to
@@ -304,13 +357,16 @@ fun HeroCarousel(
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                 val anime = shown[page]
                 Box(modifier = Modifier.fillMaxSize()) {
+                    val hiRes = anime.anilistId?.let { hiResPosters[it] }?.takeIf { failedPosters[it] != true }
                     AsyncImage(
-                        model = anime.posterUrl ?: anime.bannerUrl,
+                        model = hiRes ?: anime.posterUrl ?: anime.bannerUrl,
                         contentDescription = anime.title,
                         contentScale = ContentScale.Crop,
+                        colorFilter = HeroBrightness,
+                        onError = { if (hiRes != null) failedPosters[hiRes] = true },
                         modifier = Modifier.fillMaxSize().background(AnsuColors.BackgroundElevated),
                     )
-                    BottomScrim(modifier = Modifier.fillMaxSize())
+                    BottomScrim(modifier = Modifier.fillMaxSize(), midAlpha = 0.12f, midStop = 0.6f)
                 }
             }
 
@@ -320,7 +376,7 @@ fun HeroCarousel(
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
                     .height(96.dp)
-                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent))),
+                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.4f), Color.Transparent))),
             )
 
             val current = shown[pagerState.currentPage]
@@ -332,14 +388,17 @@ fun HeroCarousel(
                     .padding(bottom = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(
-                    text = current.title,
-                    color = AnsuColors.TextPrimary,
-                    fontSize = 27.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                TitleLogo(
+                    title = current.title,
+                    logoUrl = current.anilistId?.let { logos[it] },
+                    // Wait for the lookup before falling back to text, so the lettering does not flash.
+                    lookupDone = current.anilistId == null || logos.containsKey(current.anilistId),
+                    alignment = Alignment.Center,
                     textAlign = TextAlign.Center,
+                    fontSize = 27.sp,
+                    uppercase = false,
+                    maxLogoWidth = 300.dp,
+                    maxLogoHeight = 96.dp,
                 )
                 current.genres.take(3).takeIf { it.isNotEmpty() }?.let { genres ->
                     Text(
@@ -397,6 +456,59 @@ fun HeroCarousel(
                 }
             }
         }
+    }
+}
+
+/** Slight lift for the hero artwork: about +12% brightness, so dark posters are not swallowed by the page. */
+private val HeroBrightness = ColorFilter.colorMatrix(
+    ColorMatrix(
+        floatArrayOf(
+            1.12f, 0f, 0f, 0f, 6f,
+            0f, 1.12f, 0f, 0f, 6f,
+            0f, 0f, 1.12f, 0f, 6f,
+            0f, 0f, 0f, 1f, 0f,
+        ),
+    ),
+)
+
+/**
+ * The show's title in its own poster lettering ([logoUrl], a transparent logo image). Falls back to
+ * the plain text [title] when there is no logo, when it fails to load, or - once [lookupDone] - when
+ * the lookup found none. While the lookup is still running nothing is drawn.
+ */
+@Composable
+fun TitleLogo(
+    title: String,
+    logoUrl: String?,
+    lookupDone: Boolean,
+    alignment: Alignment,
+    textAlign: TextAlign,
+    fontSize: TextUnit,
+    uppercase: Boolean,
+    maxLogoWidth: Dp,
+    maxLogoHeight: Dp,
+    modifier: Modifier = Modifier,
+) {
+    var failed by remember(logoUrl) { mutableStateOf(false) }
+    when {
+        logoUrl != null && !failed -> AsyncImage(
+            model = logoUrl,
+            contentDescription = title,
+            contentScale = ContentScale.Fit,
+            alignment = alignment,
+            onError = { failed = true },
+            modifier = modifier.widthIn(max = maxLogoWidth).height(maxLogoHeight),
+        )
+        lookupDone || failed -> Text(
+            text = if (uppercase) title.uppercase() else title,
+            color = AnsuColors.TextPrimary,
+            fontSize = fontSize,
+            fontWeight = FontWeight.ExtraBold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = textAlign,
+            modifier = modifier,
+        )
     }
 }
 

@@ -109,6 +109,8 @@ data class LocalListEntity(
     val status: String?,
     val progress: Int,
     val updatedAt: Long,
+    /** AniList's raw format enum (TV, MOVIE, ...); null until the details page has loaded it. */
+    val format: String? = null,
 )
 
 @Dao
@@ -128,13 +130,19 @@ interface LocalListDao {
     @Upsert
     suspend fun upsert(entity: LocalListEntity)
 
+    @Query("UPDATE local_list_entries SET format = :format WHERE anilistId = :anilistId")
+    suspend fun setFormat(anilistId: Int, format: String)
+
+    @Query("UPDATE local_list_entries SET year = :year WHERE anilistId = :anilistId AND year IS NULL")
+    suspend fun fillYear(anilistId: Int, year: Int)
+
     @Query("DELETE FROM local_list_entries WHERE anilistId = :anilistId")
     suspend fun remove(anilistId: Int)
 }
 
 @Database(
     entities = [ContinueWatchingEntity::class, InstalledAddonEntity::class, LocalListEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -166,9 +174,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v2 -> v3: adds the show's format to saved entries so My Space can display it. */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `local_list_entries` ADD COLUMN `format` TEXT")
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "ansu.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .fallbackToDestructiveMigration()
                 .build()
     }

@@ -1,12 +1,20 @@
 package com.ansu.anime.anilist
 
+import com.ansu.anime.core.net.ApiErrorKind
+import com.ansu.anime.core.net.ApiException
+import com.ansu.anime.core.net.httpApiException
+import com.ansu.anime.core.net.toApiException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -274,6 +282,12 @@ class AniListApi(
                     node { id name { full } image { large } description(asHtml: false) }
                   }
                 }
+                relations {
+                  edges {
+                    relationType(version: 2)
+                    node { id type title { romaji english } coverImage { extraLarge } bannerImage genres averageScore episodes format startDate { year } isAdult }
+                  }
+                }
                 recommendations(perPage: 8, sort: RATING_DESC) {
                   nodes {
                     mediaRecommendation { id title { romaji english } coverImage { extraLarge } bannerImage genres averageScore episodes startDate { year } }
@@ -325,10 +339,15 @@ class AniListApi(
         val result = mutableListOf<AniListAiringEntry>()
         var page = 1
         while (page <= MAX_SCHEDULE_PAGES) {
-            val data = execute(
-                gql,
-                mapOf("from" to fromEpochSeconds.toInt(), "to" to toEpochSeconds.toInt(), "page" to page),
-            ) ?: break
+            val data = try {
+                execute(
+                    gql,
+                    mapOf("from" to fromEpochSeconds.toInt(), "to" to toEpochSeconds.toInt(), "page" to page),
+                )
+            } catch (e: ApiException) {
+                // Keep the pages already fetched; only fail when there is nothing to show.
+                if (result.isEmpty()) throw e else null
+            } ?: break
             val pageObj = data["Page"]?.jsonObject
             val entries = pageObj?.get("airingSchedules")?.jsonArray.orEmpty()
             entries.mapNotNullTo(result) { entry ->
@@ -398,10 +417,23 @@ class AniListApi(
         val mutation = """
             mutation (${'$'}id: Int) { ToggleFavourite(animeId: ${'$'}id) { anime { nodes { id } } } }
         """.trimIndent()
-        return execute(mutation, mapOf("id" to mediaId)) != null
+        return execute(mutation, mapOf("id" to mediaId), idempotent = false) != null
     }
 
-    private suspend fun execute(query: String, variables: Map<String, Any?>): JsonObject? = withContext(Dispatchers.IO) {
+    /**
+     * Sends one GraphQL request and returns its `data` object. Any failure is thrown as an
+     * [ApiException] (never returned as null), so callers cannot mistake "the request broke" for
+     * "there is nothing to show"; [AniListRepository] catches it and reports it to the error handler.
+     *
+     * Transient failures (timeouts, dropped connections, HTTP 5xx, and a short HTTP 429 wait) are
+     * retried up to [MAX_ATTEMPTS] times. Pass [idempotent] = false for a mutation that is not safe to
+     * repeat (a toggle): it is then only retried after a 429, where AniList refused it without acting.
+     */
+    private suspend fun execute(
+        query: String,
+        variables: Map<String, Any?>,
+        idempotent: Boolean = true,
+    ): JsonObject? = withContext(Dispatchers.IO) {
         val payload = buildString {
             append("{\"query\":")
             append(json.encodeToString(kotlinx.serialization.serializer<String>(), query))
@@ -420,7 +452,31 @@ class AniListApi(
             )
             append("}}")
         }
+        executeWithRetry(payload, idempotent)
+    }
 
+    private suspend fun executeWithRetry(payload: String, idempotent: Boolean): JsonObject {
+        for (attempt in 1..MAX_ATTEMPTS) {
+            try {
+                return executeOnce(payload)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val error = e.toApiException()
+                val mayRepeat = idempotent || error.kind == ApiErrorKind.RATE_LIMITED
+                if (attempt == MAX_ATTEMPTS || !mayRepeat || !error.isRetryable()) throw error
+                val waitMs = if (error.kind == ApiErrorKind.RATE_LIMITED) {
+                    (error.retryAfterSeconds ?: ApiException.DEFAULT_RETRY_AFTER_SECONDS) * 1000L
+                } else {
+                    RETRY_BACKOFF_MS * attempt
+                }
+                delay(waitMs)
+            }
+        }
+        throw ApiException(ApiErrorKind.UNKNOWN)
+    }
+
+    private fun executeOnce(payload: String): JsonObject {
         val requestBuilder = Request.Builder()
             .url(endpoint)
             .post(payload.toRequestBody("application/json".toMediaType()))
@@ -428,8 +484,19 @@ class AniListApi(
 
         client.newCall(requestBuilder.build()).execute().use { response ->
             val text = response.body?.string().orEmpty()
-            if (!response.isSuccessful || text.isBlank()) return@withContext null
-            runCatching { json.parseToJsonElement(text).jsonObject["data"]?.jsonObject }.getOrNull()
+            val root = runCatching { json.parseToJsonElement(text) as? JsonObject }.getOrNull()
+            val data = root?.get("data") as? JsonObject
+            if (response.isSuccessful && data != null) return data
+
+            // AniList reports GraphQL failures as {"errors":[{"message":"...","status":404}]}.
+            val firstError = (root?.get("errors") as? JsonArray)?.firstOrNull() as? JsonObject
+            val detail = (firstError?.get("message") as? JsonPrimitive)?.contentOrNull
+            val status = (firstError?.get("status") as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
+            if (response.isSuccessful && root == null) {
+                throw ApiException(ApiErrorKind.PARSE, httpCode = response.code, detail = "Response was not JSON")
+            }
+            val code = if (response.isSuccessful) status ?: 400 else response.code
+            throw httpApiException(code, response.header("Retry-After")?.toLongOrNull(), detail)
         }
     }
 
@@ -472,6 +539,16 @@ class AniListApi(
             node.jsonObject["mediaRecommendation"]?.jsonObject?.toMedia()
         }
 
+        val franchise = this["relations"]?.jsonObject?.get("edges")?.jsonArray.orEmpty().mapNotNull { edge ->
+            val obj = edge.jsonObject
+            val node = obj["node"]?.jsonObject ?: return@mapNotNull null
+            if (node["type"]?.jsonPrimitive?.contentOrNull != "ANIME") return@mapNotNull null
+            val type = obj["relationType"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val order = FRANCHISE_RELATIONS.indexOf(type).takeIf { it >= 0 } ?: return@mapNotNull null
+            val media = node.toMedia() ?: return@mapNotNull null
+            order to AniListRelation(media = media, label = relationLabel(type, media.format, media.title))
+        }.sortedWith(compareBy({ it.first }, { it.second.media.year ?: Int.MAX_VALUE })).map { it.second }
+
         return AniListMediaDetails(
             id = idValue,
             title = title,
@@ -487,6 +564,7 @@ class AniListApi(
             characters = characters,
             staff = staff,
             related = related,
+            franchise = franchise,
             listStatus = (this["mediaListEntry"] as? JsonObject)?.get("status")?.jsonPrimitive?.contentOrNull,
         )
     }
@@ -522,6 +600,48 @@ class AniListApi(
 
     companion object {
         private const val MAX_SCHEDULE_PAGES = 12
+
+        /** AniList relation types that belong to the same show/franchise, in display order. */
+        private val FRANCHISE_RELATIONS = listOf(
+            "PARENT", "PREQUEL", "SEQUEL", "SIDE_STORY", "SPIN_OFF", "ALTERNATIVE", "SUMMARY", "COMPILATION", "CONTAINS",
+        )
+
+        private val SEASON_PATTERNS = listOf(
+            Regex("""(\d+)(?:st|nd|rd|th)\s+Season""", RegexOption.IGNORE_CASE),
+            Regex("""Season\s+(\d+)""", RegexOption.IGNORE_CASE),
+        )
+
+        /** "Season 2" when the title says so ("... 2nd Season", "... Season 3"), otherwise how it relates ("Sequel", "Prequel · Movie"). */
+        private fun relationLabel(type: String, format: String?, title: String): String {
+            if (format == "TV") {
+                SEASON_PATTERNS.firstNotNullOfOrNull { it.find(title)?.groupValues?.get(1) }?.let { return "Season $it" }
+            }
+            return relationTypeLabel(type, format)
+        }
+
+        private fun relationTypeLabel(type: String, format: String?): String {
+            val kind = when (format) {
+                "MOVIE" -> "Movie"
+                "OVA" -> "OVA"
+                "ONA" -> "ONA"
+                "SPECIAL" -> "Special"
+                else -> null
+            }
+            val relation = when (type) {
+                "PARENT" -> "Main Story"
+                "PREQUEL" -> "Prequel"
+                "SEQUEL" -> "Sequel"
+                "SIDE_STORY" -> "Side Story"
+                "SPIN_OFF" -> "Spin-off"
+                "ALTERNATIVE" -> "Alternative"
+                "SUMMARY" -> "Recap"
+                "COMPILATION" -> "Compilation"
+                else -> "Related"
+            }
+            return if (kind != null && relation != "Recap") "$relation \u00b7 $kind" else relation
+        }
+        private const val MAX_ATTEMPTS = 3
+        private const val RETRY_BACKOFF_MS = 400L
 
         private const val MEDIA_FIELDS = """
             fragment mediaFields on Media {

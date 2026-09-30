@@ -71,8 +71,16 @@ data class AniListMediaDetails(
     val characters: List<AniListCharacter>,
     val staff: List<AniListStaffMember>,
     val related: List<AniListMedia>,
+    /** Other entries of the same franchise (sequels, prequels, movies, spin-offs), for "More from this Show". */
+    val franchise: List<AniListRelation> = emptyList(),
     /** The signed-in user's AniList list status for this show (CURRENT/PLANNING/COMPLETED/...), or null. */
     val listStatus: String? = null,
+)
+
+/** A show connected to another one on AniList, with how it connects (e.g. "Sequel", "Movie"). */
+data class AniListRelation(
+    val media: AniListMedia,
+    val label: String,
 )
 
 /** The signed-in user's relationship to one show on AniList: heart plus list entry. */
