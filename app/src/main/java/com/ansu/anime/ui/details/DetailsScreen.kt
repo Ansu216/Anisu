@@ -76,6 +76,7 @@ import com.ansu.anime.core.util.SynopsisBlock
 import com.ansu.anime.core.util.formatEpisodeNumber
 import com.ansu.anime.core.util.parseSynopsis
 import com.ansu.anime.data.repository.ListStatus
+import com.ansu.anime.data.repository.pickHeroImage
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.components.GenreChip
@@ -123,12 +124,18 @@ fun DetailsScreen(
     Box(modifier = Modifier.fillMaxSize().background(AnsuColors.Background)) {
         LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
             item {
-                // Horizontal art first (16:9 backdrop, then AniList's banner, then the wide strip); the
-                // vertical poster is only the last resort because it never fits the wide frame.
+                // Art of this exact entry: a first season keeps the series backdrop, while later seasons,
+                // movies and specials use their own banner/cover so they no longer all look the same.
                 DetailsHero(
                     title = anime?.title.orEmpty(),
-                    imageUrl = state.artwork.backdropUrl ?: anime?.bannerUrl ?: details?.bannerUrl
-                        ?: state.artwork.bannerUrl ?: anime?.posterUrl,
+                    imageUrl = pickHeroImage(
+                        title = anime?.title.orEmpty(),
+                        format = details?.format ?: anime?.format,
+                        hasPrequel = details?.hasPrequel == true,
+                        entryBanner = details?.bannerUrl ?: anime?.bannerUrl,
+                        poster = anime?.posterUrl ?: details?.posterUrl,
+                        artwork = state.artwork,
+                    ),
                     logoUrl = state.artwork.logoUrl,
                     lookupDone = state.artworkLoaded,
                     onBack = { navController.popBackStack() },
@@ -364,8 +371,8 @@ private fun DetailsHero(title: String, imageUrl: String?, logoUrl: String?, look
             textAlign = TextAlign.Start,
             fontSize = 24.sp,
             uppercase = true,
-            maxLogoWidth = 260.dp,
-            maxLogoHeight = 72.dp,
+            maxLogoWidth = 320.dp,
+            maxLogoHeight = 110.dp,
             modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 20.dp, vertical = 16.dp),
         )
     }
@@ -400,6 +407,7 @@ private fun Synopsis(blocks: List<SynopsisBlock>, expanded: Boolean, onToggle: (
                     is SynopsisBlock.Paragraph -> {
                         if (previous != null) Spacer(Modifier.height(12.dp))
                         Text(text = block.text, color = AnsuColors.TextSecondary, fontSize = 14.sp, lineHeight = 21.sp)
+                     
                     }
                     is SynopsisBlock.Label -> {
                         if (previous != null) Spacer(Modifier.height(18.dp))
