@@ -1,4 +1,4 @@
-package com.ansu.anime.anilist
+ package com.ansu.anime.anilist
 
 data class AniListViewer(
     val id: Int,
@@ -75,6 +75,8 @@ data class AniListMediaDetails(
     val franchise: List<AniListRelation> = emptyList(),
     /** The signed-in user's AniList list status for this show (CURRENT/PLANNING/COMPLETED/...), or null. */
     val listStatus: String? = null,
+    /** True when AniList lists an earlier anime entry before this one (this is a later season or a follow-up). */
+    val hasPrequel: Boolean = false,
 )
 
 /** A show connected to another one on AniList, with how it connects (e.g. "Sequel", "Movie"). */
