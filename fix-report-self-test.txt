@@ -1,0 +1,1 @@
+Temporary marker: verifies that a fix.zip extraction publishes fix-report.json/.md on apk-nightly.
