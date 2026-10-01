@@ -12,11 +12,25 @@ name: Extract fix.zip
 # **nothing is ever deleted**: the extraction only writes, `fix.zip` itself is
 # left in place, and the commit therefore stages additions and modifications only.
 #
-# Why the build workflow is dispatched by hand: a push made with the repository's
-# built-in `GITHUB_TOKEN` does not start other workflows. An explicit
-# `workflow_dispatch` call does, and that is what makes the APK build run "by
-# itself" after the commit. (The alternative is pushing with a personal access
-# token, which would require storing a secret; the dispatch needs none.)
+# Two GitHub rules shape the two steps that are easy to get wrong:
+#
+#   * The built-in `GITHUB_TOKEN` is refused any write under `.github/workflows/`
+#     ("refusing to allow a GitHub App to create or update workflow ... without
+#     `workflows` permission"), and no `permissions:` block lifts that — it is a
+#     platform rule, not a grantable scope. Since `fix.zip` usually contains the
+#     whole repository, a commit that touched a workflow file would be rejected as
+#     a whole and the fix would never land. So the extraction skips
+#     `.github/workflows/**` and says so, unless a token that *does* have the
+#     `workflows` scope is provided.
+#   * A push made with `GITHUB_TOKEN` starts no other workflow, so the APK build is
+#     dispatched explicitly. `workflow_dispatch` is the one event that still fires,
+#     which is why `actions: write` is requested next to `contents: write`.
+#
+# Optional: store a classic PAT with the `workflow` scope (or a fine-grained one with
+# Contents and Workflows read/write) as the repository secret `FIX_ZIP_TOKEN` and the
+# checkout uses it, workflow files are extracted too, and the push is signed by that
+# token. Without the secret everything still works; workflow files are simply left
+# alone.
 
 on:
   push:
@@ -49,7 +63,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 1
+          # A full history, not a shallow one: the job commits and pushes, and a
+          # truncated clone is a known cause of rejected pushes. This also lets the
+          # rebase below work properly. (`release-apk.yml` needs depth 0 for the
+          # same class of reason.)
+          fetch-depth: 0
+          # Best-effort PAT. Note that it has to be passed *here*: whatever token
+          # this step uses is what is stored as the remote credential, and that is
+          # the one every later `git` command — the push included — will use.
+          token: ${{ secrets.FIX_ZIP_TOKEN || github.token }}
 
       # The path filter above fires on a deletion too, so removing fix.zip again
       # must not turn the run red: there is simply nothing to extract.
@@ -66,6 +88,10 @@ jobs:
 
       - name: Extract fix.zip
         if: ${{ steps.presence.outputs.present == 'true' }}
+        env:
+          # Only a token with the `workflows` scope may write .github/workflows/;
+          # with the built-in token the script skips those entries on purpose.
+          ANSU_ALLOW_WORKFLOWS: ${{ secrets.FIX_ZIP_TOKEN != '' }}
         run: python3 .github/scripts/unpack-fix-zip.py
 
       - name: Commit, push and start the build
@@ -86,7 +112,18 @@ jobs:
           fi
 
           git commit -m "extract fix.zip and updated the app"
-          git push origin HEAD:main
+
+          # main may have moved while the archive was being extracted; rebase onto it
+          # instead of failing with a non-fast-forward rejection.
+          git pull --rebase origin main
+
+          # Reported as an ::error:: annotation, which is readable from the API, so a
+          # rejected push says exactly why without anyone opening the raw log.
+          if ! PUSH_OUTPUT="$(git push origin HEAD:main 2>&1)"; then
+            echo "::error::Pushing to main was rejected. git said: ${PUSH_OUTPUT//$'\n'/ }"
+            exit 1
+          fi
+
           echo "committed=true" >> "$GITHUB_OUTPUT"
           git --no-pager log -1 --stat
 
