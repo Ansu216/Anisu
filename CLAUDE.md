@@ -382,8 +382,9 @@ is worse for every user, so add the section **before** pushing the tag.
 |---|---|---|
 | `.github/workflows/apk-nightly.yml` | hourly `cron`, **every push to `main`**, manual | force-publishes to `apk-nightly`: `Ansu-nightly.apk`, `Ansu-nightly-debug.apk`, `nightly.json`, generated `README.md` |
 | `.github/workflows/release-apk.yml` | tag `v*`, manual | GitHub Release with `Ansu-<version>.apk` and `-debug.apk`, notes extracted from `CHANGELOG.md` |
+| `.github/workflows/extract-fix-zip.yml` | push of `fix.zip` to `main`, manual | unpacks the archive into the working tree (its own relative paths), builds both variants from it, and only then deletes the zip and commits both back to `main` |
 
-Both workflows are built the same way, and **both compile their APKs in
+The two APK workflows are built the same way, and **both compile their APKs in
 parallel**:
 
 ```
@@ -408,6 +409,17 @@ plan  ──▶  build (matrix: release, debug — one runner each, fail-fast: f
 - The release is a **pre-release** automatically when the tag carries a SemVer
   pre-release suffix (`v1.2.3-rc.1`), and a stable release otherwise. The manual
   run can override that with the `channel` input.
+
+`extract-fix-zip.yml` is a **gate**, not a publisher: it unpacks `fix.zip`, builds
+both variants from the unpacked tree (parallel matrix, `fail-fast: false`) and
+commits the result to `main` only when the `build` job succeeded (`always()` plus
+the result check, the same guard the APK workflows use). A broken archive
+therefore fails the run and leaves `main` untouched. The unpack logic lives once,
+in `.github/scripts/unpack-fix-zip.py`, so the matrix legs and the commit job
+cannot drift apart; every entry is rejected if it would escape the repository or
+write into `.git`. The manual `force_commit` input exists because a `main` that is
+broken for an unrelated reason would otherwise block the fix that is meant to
+repair it.
 
 Notes for anyone editing these:
 

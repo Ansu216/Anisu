@@ -1,0 +1,173 @@
+name: Apply fix.zip
+
+# When a file named `fix.zip` is pushed to `main`, its contents are unpacked into
+# the repository and the result is committed back to `main` — but only after both
+# APK variants compile from the unpacked tree. A broken archive therefore fails the
+# run and changes nothing, instead of landing broken code on `main`.
+#
+# The zip must carry the project's own relative paths (e.g.
+# `app/src/main/java/com/ansu/anime/...`), so every file lands directly where it
+# belongs, in the right folder and sub-folder, with nothing to map by hand.
+#
+# The job graph mirrors the two APK workflows on purpose: the variants build in
+# PARALLEL (one matrix leg each, `fail-fast: false`) and the only job allowed to
+# write to the branch is guarded with `always()` plus a check that every leg
+# succeeded.
+#
+# `fix.zip` is deleted in the commit that unpacks it, which is also what keeps this
+# workflow from re-triggering itself: its trigger is the path `fix.zip`, and the
+# commit it pushes no longer contains it. A run started by the bot is skipped as a
+# second guard.
+#
+# Note: commits pushed with the built-in `GITHUB_TOKEN` do not start other
+# workflows, so the unpack commit does not rebuild the APKs by itself — the hourly
+# nightly builds anyway.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'fix.zip'
+  workflow_dispatch:
+    inputs:
+      force_commit:
+        description: 'Commit the unpacked files even if the build fails (escape hatch when main is already broken)'
+        required: false
+        default: false
+        type: boolean
+
+# Needed to push the unpacked files back to main.
+permissions:
+  contents: write
+
+# Never let two unpack runs fight over the same branch.
+concurrency:
+  group: apply-fix-zip
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1) Both variants build from the unpacked tree, in parallel. `fail-fast: false`
+  #    keeps the other leg running so one broken variant does not hide the state
+  #    of the other.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build ${{ matrix.variant }} from the unpacked fix.zip
+    runs-on: ubuntu-latest
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [release, debug]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Verify fix.zip is present at the repository root
+        run: |
+          set -euo pipefail
+          if [ ! -f fix.zip ]; then
+            echo "::error::fix.zip was not found at the repository root. Put it there and push it again."
+            exit 1
+          fi
+
+      # Unpacked before the JDK/cache step so the Gradle cache key is computed from
+      # the build files the archive carries, not from the ones it replaces.
+      - name: Unpack fix.zip
+        run: python3 .github/scripts/unpack-fix-zip.py
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      # The ubuntu-latest image already ships the Android SDK at
+      # $ANDROID_SDK_ROOT, so we only install the packages we need. Do NOT add
+      # android-actions/setup-android — it shells out to `sdkmanager tools`, which
+      # no longer exists, and fails every run.
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(ls -d "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1 || true)"
+          fi
+          echo "Using sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0" "build-tools;34.0.0"
+
+      - name: Point Gradle at the Android SDK
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      # No --offline: the release variant runs lint, whose `lint-gradle` artifact is
+      # resolved lazily and is not in the cache.
+      - name: Assemble the ${{ matrix.variant }} APK
+        run: |
+          set -euo pipefail
+          case "${{ matrix.variant }}" in
+            release) TASK="assembleRelease" ;;
+            debug)   TASK="assembleDebug" ;;
+            *) echo "::error::Unknown variant '${{ matrix.variant }}'"; exit 1 ;;
+          esac
+          ./gradlew --no-daemon --stacktrace "$TASK"
+
+      - name: Verify the APK was produced
+        run: |
+          set -euo pipefail
+          APK="$(find "app/build/outputs/apk/${{ matrix.variant }}" -type f -name '*.apk' | head -1)"
+          if [ -z "$APK" ]; then
+            echo "::error::No APK produced for variant ${{ matrix.variant }}"
+            exit 1
+          fi
+          ls -lh "$APK"
+          echo "::notice::The unpacked fix.zip compiles: $APK"
+
+  # ---------------------------------------------------------------------------
+  # 2) The only job allowed to write to the branch. Runs only when every leg of
+  #    the matrix succeeded, so a broken archive never reaches `main`; the manual
+  #    `force_commit` input is the escape hatch for an already-broken `main`.
+  # ---------------------------------------------------------------------------
+  commit:
+    name: Unpack and commit fix.zip
+    needs: build
+    if: ${{ always() && (needs.build.result == 'success' || github.event.inputs.force_commit == 'true') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      # Unpacked again rather than shipped between jobs: the extraction is
+      # deterministic, and re-doing it keeps this job self-contained.
+      - name: Unpack fix.zip
+        run: python3 .github/scripts/unpack-fix-zip.py
+
+      - name: Delete fix.zip, commit and push
+        run: |
+          set -euo pipefail
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          rm -f fix.zip
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "Nothing changed after unpacking fix.zip — nothing to commit."
+            exit 0
+          fi
+
+          git commit -m "Unpack fix.zip into the repository"
+          git push origin HEAD:main
