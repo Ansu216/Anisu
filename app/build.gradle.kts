@@ -105,6 +105,9 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.security.crypto)
 
+    // Periodic background update check (the "update available" notification while the app is closed).
+    implementation(libs.androidx.work.runtime.ktx)
+
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
     implementation(libs.retrofit)

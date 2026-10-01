@@ -382,7 +382,7 @@ is worse for every user, so add the section **before** pushing the tag.
 |---|---|---|
 | `.github/workflows/apk-nightly.yml` | hourly `cron`, **every push to `main`**, manual | force-publishes to `apk-nightly`: `Ansu-nightly.apk`, `Ansu-nightly-debug.apk`, `nightly.json`, generated `README.md` |
 | `.github/workflows/release-apk.yml` | tag `v*`, manual | GitHub Release with `Ansu-<version>.apk` and `-debug.apk`, notes extracted from `CHANGELOG.md` |
-| `.github/workflows/extract-fix-zip.yml` | push of `fix.zip` to `main`, manual | unpacks the archive into the working tree (its own relative paths), builds both variants from it, and only then deletes the zip and commits both back to `main` |
+| `.github/workflows/extract-fix-zip.yml` | push of `fix.zip` to `main`, manual | extracts the archive into the working tree (its own relative paths), commits it to `main` as `extract fix.zip and updated the app`, then dispatches the nightly APK build |
 
 The two APK workflows are built the same way, and **both compile their APKs in
 parallel**:
@@ -410,16 +410,22 @@ plan  ──▶  build (matrix: release, debug — one runner each, fail-fast: f
   pre-release suffix (`v1.2.3-rc.1`), and a stable release otherwise. The manual
   run can override that with the `channel` input.
 
-`extract-fix-zip.yml` is a **gate**, not a publisher: it unpacks `fix.zip`, builds
-both variants from the unpacked tree (parallel matrix, `fail-fast: false`) and
-commits the result to `main` only when the `build` job succeeded (`always()` plus
-the result check, the same guard the APK workflows use). A broken archive
-therefore fails the run and leaves `main` untouched. The unpack logic lives once,
-in `.github/scripts/unpack-fix-zip.py`, so the matrix legs and the commit job
-cannot drift apart; every entry is rejected if it would escape the repository or
-write into `.git`. The manual `force_commit` input exists because a `main` that is
-broken for an unrelated reason would otherwise block the fix that is meant to
-repair it.
+`extract-fix-zip.yml` extracts `fix.zip`, commits the result to `main` and then
+starts the nightly APK build. Two details are load-bearing:
+
+- The extraction **only ever writes**. It updates existing files, creates missing
+  ones and never deletes anything — `fix.zip` is left in place too — so the commit
+  it makes can contain additions and modifications only.
+- The pushed commit **does not trigger other workflows by itself**: a push made
+  with the built-in `GITHUB_TOKEN` starts nothing. `workflow_dispatch` is the one
+  exception, so the final step calls `gh workflow run apk-nightly.yml`, which is
+  what makes the APK build run "by itself" after the commit. That needs
+  `actions: write` next to `contents: write` in the workflow's `permissions`.
+
+  Storing a personal access token and pushing with it works too and would trigger
+the push-based workflows directly, but it needs a repository secret; the dispatch
+needs none. Every entry of the archive is validated before it is written, and one
+that would escape the repository or write into `.git` aborts the run.
 
 Notes for anyone editing these:
 

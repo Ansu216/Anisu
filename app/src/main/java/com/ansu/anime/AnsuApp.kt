@@ -11,6 +11,8 @@ class AnsuApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        // Keep the scheduled background update check in step with the stored preference.
+        container.updateManager.applyAutoCheck()
         // Must be installed as early as possible so a crash at startup is captured too.
         container.diagnostics.installCrashHandler()
         container.diagnostics.log(

@@ -444,7 +444,7 @@ move the key to GitHub secrets instead.
 
 ## CI: nightly and release builds
 
-Two GitHub Actions workflows are included under `.github/workflows/`.
+Three GitHub Actions workflows are included under `.github/workflows/`.
 
 ### `apk-nightly.yml` — hourly nightly APK
 
@@ -474,6 +474,30 @@ Two GitHub Actions workflows are included under `.github/workflows/`.
 - **Does:** builds and signs the APKs, verifies signatures, and creates a GitHub
   Release named after the tag with `Ansu-<version>.apk` and
   `Ansu-<version>-debug.apk` attached.
+
+### `extract-fix-zip.yml` — apply a `fix.zip` archive
+
+- **Runs:** when a file named `fix.zip` is pushed to `main`, or manually
+  (**Actions → Extract fix.zip → Run workflow**).
+- **Does:** extracts the archive into the working tree, commits the result to
+  `main` as the Actions bot with the message
+  `extract fix.zip and updated the app`, then starts the nightly APK build.
+- **Archive layout:** the zip must carry the project's own relative paths, e.g.
+  `app/src/main/java/com/ansu/anime/...`. It is extracted as-is from the
+  repository root, so every file lands in the right folder without mapping.
+- **Existing / missing files:** a file that already exists is overwritten with the
+  archive's copy, a file that does not exist is created, and **nothing is ever
+  deleted** — `fix.zip` stays in the repository as well, so a commit from this
+  workflow only ever adds or updates files.
+- **Safety:** each entry is validated before it is written (by
+  `.github/scripts/unpack-fix-zip.py`). A path that would escape the repository or
+  write into `.git` aborts the run instead of overwriting something unexpected, and
+  an empty archive is rejected.
+- **Builds afterwards:** the push alone would not start anything (commits made with
+  the workflow token do not trigger other workflows), so the last step explicitly
+  dispatches `apk-nightly.yml`. The APK build therefore runs on its own right after
+  the commit, and the nightly is published only if that build succeeds.
+- **Afterwards:** pull `main` locally to get the extracted files.
 
 ### One-time repository setting
 

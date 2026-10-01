@@ -2,11 +2,15 @@
 
 package com.ansu.anime.ui.about
 
+import android.content.Context
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,14 +38,19 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -69,6 +78,11 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
     val state by container.updateManager.state.collectAsStateWithLifecycle()
     val channel by container.updateManager.prefs.channel.collectAsStateWithLifecycle()
     val autoCheck by container.updateManager.prefs.autoCheck.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    // Result of the last "send me a test notification" tap; nothing until it is pressed.
+    var testResult by remember { mutableStateOf<String?>(null) }
+    // Only when the system is the reason nothing was posted is there a setting to go and change.
+    var offerNotificationSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { container.updateManager.check() }
 
@@ -112,20 +126,39 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Automatic checks", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
                     Text(
-                        text = "Look for a new build when the app opens",
+                        text = "Look for a new build when the app opens and every 12 hours in the background",
                         style = MaterialTheme.typography.bodyMedium,
                         color = AnsuColors.TextSecondary,
                     )
                 }
                 Switch(
                     checked = autoCheck,
-                    onCheckedChange = { container.updateManager.prefs.setAutoCheck(it) },
+                    onCheckedChange = { container.updateManager.setAutoCheck(it) },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = AnsuColors.Background,
                         checkedTrackColor = AnsuColors.Accent,
                     ),
                 )
             }
+
+            TestNotificationRow(
+                result = testResult,
+                onSend = {
+                    val sent = container.updateManager.notifyTest()
+                    val blocked = if (sent) null else container.updateManager.notificationBlockedReason()
+                    testResult = if (sent) {
+                        "Sent — it is in your notification shade like any other app's alert."
+                    } else {
+                        "Not sent: " + (blocked ?: "the system refused it.")
+                    }
+                    offerNotificationSettings = blocked != null
+                },
+                onOpenSettings = if (offerNotificationSettings) {
+                    { openNotificationSettings(context) }
+                } else {
+                    null
+                },
+            )
 
             StatusSection(
                 state = state,
@@ -142,6 +175,58 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
             )
         }
     }
+}
+
+/**
+ * A real system notification on demand, so the user can check on their own device that Ansu alerts
+ * arrive without waiting for a new build to be published. When nothing is posted, the reason the
+ * system gave is shown, together with a way straight into the setting that would fix it — a missing
+ * permission or a switched-off notification channel cannot be fixed from inside the app.
+ */
+@Composable
+private fun TestNotificationRow(result: String?, onSend: () -> Unit, onOpenSettings: (() -> Unit)?) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Test notification", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
+            Text(
+                text = result ?: "Post a real system notification now",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (result == null) AnsuColors.TextSecondary else AnsuColors.TextPrimary,
+            )
+            if (onOpenSettings != null) {
+                TextButton(
+                    onClick = onOpenSettings,
+                    contentPadding = PaddingValues(0.dp),
+                    modifier = Modifier.padding(top = 2.dp),
+                ) {
+                    Text(
+                        text = "Open Ansu's notification settings",
+                        color = AnsuColors.Accent,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        }
+        TextButton(onClick = onSend) {
+            Text("Send", color = AnsuColors.Accent, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+/**
+ * Opens Ansu's own notification screen, which is where the runtime permission's switch and the
+ * "App updates" channel both live. `ACTION_APP_NOTIFICATION_SETTINGS` exists since Android 8, which
+ * is this app's `minSdk`, so no older fallback is needed.
+ */
+private fun openNotificationSettings(context: Context) {
+    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }
 }
 
 @Composable

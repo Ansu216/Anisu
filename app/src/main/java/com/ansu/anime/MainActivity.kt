@@ -41,9 +41,16 @@ class MainActivity : ComponentActivity() {
 
     private val container get() = (application as AnsuApp).container
 
-    /** Android 13+ asks for this once; the "update available" notification waits for the grant. */
+    /**
+     * Android 13+ asks for this once. The startup check runs at the same moment, so it usually
+     * finishes while the permission is still unanswered and cannot post anything; checking again the
+     * instant it is granted is what makes the "update available" notification appear on first launch
+     * instead of waiting for the next app start.
+     */
     private val notificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) container.updateManager.checkIfEnabled()
+        }
 
     /** Set by a tap on the update notification, then consumed once the nav graph is ready. */
     private val openUpdatesRequest = mutableStateOf(false)

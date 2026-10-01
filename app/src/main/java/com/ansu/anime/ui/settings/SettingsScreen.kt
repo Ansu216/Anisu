@@ -21,7 +21,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
@@ -137,16 +136,10 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
 
             SettingsGroup(title = "Info") {
                 SettingsRow(
-                    icon = Icons.Filled.Group,
-                    title = "Contributors",
-                    subtitle = "The people who build and test Ansu",
-                    showDivider = false,
-                    onClick = { navController.navigate(Dest.CONTRIBUTORS) },
-                )
-                SettingsRow(
                     icon = Icons.Filled.Info,
                     title = "About",
                     subtitle = "Version, credits and links",
+                    showDivider = false,
                     onClick = { navController.navigate(Dest.ABOUT) },
                 )
             }

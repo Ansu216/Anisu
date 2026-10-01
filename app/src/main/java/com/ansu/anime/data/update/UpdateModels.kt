@@ -58,6 +58,19 @@ internal data class GitHubRelease(
     @SerialName("html_url") val htmlUrl: String = "",
     @SerialName("published_at") val publishedAt: String? = null,
     val assets: List<GitHubAsset> = emptyList(),
+    /** Draft releases are never offered; they are not published yet. */
+    val draft: Boolean = false,
+)
+
+/** One entry of the GitHub commits API; only the message line is shown to the user. */
+@Serializable
+internal data class GitHubCommit(
+    @SerialName("commit") val commit: CommitDetails = CommitDetails(),
+)
+
+@Serializable
+internal data class CommitDetails(
+    val message: String = "",
 )
 
 @Serializable

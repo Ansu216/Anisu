@@ -158,3 +158,7 @@ half-finished run can never publish a partial build.
   `Ansu-<version>-debug.apk` when you push a `v*` tag, and marks it as a
   pre-release automatically when the tag carries a SemVer pre-release suffix
   (`v1.2.3-rc.1`). The release notes come from `CHANGELOG.md`.
+- `extract-fix-zip.yml` extracts a `fix.zip` pushed to `main` (using the paths the
+  archive itself carries), commits it as *"extract fix.zip and updated the app"*
+  and then starts the APK build, so a fix can be delivered as a single archive
+  and the APKs are rebuilt from it straight away. It never deletes anything.
