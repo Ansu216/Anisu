@@ -64,7 +64,9 @@ class AppContainer(context: Context) {
     val apiErrorHandler: ApiErrorHandler = ApiErrorHandler(diagnostics)
 
     val aniListAuthManager: AniListAuthManager = AniListAuthManager(appContext)
-    val aniListApi: AniListApi = AniListApi(okHttpClient, aniListAuthManager)
+    val appearancePrefs: AppearancePrefs = AppearancePrefs(appContext)
+
+    val aniListApi: AniListApi = AniListApi(okHttpClient, aniListAuthManager) { appearancePrefs.titleLanguage.value }
     val aniListRepository: AniListRepository = AniListRepository(aniListApi, aniListAuthManager, apiErrorHandler)
 
     val localListRepository: LocalListRepository = LocalListRepository(database.localListDao())
@@ -85,8 +87,6 @@ class AppContainer(context: Context) {
 
     val selectionHolder: SelectionHolder = SelectionHolder()
 
-    val appearancePrefs: AppearancePrefs = AppearancePrefs(appContext)
-
     val contributorsRepository: ContributorsRepository = ContributorsRepository(appContext, okHttpClient, apiErrorHandler)
 
     val updateManager: UpdateManager = UpdateManager(appContext, okHttpClient, diagnostics)
@@ -95,7 +95,7 @@ class AppContainer(context: Context) {
         // The demo source ships built into the app so there's content on
         // first launch; reloadAll() then adds any real installed extensions
         // alongside it.
-        extensionManager.registerBuiltIn(com.ansu.anime.extension.DemoSource())
+        extensionManager.registerBuiltIn(com.ansu.anime.extension.DemoSource { appearancePrefs.titleLanguage.value })
         extensionManager.reloadAll()
     }
 }

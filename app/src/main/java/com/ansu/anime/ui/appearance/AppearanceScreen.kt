@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.ansu.anime.data.prefs.AppearancePrefs
+import com.ansu.anime.data.prefs.TitleLanguage
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.NavBarSurface
 import com.ansu.anime.ui.components.navBarShape
@@ -63,6 +65,7 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
     val roundness by container.appearancePrefs.navBarRoundness.collectAsStateWithLifecycle()
     val frostiness by container.appearancePrefs.navBarFrostiness.collectAsStateWithLifecycle()
     val blur by container.appearancePrefs.navBarBlur.collectAsStateWithLifecycle()
+    val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -80,6 +83,23 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
             modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            Text("Titles", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                TitleLanguage.entries.forEach { language ->
+                    FilterChip(
+                        selected = titleLanguage == language,
+                        onClick = { container.appearancePrefs.setTitleLanguage(language) },
+                        label = { Text(language.label) },
+                    )
+                }
+            }
+            Text(
+                text = "Show anime titles as Romaji (Shingeki no Kyojin) or English (Attack on Titan). " +
+                    "Titles and posters across the app follow this choice.",
+                style = MaterialTheme.typography.labelSmall,
+                color = AnsuColors.TextTertiary,
+            )
+
             Text("Navigation bar", style = MaterialTheme.typography.titleMedium)
 
             // ---- Live preview: the exact same bar composable the app uses ----

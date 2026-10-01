@@ -4,6 +4,7 @@ import com.ansu.anime.core.net.ApiErrorKind
 import com.ansu.anime.core.net.ApiException
 import com.ansu.anime.core.net.httpApiException
 import com.ansu.anime.core.net.toApiException
+import com.ansu.anime.data.prefs.TitleLanguage
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -29,6 +30,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class AniListApi(
     private val client: OkHttpClient,
     private val authManager: AniListAuthManager,
+    /** Read on every response, so a change in Settings applies to the next request. */
+    private val titleLanguage: () -> TitleLanguage = { TitleLanguage.ROMAJI },
 ) {
     private val endpoint = "https://graphql.anilist.co"
     private val json = Json { ignoreUnknownKeys = true }
@@ -504,12 +507,18 @@ class AniListApi(
         }
     }
 
+    /** The title in the chosen language, falling back to the other one when AniList has no such title. */
+    private fun pickTitle(titleObj: JsonObject?): String? {
+        fun field(name: String) = (titleObj?.get(name) as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+        return when (titleLanguage()) {
+            TitleLanguage.ENGLISH -> field("english") ?: field("romaji")
+            TitleLanguage.ROMAJI -> field("romaji") ?: field("english")
+        }
+    }
+
     private fun JsonObject.toMedia(): AniListMedia? {
         val idValue = this["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
-        val titleObj = this["title"]?.jsonObject
-        val title = titleObj?.get("romaji")?.jsonPrimitive?.content
-            ?: titleObj?.get("english")?.jsonPrimitive?.content
-            ?: return null
+        val title = pickTitle(this["title"] as? JsonObject) ?: return null
         return AniListMedia(
             id = idValue,
             title = title,
@@ -527,10 +536,7 @@ class AniListApi(
 
     private fun JsonObject.toMediaDetails(): AniListMediaDetails? {
         val idValue = this["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
-        val titleObj = this["title"]?.jsonObject
-        val title = titleObj?.get("romaji")?.jsonPrimitive?.content
-            ?: titleObj?.get("english")?.jsonPrimitive?.content
-            ?: return null
+        val title = pickTitle(this["title"] as? JsonObject) ?: return null
 
         // Every one of these lists is drawn with the row's own `id` as the Compose key, and a
         // LazyRow/LazyColumn throws `Key ... was already used` when two items share one. AniList

@@ -133,6 +133,9 @@ interface LocalListDao {
     @Query("UPDATE local_list_entries SET format = :format WHERE anilistId = :anilistId")
     suspend fun setFormat(anilistId: Int, format: String)
 
+    @Query("UPDATE local_list_entries SET title = :title WHERE anilistId = :anilistId")
+    suspend fun setTitle(anilistId: Int, title: String)
+
     @Query("UPDATE local_list_entries SET year = :year WHERE anilistId = :anilistId AND year IS NULL")
     suspend fun fillYear(anilistId: Int, year: Int)
 

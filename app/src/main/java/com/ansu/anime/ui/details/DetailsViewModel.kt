@@ -103,7 +103,7 @@ class DetailsViewModel(
                 }
                 // Saved shows made before My Space showed year/format get them filled in here.
                 if (details != null) {
-                    runCatching { localListRepository.backfillDetails(details.id, details.format, details.year) }
+                    runCatching { localListRepository.backfillDetails(details.id, details.format, details.year, details.title) }
                 }
                 val uniqueEpisodes = episodes
                     .mapIndexed { index, episode ->

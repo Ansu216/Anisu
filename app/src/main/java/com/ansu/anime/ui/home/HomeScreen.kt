@@ -62,6 +62,7 @@ fun HomeScreen(
                     container.catalogRepository,
                     container.continueWatchingRepository,
                     container.aniListRepository,
+                    container.appearancePrefs.titleLanguage,
                 )
             }
         },
@@ -109,7 +110,6 @@ fun HomeScreen(
                         items = heroSource,
                         onClick = selectAnime,
                         logoFor = { id -> container.artworkRepository.get(id).logoUrl },
-                        posterFor = { id -> container.artworkRepository.get(id).posterUrl },
                         onToggleFavourite = { anime ->
                             anime.anilistId?.let { id ->
                                 scope.launch {

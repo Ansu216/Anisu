@@ -44,8 +44,9 @@ class LocalListRepository(private val dao: LocalListDao) {
      * Fills in what a saved show is missing (its format, and its year if none was stored) once the
      * details page has loaded them. Does nothing for a show that is not saved on this device.
      */
-    suspend fun backfillDetails(anilistId: Int, format: String?, year: Int?) {
+    suspend fun backfillDetails(anilistId: Int, format: String?, year: Int?, title: String? = null) {
         if (dao.get(anilistId) == null) return
+        if (!title.isNullOrBlank()) dao.setTitle(anilistId, title)
         if (format != null) dao.setFormat(anilistId, format)
         if (year != null) dao.fillYear(anilistId, year)
     }

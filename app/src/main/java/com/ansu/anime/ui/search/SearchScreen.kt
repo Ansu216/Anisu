@@ -72,6 +72,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.ansu.anime.anilist.AniListSearchFilters
@@ -110,6 +111,7 @@ fun SearchScreen(
     var failed by remember { mutableStateOf(false) }
     var moreFailed by remember { mutableStateOf(false) }
     var retryTick by remember { mutableIntStateOf(0) }
+    val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
 
     val focusManager = LocalFocusManager.current
     val gridState = rememberLazyGridState()
@@ -120,7 +122,7 @@ fun SearchScreen(
     // Restarts on every keystroke or filter change, which cancels the previous search: no stale
     // results. Text shorter than two characters counts as no text; with no text and no filters
     // the query resolves to AniList's trending list (30 titles per page).
-    LaunchedEffect(query, filters, retryTick) {
+    LaunchedEffect(query, filters, retryTick, titleLanguage) {
         val text = query.trim().takeIf { it.length >= 2 }.orEmpty()
         if (text.isNotEmpty()) delay(400) // debounce
         isLoading = true

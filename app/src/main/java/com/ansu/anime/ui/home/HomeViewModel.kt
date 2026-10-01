@@ -7,6 +7,7 @@ import com.ansu.anime.anilist.AniListRepository
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.Shelf
 import com.ansu.anime.data.db.ContinueWatchingEntity
+import com.ansu.anime.data.prefs.TitleLanguage
 import com.ansu.anime.data.repository.CatalogRepository
 import com.ansu.anime.data.repository.ContinueWatchingRepository
 import com.ansu.anime.data.repository.toSAnime
@@ -14,6 +15,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -54,6 +56,7 @@ class HomeViewModel(
     private val catalogRepository: CatalogRepository,
     private val continueWatchingRepository: ContinueWatchingRepository,
     private val aniListRepository: AniListRepository,
+    titleLanguage: StateFlow<TitleLanguage>,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -64,6 +67,10 @@ class HomeViewModel(
             .onEach { list -> _uiState.update { it.copy(continueWatching = list) } }
             .launchIn(viewModelScope)
         refresh()
+        // Titles are fetched in the chosen language, so a change in Settings reloads the rows.
+        titleLanguage.drop(1)
+            .onEach { refresh() }
+            .launchIn(viewModelScope)
     }
 
     fun refresh() {

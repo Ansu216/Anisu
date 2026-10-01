@@ -1,4 +1,4 @@
- package com.ansu.anime.anilist
+package com.ansu.anime.anilist
 
 data class AniListViewer(
     val id: Int,

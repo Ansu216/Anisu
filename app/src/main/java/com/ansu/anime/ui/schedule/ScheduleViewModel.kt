@@ -4,8 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ansu.anime.anilist.AniListRepository
 import com.ansu.anime.data.news.NewsRepository
+import com.ansu.anime.data.prefs.TitleLanguage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 data class ScheduleUiState(
@@ -14,13 +18,19 @@ data class ScheduleUiState(
     val news: List<NewsArticle> = emptyList(),
 )
 
-class ScheduleViewModel(private val aniListRepository: AniListRepository) : ViewModel() {
+class ScheduleViewModel(
+    private val aniListRepository: AniListRepository,
+    titleLanguage: StateFlow<TitleLanguage>,
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ScheduleUiState())
     val uiState: StateFlow<ScheduleUiState> = _uiState
 
     init {
         refresh()
+        titleLanguage.drop(1)
+            .onEach { refresh() }
+            .launchIn(viewModelScope)
     }
 
     fun refresh() {

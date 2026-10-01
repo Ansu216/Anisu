@@ -77,6 +77,7 @@ import com.ansu.anime.core.util.formatEpisodeNumber
 import com.ansu.anime.core.util.parseSynopsis
 import com.ansu.anime.data.repository.ListStatus
 import com.ansu.anime.data.repository.pickHeroImage
+import com.ansu.anime.data.prefs.TitleLanguage
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.components.GenreChip
@@ -108,6 +109,7 @@ fun DetailsScreen(
     )
     val anime by viewModel.anime.collectAsStateWithLifecycle()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
     var expandSynopsis by remember { mutableStateOf(false) }
     var selectedPerson by remember { mutableStateOf<PersonDetail?>(null) }
     var selectedGroup by remember(anime?.id) { mutableIntStateOf(0) }
@@ -126,14 +128,20 @@ fun DetailsScreen(
             item {
                 // Art of this exact entry: a first season keeps the series backdrop, while later seasons,
                 // movies and specials use their own banner/cover so they no longer all look the same.
+                // The title comes from AniList's details in the chosen language once they have loaded.
+                val shownTitle = details?.title ?: anime?.title.orEmpty()
                 DetailsHero(
-                    title = anime?.title.orEmpty(),
+                    title = shownTitle,
                     imageUrl = pickHeroImage(
-                        title = anime?.title.orEmpty(),
+                        title = shownTitle,
                         format = details?.format ?: anime?.format,
                         hasPrequel = details?.hasPrequel == true,
                         entryBanner = details?.bannerUrl ?: anime?.bannerUrl,
-                        poster = anime?.posterUrl ?: details?.posterUrl,
+                        // English: the Western-release poster ani.zip has, if any; Romaji: AniList's own (Japanese key art) cover.
+                        poster = when (titleLanguage) {
+                            TitleLanguage.ENGLISH -> state.artwork.posterUrl ?: anime?.posterUrl ?: details?.posterUrl
+                            TitleLanguage.ROMAJI -> anime?.posterUrl ?: details?.posterUrl
+                        },
                         artwork = state.artwork,
                     ),
                     logoUrl = state.artwork.logoUrl,
@@ -407,7 +415,6 @@ private fun Synopsis(blocks: List<SynopsisBlock>, expanded: Boolean, onToggle: (
                     is SynopsisBlock.Paragraph -> {
                         if (previous != null) Spacer(Modifier.height(12.dp))
                         Text(text = block.text, color = AnsuColors.TextSecondary, fontSize = 14.sp, lineHeight = 21.sp)
-                     
                     }
                     is SynopsisBlock.Label -> {
                         if (previous != null) Spacer(Modifier.height(18.dp))

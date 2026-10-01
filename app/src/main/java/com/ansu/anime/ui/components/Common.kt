@@ -61,6 +61,18 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import coil.imageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.util.ageRatingFor
@@ -328,8 +340,6 @@ fun HeroCarousel(
     modifier: Modifier = Modifier,
     /** Resolves the title-logo image URL for an AniList id; null (or no logo) shows the plain text title. */
     logoFor: suspend (Int) -> String? = { null },
-    /** Resolves a sharper portrait poster for an AniList id; null keeps the catalogue's own cover. */
-    posterFor: suspend (Int) -> String? = { null },
 ) {
     if (items.isEmpty()) return
     val shown = items.take(8)
@@ -337,15 +347,10 @@ fun HeroCarousel(
     val likedIds = remember { mutableStateMapOf<String, Boolean>() }
     // AniList id -> logo URL. A key with a null value means "looked up, no logo", so it is not asked twice.
     val logos = remember { mutableStateMapOf<Int, String?>() }
-    // AniList id -> higher-resolution poster URL (absent until looked up, or when there is none).
-    val hiResPosters = remember { mutableStateMapOf<Int, String>() }
-    // Posters that failed to load; those pages fall back to the catalogue cover.
-    val failedPosters = remember { mutableStateMapOf<String, Boolean>() }
     LaunchedEffect(shown) {
         shown.forEach { anime ->
             val id = anime.anilistId ?: return@forEach
             if (!logos.containsKey(id)) launch { logos[id] = logoFor(id) }
-            if (!hiResPosters.containsKey(id)) launch { posterFor(id)?.let { hiResPosters[id] = it } }
         }
     }
 
@@ -357,13 +362,12 @@ fun HeroCarousel(
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                 val anime = shown[page]
                 Box(modifier = Modifier.fillMaxSize()) {
-                    val hiRes = anime.anilistId?.let { hiResPosters[it] }?.takeIf { failedPosters[it] != true }
+                    // AniList's own portrait cover (extraLarge); the banner is only a fallback.
                     AsyncImage(
-                        model = hiRes ?: anime.posterUrl ?: anime.bannerUrl,
+                        model = anime.posterUrl ?: anime.bannerUrl,
                         contentDescription = anime.title,
                         contentScale = ContentScale.Crop,
                         colorFilter = HeroBrightness,
-                        onError = { if (hiRes != null) failedPosters[hiRes] = true },
                         modifier = Modifier.fillMaxSize().background(AnsuColors.BackgroundElevated),
                     )
                     BottomScrim(modifier = Modifier.fillMaxSize(), midAlpha = 0.12f, midStop = 0.6f)
@@ -397,8 +401,8 @@ fun HeroCarousel(
                     textAlign = TextAlign.Center,
                     fontSize = 27.sp,
                     uppercase = false,
-                    maxLogoWidth = 300.dp,
-                    maxLogoHeight = 96.dp,
+                    maxLogoWidth = 320.dp,
+                    maxLogoHeight = 130.dp,
                 )
                 current.genres.take(3).takeIf { it.isNotEmpty() }?.let { genres ->
                     Text(
@@ -471,10 +475,101 @@ private val HeroBrightness = ColorFilter.colorMatrix(
     ),
 )
 
+/** Result of preparing a title logo: still loading, unusable (not a real logo), or ready to draw. */
+private sealed interface LogoState {
+    data object Loading : LogoState
+    data object Unusable : LogoState
+    class Ready(val bitmap: ImageBitmap) : LogoState {
+        val ratio: Float get() = bitmap.width.toFloat() / bitmap.height.toFloat()
+    }
+}
+
 /**
- * The show's title in its own poster lettering ([logoUrl], a transparent logo image). Falls back to
- * the plain text [title] when there is no logo, when it fails to load, or - once [lookupDone] - when
- * the lookup found none. While the lookup is still running nothing is drawn.
+ * Downloads [url], crops away its transparent margins (many logos ship with a lot of empty padding,
+ * which made them render tiny) and rejects images that are not logos at all: an opaque picture such
+ * as a square poster has no transparent background, so it is reported [LogoState.Unusable] and the
+ * caller shows the text title instead.
+ */
+@Composable
+private fun rememberLogoState(url: String?): LogoState {
+    val context = LocalContext.current
+    val state by produceState<LogoState>(if (url == null) LogoState.Unusable else LogoState.Loading, url) {
+        if (url == null) {
+            value = LogoState.Unusable
+            return@produceState
+        }
+        value = withContext(Dispatchers.Default) {
+            val result = context.imageLoader.execute(
+                ImageRequest.Builder(context).data(url).allowHardware(false).size(900).build(),
+            )
+            val source = (result as? SuccessResult)?.drawable?.let { (it as? BitmapDrawable)?.bitmap }
+                ?: return@withContext LogoState.Unusable
+            trimLogo(source)?.let { LogoState.Ready(it.asImageBitmap()) } ?: LogoState.Unusable
+        }
+    }
+    return state
+}
+
+/**
+ * Crops [source] to its visible pixels; null when it is blank or a picture rather than a logo.
+ *
+ * Faint glow/shadow pixels (alpha up to 48) are ignored when measuring the crop box, so a soft halo
+ * no longer keeps the logo's empty margin and makes it render small. A picture is rejected when the
+ * cropped box is almost solid (a poster or screenshot, even one with a thin transparent border) or
+ * when its four corners are all opaque (a rectangle, which lettering never is).
+ */
+private fun trimLogo(source: Bitmap): Bitmap? {
+    val w = source.width
+    val h = source.height
+    if (w < 2 || h < 2) return null
+    val pixels = IntArray(w * h)
+    source.getPixels(pixels, 0, w, 0, 0, w, h)
+    var minX = w; var minY = h; var maxX = -1; var maxY = -1
+    for (y in 0 until h) {
+        for (x in 0 until w) {
+            if ((pixels[y * w + x] ushr 24) > 48) {
+                if (x < minX) minX = x
+                if (x > maxX) maxX = x
+                if (y < minY) minY = y
+                if (y > maxY) maxY = y
+            }
+        }
+    }
+    if (maxX < 0) return null
+    val bw = maxX - minX + 1
+    val bh = maxY - minY + 1
+    if (bw < 8 || bh < 8) return null
+
+    var solid = 0
+    for (y in minY..maxY) {
+        for (x in minX..maxX) {
+            if ((pixels[y * w + x] ushr 24) > 240) solid++
+        }
+    }
+    val fill = solid.toFloat() / (bw * bh)
+    // Lettering leaves plenty of see-through gaps inside its box; a picture fills it.
+    if (fill > 0.82f) return null
+
+    fun opaqueAt(x: Int, y: Int): Boolean = (pixels[y.coerceIn(0, h - 1) * w + x.coerceIn(0, w - 1)] ushr 24) > 200
+    val inset = (minOf(bw, bh) * 0.03f).toInt().coerceAtLeast(1)
+    val cornersOpaque = opaqueAt(minX + inset, minY + inset) && opaqueAt(maxX - inset, minY + inset) &&
+        opaqueAt(minX + inset, maxY - inset) && opaqueAt(maxX - inset, maxY - inset)
+    if (cornersOpaque) return null
+
+    // A near-square or tall box is a poster/emblem, not a title line; drawn at logo size it reads as
+    // a tiny thumbnail where the title should be.
+    val ratio = bw.toFloat() / bh
+    if (ratio < 0.9f && fill > 0.6f) return null
+
+    return Bitmap.createBitmap(source, minX, minY, bw, bh)
+}
+
+/**
+ * The show's title in its own poster lettering ([logoUrl], a transparent logo image). The logo is
+ * trimmed of empty margins and scaled to fill [maxLogoWidth] x [maxLogoHeight] as far as its shape
+ * allows, so wide and tall logos both read at a good size. Falls back to the plain text [title] when
+ * there is no logo, when it is not a real (transparent) logo, when it fails to load, or - once
+ * [lookupDone] - when the lookup found none. While the lookup is still running nothing is drawn.
  */
 @Composable
 fun TitleLogo(
@@ -489,17 +584,27 @@ fun TitleLogo(
     maxLogoHeight: Dp,
     modifier: Modifier = Modifier,
 ) {
-    var failed by remember(logoUrl) { mutableStateOf(false) }
+    val logo = rememberLogoState(logoUrl)
     when {
-        logoUrl != null && !failed -> AsyncImage(
-            model = logoUrl,
-            contentDescription = title,
-            contentScale = ContentScale.Fit,
-            alignment = alignment,
-            onError = { failed = true },
-            modifier = modifier.widthIn(max = maxLogoWidth).height(maxLogoHeight),
-        )
-        lookupDone || failed -> Text(
+        logo is LogoState.Ready -> {
+            // Size by visual area instead of fitting a fixed box: a squarish logo is allowed to be
+            // taller, a very wide one wider, so every title reads at a similar weight rather than
+            // some filling the box and others shrinking to a sliver.
+            val ratio = logo.ratio
+            val targetArea = maxLogoWidth.value * maxLogoHeight.value * 0.75f
+            var width = kotlin.math.sqrt(targetArea * ratio)
+            var height = width / ratio
+            if (width > maxLogoWidth.value) { width = maxLogoWidth.value; height = width / ratio }
+            if (height > maxLogoHeight.value) { height = maxLogoHeight.value; width = height * ratio }
+            Image(
+                bitmap = logo.bitmap,
+                contentDescription = title,
+                contentScale = ContentScale.Fit,
+                alignment = alignment,
+                modifier = modifier.size(width = width.dp, height = height.dp),
+            )
+        }
+        logo is LogoState.Unusable && (lookupDone || logoUrl != null) -> Text(
             text = if (uppercase) title.uppercase() else title,
             color = AnsuColors.TextPrimary,
             fontSize = fontSize,

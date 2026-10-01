@@ -68,7 +68,7 @@ fun ScheduleScreen(
     onEntrySelected: (ScheduleEntry) -> Unit = {},
 ) {
     val viewModel: ScheduleViewModel = viewModel(
-        factory = viewModelFactory { initializer { ScheduleViewModel(container.aniListRepository) } },
+        factory = viewModelFactory { initializer { ScheduleViewModel(container.aniListRepository, container.appearancePrefs.titleLanguage) } },
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(ScheduleTab.NEWS) }

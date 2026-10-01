@@ -6,6 +6,7 @@ import com.ansu.anime.core.model.MediaOrigin
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.SEpisode
 import com.ansu.anime.core.model.Video
+import com.ansu.anime.data.prefs.TitleLanguage
 import com.ansu.anime.extension.api.AnimeCatalogueSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -28,7 +29,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * meant as a working reference for how a real extension implements
  * [AnimeCatalogueSource].
  */
-class DemoSource : AnimeCatalogueSource {
+class DemoSource(
+    /** Read per response so the title language chosen in Settings applies to the next request. */
+    private val titleLanguage: () -> TitleLanguage = { TitleLanguage.ROMAJI },
+) : AnimeCatalogueSource {
     override val id: Long = 1L
     override val name: String = "Demo (AniList metadata)"
     override val lang: String = "en"
@@ -147,9 +151,13 @@ class DemoSource : AnimeCatalogueSource {
 
     private fun JsonObject.toSAnime(): SAnime? {
         val idValue = this["id"]?.jsonPrimitive?.longOrNull ?: return null
-        val title = this["title"]?.jsonObject?.get("romaji")?.jsonPrimitive?.content
-            ?: this["title"]?.jsonObject?.get("english")?.jsonPrimitive?.content
-            ?: return null
+        val titleObj = this["title"]?.jsonObject
+        val romaji = titleObj?.get("romaji")?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
+        val english = titleObj?.get("english")?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
+        val title = when (titleLanguage()) {
+            TitleLanguage.ENGLISH -> english ?: romaji
+            TitleLanguage.ROMAJI -> romaji ?: english
+        } ?: return null
         return SAnime(
             id = idValue.toString(),
             title = title,

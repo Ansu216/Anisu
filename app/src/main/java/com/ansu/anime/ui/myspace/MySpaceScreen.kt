@@ -77,6 +77,7 @@ fun MySpaceScreen(
 ) {
     val viewer by container.aniListRepository.viewer.collectAsStateWithLifecycle()
     val isLoggedIn by container.aniListRepository.isLoggedIn.collectAsStateWithLifecycle()
+    val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
 
     var selected by remember { mutableStateOf(ListTab.Watching) }
     var liked by remember { mutableStateOf<List<AniListMedia>>(emptyList()) }
@@ -96,7 +97,7 @@ fun MySpaceScreen(
     val localCompleted by remember { container.localListRepository.withStatus(ListStatus.COMPLETED) }.collectAsStateWithLifecycle(initialValue = emptyList())
 
     // viewer is loaded asynchronously by the repository, so key on it as well as login state.
-    LaunchedEffect(isLoggedIn, viewer?.id, reloadKey) {
+    LaunchedEffect(isLoggedIn, viewer?.id, reloadKey, titleLanguage) {
         if (isLoggedIn && viewer != null) {
             isLoading = true
             liked = container.aniListRepository.getLiked()

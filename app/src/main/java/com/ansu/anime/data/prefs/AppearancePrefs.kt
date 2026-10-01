@@ -55,7 +55,21 @@ class AppearancePrefs(context: Context) {
         prefs.edit().putFloat(KEY_NAV_BLUR, v).apply()
     }
 
+    private val _titleLanguage = MutableStateFlow(
+        TitleLanguage.fromKey(prefs.getString(KEY_TITLE_LANGUAGE, null)),
+    )
+
+    /** Which title (and matching artwork) the app shows for every anime. */
+    val titleLanguage: StateFlow<TitleLanguage> = _titleLanguage
+
+    fun setTitleLanguage(value: TitleLanguage) {
+        _titleLanguage.value = value
+        prefs.edit().putString(KEY_TITLE_LANGUAGE, value.key).apply()
+    }
+
     companion object {
+        private const val KEY_TITLE_LANGUAGE = "title_language"
+
         private const val KEY_NAV_ROUNDNESS = "nav_bar_roundness"
         const val DEFAULT_NAV_ROUNDNESS = 0.7f // ≈ the previous fixed 24dp corners
 
@@ -64,5 +78,15 @@ class AppearancePrefs(context: Context) {
 
         private const val KEY_NAV_BLUR = "nav_bar_blur"
         const val DEFAULT_NAV_BLUR = 0f // off by default
+    }
+}
+
+/** Language of anime titles: AniList's romanised Japanese title, or its official English one. */
+enum class TitleLanguage(val key: String, val label: String) {
+    ROMAJI("romaji", "Romaji"),
+    ENGLISH("english", "English");
+
+    companion object {
+        fun fromKey(key: String?): TitleLanguage = entries.firstOrNull { it.key == key } ?: ROMAJI
     }
 }
