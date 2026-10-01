@@ -7,6 +7,13 @@ name: Ansu Nightly APK
 # The two variants build in PARALLEL (one matrix leg each, on its own runner);
 # a single `publish` job collects them and is the only job allowed to touch the
 # branch, so a half-finished run can never publish a partial build.
+#
+# When the commit being built is the one `extract-fix-zip.yml` made after a
+# `fix.zip` push, the publish job also writes `fix-report.json` and
+# `fix-report.md` (see `.github/scripts/fix-report.py`): they record who pushed
+# the archive, the extraction commit and every file it changed. A build that is
+# not an extraction carries the previous report over, so the last fix stays
+# documented on the branch until the next one lands.
 
 on:
   schedule:
@@ -164,6 +171,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # The workspace is needed to inspect the commit that was built (and its
+      # parent) when writing the fix.zip report, and to read the previous report
+      # off the apk-nightly branch.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download the built APKs
         uses: actions/download-artifact@v4
         with:
@@ -244,6 +259,13 @@ jobs:
           | `Ansu-nightly.apk` | Signed **release** build (smaller, minified, R8). |
           | `Ansu-nightly-debug.apk` | Signed **debug** build (easier to read stack traces). |
           | `nightly.json` | Version / build metadata for this run. |
+          | `fix-report.json` | What the last `fix.zip` changed (commit, author, files). |
+          | `fix-report.md` | The same report, readable on this page. |
+
+          The `fix-report.*` files are written when a `fix.zip` was extracted into
+          the project and this build was made from the commit it produced. A build
+          that is not an extraction keeps the previous report, so it describes the
+          last fix that landed rather than disappearing on the next hourly build.
 
           **Do not commit to this branch by hand — it is overwritten on every run.**
 
@@ -257,6 +279,15 @@ jobs:
           MD
 
           ls -la "$STAGE"
+
+      - name: Stage the fix.zip report
+        env:
+          STAGE: ${{ steps.stage.outputs.dir }}
+          VERSION_NAME: ${{ needs.plan.outputs.version_name }}
+          VERSION_CODE: ${{ needs.plan.outputs.version_code }}
+          VARIANT: ${{ needs.plan.outputs.variant }}
+          ISO: ${{ needs.plan.outputs.iso }}
+        run: python3 .github/scripts/fix-report.py "$STAGE"
 
       - name: Publish to the apk-nightly branch
         env:

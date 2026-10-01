@@ -380,7 +380,7 @@ is worse for every user, so add the section **before** pushing the tag.
 
 | Workflow | Trigger | Output |
 |---|---|---|
-| `.github/workflows/apk-nightly.yml` | hourly `cron`, **every push to `main`**, manual | force-publishes to `apk-nightly`: `Ansu-nightly.apk`, `Ansu-nightly-debug.apk`, `nightly.json`, generated `README.md` |
+| `.github/workflows/apk-nightly.yml` | hourly `cron`, **every push to `main`**, manual | force-publishes to `apk-nightly`: `Ansu-nightly.apk`, `Ansu-nightly-debug.apk`, `nightly.json`, generated `README.md`, and — when the built commit is a `fix.zip` extraction — `fix-report.json` / `fix-report.md` |
 | `.github/workflows/release-apk.yml` | tag `v*`, manual | GitHub Release with `Ansu-<version>.apk` and `-debug.apk`, notes extracted from `CHANGELOG.md` |
 | `.github/workflows/extract-fix-zip.yml` | push of `fix.zip` to `main`, manual | extracts the archive into the working tree (its own relative paths), commits it to `main` as `extract fix.zip and updated the app`, then dispatches the nightly APK build |
 
@@ -458,6 +458,17 @@ Notes for anyone editing these:
   file name under `apk`. The in-app updater reads that file, so keep its fields
   in sync with `NightlyManifest` in `data/update/UpdateModels.kt` — that is what
   lets the APK be renamed without breaking updates.
+- The nightly also publishes `fix-report.json` and `fix-report.md`, written by
+  `.github/scripts/fix-report.py` in the `publish` job. They describe the last
+  `fix.zip` extraction — the commit it made (subject
+  `extract fix.zip and updated the app`), the person who pushed the archive, and
+  every changed file with its line counts — and the report is only produced when
+  the commit being built carries that subject. Because the branch is wiped every
+  run, a run that is *not* an extraction carries the previous report over (with
+  `apkBuiltFromFix: false`) instead of deleting it, so the last fix stays
+  documented. The script needs the checked-out history (the `publish` job
+  therefore checks out with `fetch-depth: 0`), and the file names and fields are
+  a public contract of the branch — keep them stable.
 - Pushing to `apk-nightly` requires `permissions: contents: write` and the
   repository setting *Actions → General → Workflow permissions → Read and write*.
 - The release job checks out with `fetch-depth: 0`: it needs the previous tags
