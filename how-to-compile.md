@@ -493,6 +493,18 @@ Three GitHub Actions workflows are included under `.github/workflows/`.
   `.github/scripts/unpack-fix-zip.py`). A path that would escape the repository or
   write into `.git` aborts the run instead of overwriting something unexpected, and
   an empty archive is rejected.
+- **`.github/workflows/` is skipped** and the run says so. GitHub refuses to let the
+  built-in `GITHUB_TOKEN` create or update a workflow file (*"refusing to allow a
+  GitHub App to create or update workflow … without `workflows` permission"*), and
+  no `permissions:` block lifts that: a commit that touched one would be rejected as
+  a whole and the fix would never land. Everything else in the archive is applied
+  normally.
+- **Updating workflows too (optional):** create the repository secret
+  `FIX_ZIP_TOKEN` holding a classic PAT with the **`workflow`** scope (or a
+  fine-grained one with *Contents* and *Workflows* read/write). The checkout then
+  uses it, so workflow files are extracted as well. The token has to be passed to
+  `actions/checkout`, not to the push step — checkout is what stores the credential
+  every later `git` command uses.
 - **Builds afterwards:** the push alone would not start anything (commits made with
   the workflow token do not trigger other workflows), so the last step explicitly
   dispatches `apk-nightly.yml`. The APK build therefore runs on its own right after

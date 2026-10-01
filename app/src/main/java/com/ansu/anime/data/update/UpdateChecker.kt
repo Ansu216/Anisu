@@ -51,7 +51,7 @@ class UpdateChecker(private val client: OkHttpClient) {
             AvailableUpdate(
                 channel = UpdateChannel.RELEASES,
                 versionName = latest,
-                notes = release.body?.trim()?.takeIf { it.isNotEmpty() },
+                notes = releaseNotes(release),
                 apkUrl = apk.downloadUrl,
                 pageUrl = release.htmlUrl.ifBlank { "$REPO_URL/releases" },
                 publishedAt = release.publishedAt,
@@ -86,6 +86,19 @@ class UpdateChecker(private val client: OkHttpClient) {
         val expected = "Ansu-$version.apk"
         return apks.firstOrNull { it.name.equals(expected, ignoreCase = true) }
             ?: apks.firstOrNull { !it.name.contains("debug", ignoreCase = true) }
+    }
+
+    /**
+     * The release body with the message of the commit it was built from appended. The body already
+     * lists the commits since the previous release, but the build itself is only a bare SHA on its
+     * "built automatically from commit `…`" line — the same lookup the nightly channel uses puts a
+     * readable headline next to it.
+     */
+    private fun releaseNotes(release: GitHubRelease): String? {
+        val body = release.body?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val sha = SHA_IN_RELEASE_BODY.find(body)?.groupValues?.get(1) ?: return body
+        val message = commitMessage(sha) ?: return body
+        return "$body\n\nCommit ${sha.take(7)}: $message"
     }
 
     /**
@@ -156,6 +169,9 @@ class UpdateChecker(private val client: OkHttpClient) {
         private const val NIGHTLY_JSON_URL = "$NIGHTLY_BRANCH_URL/nightly.json"
         private const val DEFAULT_NIGHTLY_APK = "Ansu-nightly.apk"
         private const val USER_AGENT = "Ansu-Android-Updater"
+
+        /** `release-apk.yml` writes "built automatically from commit `<sha>`" into the body. */
+        private val SHA_IN_RELEASE_BODY = Regex("commit `([0-9a-fA-F]{7,40})`")
     }
 }
 
@@ -164,17 +180,78 @@ private class HttpStatusException(val code: Int, message: String = "GitHub retur
     Exception(message)
 
 /**
- * Numeric component comparison ("1.10.0" is newer than "1.9.0"): non-numeric
- * parts are ignored and missing parts count as zero, so a nightly versionName
- * like "2026.09.28.1500" never looks like an upgrade over a real release.
+ * Whether [candidate] is a newer version than [installed], the way SemVer orders them.
+ *
+ * The release part is compared component by component ("1.10.0" is newer than "1.9.0",
+ * and a missing component counts as zero, so a timestamp-style name such as
+ * "2026.09.28.1500" compares sensibly against "0.1.0"). Build metadata after `+` is
+ * ignored, as the specification says.
+ *
+ * The pre-release part decides when the release parts are equal, and that is exactly what
+ * used to go wrong: the old comparison kept only the numeric components, so "0.1.0-nightly"
+ * collapsed to 0.1.0 and the app answered "up to date" on a pre-release that the released
+ * 0.1.0 had already superseded — an old build that was never offered the new one. Now a
+ * version carrying a pre-release part is always older than the same version without one,
+ * and two pre-releases are ordered by their dot-separated identifiers (numeric ones
+ * numerically, and a numeric identifier ranks below an alphanumeric one).
  */
 internal fun isNewerVersion(candidate: String, installed: String): Boolean {
-    val a = candidate.split('.', '-', '+', '_').mapNotNull { it.toIntOrNull() }
-    val b = installed.split('.', '-', '+', '_').mapNotNull { it.toIntOrNull() }
+    val (candidateNumbers, candidatePre) = splitVersion(candidate)
+    val (installedNumbers, installedPre) = splitVersion(installed)
+
+    val byNumbers = compareComponents(candidateNumbers, installedNumbers)
+    if (byNumbers != 0) return byNumbers > 0
+
+    return when {
+        candidatePre == null && installedPre == null -> false
+        // 1.0.0 supersedes its own pre-releases (1.0.0-rc.1 and the like).
+        candidatePre == null -> true
+        installedPre == null -> false
+        else -> comparePreRelease(candidatePre, installedPre) > 0
+    }
+}
+
+/** Splits "v1.2.3-rc.1+build.5" into [1, 2, 3] and "rc.1"; build metadata is dropped. */
+private fun splitVersion(version: String): Pair<List<Int>, String?> {
+    val withoutMetadata = version.trim().removePrefix("v").substringBefore('+')
+    val separator = listOf(withoutMetadata.indexOf('-'), withoutMetadata.indexOf('_'))
+        .filter { it >= 0 }
+        .minOrNull()
+
+    val release = if (separator == null) withoutMetadata else withoutMetadata.substring(0, separator)
+    val preRelease = if (separator == null) null else withoutMetadata.substring(separator + 1)
+    return release.split('.').mapNotNull { it.toIntOrNull() } to preRelease?.takeIf { it.isNotBlank() }
+}
+
+/** Component-wise numeric comparison; a missing component counts as zero. */
+private fun compareComponents(a: List<Int>, b: List<Int>): Int {
     for (i in 0 until maxOf(a.size, b.size)) {
         val left = a.getOrElse(i) { 0 }
         val right = b.getOrElse(i) { 0 }
-        if (left != right) return left > right
+        if (left != right) return left.compareTo(right)
     }
-    return false
+    return 0
+}
+
+/** SemVer pre-release ordering: "rc.1" is older than "rc.2", and "rc" older than "rc.1". */
+private fun comparePreRelease(a: String, b: String): Int {
+    val left = a.split('.')
+    val right = b.split('.')
+    for (i in 0 until maxOf(left.size, right.size)) {
+        // Fewer identifiers means the lower version: 1.0.0-rc < 1.0.0-rc.1.
+        if (i >= left.size) return -1
+        if (i >= right.size) return 1
+
+        val leftNumber = left[i].toIntOrNull()
+        val rightNumber = right[i].toIntOrNull()
+        val result = when {
+            leftNumber != null && rightNumber != null -> leftNumber.compareTo(rightNumber)
+            // A numeric identifier always ranks below an alphanumeric one.
+            leftNumber != null -> -1
+            rightNumber != null -> 1
+            else -> left[i].compareTo(right[i])
+        }
+        if (result != 0) return result
+    }
+    return 0
 }

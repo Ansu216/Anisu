@@ -424,8 +424,23 @@ starts the nightly APK build. Two details are load-bearing:
 
   Storing a personal access token and pushing with it works too and would trigger
 the push-based workflows directly, but it needs a repository secret; the dispatch
-needs none. Every entry of the archive is validated before it is written, and one
-that would escape the repository or write into `.git` aborts the run.
+needs none.
+
+- The extraction **skips `.github/workflows/**`**. GitHub refuses any write there
+  from the built-in `GITHUB_TOKEN` (*"refusing to allow a GitHub App to create or
+  update workflow … without `workflows` permission"*) and that is a platform rule,
+  not a grantable scope — no `permissions:` block lifts it, so a commit that touched
+  a workflow file is rejected as a whole. An archive that contains the entire
+  repository would therefore never apply. The secret `FIX_ZIP_TOKEN` (a PAT with the
+  `workflow` scope) is the opt-in that lifts the restriction; it has to be passed to
+  `actions/checkout`'s `token:` input, because the checkout is what stores the
+  credential every later `git` command uses.
+
+Every entry of the archive is validated before it is written, and one that would
+escape the repository or write into `.git` aborts the run. Pushing to `main` uses a
+full-history checkout (`fetch-depth: 0`) and rebases first, and a rejected push is
+reported as an `::error::` annotation, which is readable from the API without
+authenticating.
 
 Notes for anyone editing these:
 
