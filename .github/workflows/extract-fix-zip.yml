@@ -1,10 +1,12 @@
 name: Extract fix.zip
 
-# When a file named `fix.zip` is pushed to `main`, its contents are extracted into
-# the repository and committed back by the Actions bot with the message
-# "extract fix.zip and updated the app". The APK build workflow is then started
-# explicitly, so the new commit is built and published right away instead of
-# waiting for the next hourly run.
+# When a file named `fix.zip` is pushed to `main` **by Maygodblastyou**, its
+# contents are extracted into the repository and committed back by the Actions bot
+# with the message "extract fix.zip and updated the app". The APK build workflow is
+# then started explicitly, so the new commit is built and published right away
+# instead of waiting for the next hourly run. The job is guarded on
+# `github.actor == 'Maygodblastyou'`, so any other actor (the bot, a collaborator,
+# a fork) is skipped outright and cannot rewrite the project.
 #
 # The archive carries the project's own relative paths (for example
 # `app/src/main/java/com/ansu/anime/...`), so every file lands in the right folder
@@ -55,8 +57,10 @@ jobs:
   extract:
     name: Extract fix.zip and commit it
     runs-on: ubuntu-latest
-    # A run started by the bot itself is skipped, so the extraction cannot loop.
-    if: ${{ github.actor != 'github-actions[bot]' }}
+    # Only the repository owner may rewrite the project through a fix.zip. Any
+    # other actor — a bot included — is skipped, so a stray or malicious fix.zip
+    # can never be extracted, which also means the extraction cannot loop.
+    if: ${{ github.actor == 'Maygodblastyou' }}
 
     steps:
       - name: Checkout

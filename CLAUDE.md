@@ -383,7 +383,7 @@ is worse for every user, so add the section **before** pushing the tag.
 |---|---|---|
 | `.github/workflows/apk-nightly.yml` | hourly `cron`, **every push to `main`**, manual | force-publishes to `apk-nightly`: `Ansu-nightly.apk`, `Ansu-nightly-debug.apk`, `nightly.json`, generated `README.md` |
 | `.github/workflows/release-apk.yml` | tag `v*`, manual | GitHub Release with `Ansu-<version>.apk` and `-debug.apk`, notes extracted from `CHANGELOG.md` |
-| `.github/workflows/extract-fix-zip.yml` | push of `fix.zip` to `main`, manual | extracts the archive into the working tree (its own relative paths), commits it to `main` as `extract fix.zip and updated the app`, then dispatches the nightly APK build |
+| `.github/workflows/extract-fix-zip.yml` | push of `fix.zip` to `main` by **Maygodblastyou**, manual | extracts the archive into the working tree (its own relative paths), commits it to `main` as `extract fix.zip and updated the app`, then dispatches the nightly APK build. The job is guarded on `github.actor == 'Maygodblastyou'`, so any other actor is skipped |
 
 The two APK workflows are built the same way, and **both compile their APKs in
 parallel**:
@@ -391,8 +391,8 @@ parallel**:
 ```
 plan  ──▶  build (matrix: release, debug — one runner each, fail-fast: false)
                      │
-                     ▼
-          publish / release  (needs both legs; the only job that writes anything)
+                     ├─▶  publish-release  (as soon as the release leg's APK exists)
+                     └─▶  publish-debug    (as soon as the debug leg's APK exists)
 ```
 
 - The `build` job is a **matrix**: `release` and `debug` run simultaneously on
@@ -401,10 +401,21 @@ plan  ──▶  build (matrix: release, debug — one runner each, fail-fast: f
   structure removes.
 - `fail-fast: false` keeps the other leg running when one fails, so a single run
   shows the real state of *both* variants.
-- The last job is guarded with
-  `if: ${{ always() && … build.result == 'success' }}` so it publishes only when
-  every leg succeeded, and it re-checks that the APKs it expected are actually
-  present. A partial or half-finished build is therefore never published.
+- The nightly publishes each variant **independently**: `publish-release` and
+  `publish-debug` are separate jobs, each gated only on whether its **own** build
+  leg produced an APK, not on the aggregate `build` result. This is deliberate — a
+  failure on one side must never hold back the other. A job whose artifact is
+  missing (`download-artifact` finds nothing) reports a `::notice::` and publishes
+  nothing. Both jobs share the concurrency group `apk-nightly-branch`
+  (`cancel-in-progress: false`) so they never write the branch at the same time,
+  and each folds the sibling variant of the same run into the branch it writes
+  (`.github/scripts/stage-nightly.sh` reads the branch and, when the `versionCode`
+  matches, keeps the other APK) — so publishing one leg never drops the other, and
+  the two APKs can never belong to different runs.
+- `release-apk.yml` keeps its atomic `release` job guarded with
+  `if: ${{ always() && … build.result == 'success' }}`, so a GitHub Release is only
+  ever created with both of its assets. Only the **nightly** workflow publishes
+  per variant.
 - The nightly publishes one consistent set: both APKs of a run share the stamp
   computed by the `plan` job, and the branch is replaced as a whole.
 - The release is a **pre-release** automatically when the tag carries a SemVer
@@ -412,7 +423,11 @@ plan  ──▶  build (matrix: release, debug — one runner each, fail-fast: f
   run can override that with the `channel` input.
 
 `extract-fix-zip.yml` extracts `fix.zip`, commits the result to `main` and then
-starts the nightly APK build. Two details are load-bearing:
+starts the nightly APK build. It runs **only when the actor is
+`Maygodblastyou`** (`if: ${{ github.actor == 'Maygodblastyou' }}`): a `fix.zip`
+pushed by anyone else — a collaborator, a fork, the Actions bot — is left alone,
+which also means the run can never loop by triggering itself. Three details are
+load-bearing:
 
 - The extraction **only ever writes**. It updates existing files, creates missing
   ones and never deletes anything — `fix.zip` is left in place too — so the commit
@@ -452,13 +467,15 @@ Notes for anyone editing these:
   committed or `./gradlew` cannot start.
 - Both workflows build with `-PversionCode` / `-PversionName`, which only work
   because `app/build.gradle.kts` reads those properties. Keep that wiring.
-- The nightly README is generated inside the workflow heredoc, so its two
-  download badges must be edited there — not on the branch, which is
-  overwritten on every run.
-- The nightly workflow also writes `nightly.json`, including the published APK's
-  file name under `apk`. The in-app updater reads that file, so keep its fields
-  in sync with `NightlyManifest` in `data/update/UpdateModels.kt` — that is what
-  lets the APK be renamed without breaking updates.
+- The nightly README and `nightly.json` are generated by
+  `.github/scripts/stage-nightly.sh` (run by both `publish-release` and
+  `publish-debug`), so their content must be edited there — not on the branch,
+  which is overwritten on every run.
+- `stage-nightly.sh` writes `nightly.json`, including the published APK's file
+  name under `apk` (always the **release** build) and the debug one under
+  `apkDebug`. The in-app updater reads `apk`, so keep its fields in sync with
+  `NightlyManifest` in `data/update/UpdateModels.kt` — that is what lets the APK
+  be renamed without breaking updates.
 - Pushing to `apk-nightly` requires `permissions: contents: write` and the
   repository setting *Actions → General → Workflow permissions → Read and write*.
 - The release job checks out with `fetch-depth: 0`: it needs the previous tags
@@ -471,7 +488,48 @@ large one-way change (rewriting history, changing the package name, swapping a
 library, bumping the toolchain, adding a module), ask first rather than guessing.
 A wrong guess is more expensive than one question.
 
-## 11. Legal and content compliance
+## 11. The end-of-chat `fix.zip` — MANDATORY
+
+At the end of **every chat** the agent hands the user a `fix.zip` that carries the
+changes of that chat. `extract-fix-zip.yml` extracts it from the repository root,
+so every entry must keep the project's own relative path.
+
+The archive must contain **exactly** these files and folders — plus the `docs/`
+folder, described below:
+
+- `app/` — the whole `:app` module **except its `build/` sub-folder** (never ship
+  generated output);
+- `gradle/` (the wrapper and `libs.versions.toml`);
+- `keystore/` (the committed signing key and its README);
+- `.gitignore`;
+- `AGENTS.md`;
+- `CHANGELOG.md`;
+- `gradle.properties`;
+- `build.gradle.kts` (the root build script);
+- `gradlew`;
+- `gradlew.bat`;
+- `how-to-compile.md`;
+- `local.properties`;
+- `README.md`;
+- `settings.gradle.kts`.
+
+Rules:
+
+- **No `build/` directory anywhere**, and no `.gradle/`, `.kotlin/` or other local
+  build output.
+- `local.properties` is included for local builds and must contain **only**
+  `sdk.dir` (and optionally `org.gradle.java.home`) — never a token, key or
+  secret. Everything else (`gradle.properties`, sources) is what the build needs.
+- GitHub refuses to let the workflow token write `.github/workflows/**`, so the
+  archive does not need to carry that folder; when a chat changes a workflow the
+  user pushes it by hand.
+
+**All additional documentation written during a chat goes into `docs/`.** Never
+scatter loose Markdown files at the repository root: a new guide, report or
+analysis belongs in `docs/`, and the `docs/` folder is carried in the archive too
+so the documentation ships with the code it describes.
+
+## 12. Legal and content compliance
 
 Ansu aggregates metadata from the public AniList API and plays media through
 third-party sources, extensions and Stremio addons. Never hardcode credentials,

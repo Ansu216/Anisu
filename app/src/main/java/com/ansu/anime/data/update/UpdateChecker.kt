@@ -130,7 +130,12 @@ class UpdateChecker(private val client: OkHttpClient) {
         }
         // The workflow writes the file name into nightly.json, so renaming the
         // published APK never breaks the updater; old manifests fall back to it.
-        val apkName = manifest.apk?.takeIf { it.isNotBlank() } ?: DEFAULT_NIGHTLY_APK
+        // Only the **release** APK may be offered: a manifest that points at the
+        // debug build (or an old manifest with no `apk` field at all) is refused
+        // and the published release name is used instead.
+        val apkName = manifest.apk
+            ?.takeIf { it.isNotBlank() && !it.contains("debug", ignoreCase = true) }
+            ?: DEFAULT_NIGHTLY_APK
 
         return UpdateCheckResult.Available(
             AvailableUpdate(

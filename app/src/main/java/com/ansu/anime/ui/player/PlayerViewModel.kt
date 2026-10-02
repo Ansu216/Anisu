@@ -279,19 +279,19 @@ class PlayerViewModel(
             pathOnly.endsWith(".avi") -> 
                 MimeTypes.VIDEO_AVI
             
-            // QuickTime/MOV
+            // QuickTime/MOV (Media3 has no VIDEO_QUICKTIME constant, so the MIME is written out)
             pathOnly.endsWith(".mov") || 
             pathOnly.endsWith(".qt") -> 
-                MimeTypes.VIDEO_QUICKTIME
+                "video/quicktime"
             
             // FLV
             pathOnly.endsWith(".flv") -> 
                 MimeTypes.VIDEO_FLV
             
-            // 3GPP
+            // 3GPP (Media3 has no VIDEO_3GPP constant, so the MIME is written out)
             pathOnly.endsWith(".3gp") || 
             pathOnly.endsWith(".3g2") -> 
-                MimeTypes.VIDEO_3GPP
+                "video/3gpp"
             
             // Heuristics for streaming URLs without clear extensions
             // These usually come from anime/CDN streaming providers

@@ -4,12 +4,16 @@ name: Ansu Nightly APK
 # branch contents are fully replaced on every run). Can also be started by hand
 # from the Actions tab (Run workflow).
 #
-# The two variants build in PARALLEL (one matrix leg each, on its own runner);
-# a single `publish` job collects them and is the only job allowed to touch the
-# branch, so a half-finished run can never publish a partial build.
+# The two variants build in PARALLEL (one matrix leg each, on its own runner) and
+# are published INDEPENDENTLY: as soon as the release build succeeds its APK is
+# pushed, and as soon as the debug build succeeds its APK is pushed, regardless of
+# the other leg. A failure on one side therefore never holds back the other. The
+# two publish jobs share one concurrency group, so they never push at the same
+# time, and each one folds the sibling variant of the same run into the branch it
+# writes — so publishing one leg never drops the other.
 #
 # When the commit being built is the one `extract-fix-zip.yml` made after a
-# `fix.zip` push, the publish job also writes `fix-report.json` and
+# `fix.zip` push, the publish jobs also write `fix-report.json` and
 # `fix-report.md` (see `.github/scripts/fix-report.py`): they record who pushed
 # the archive, the extraction commit and every file it changed. A build that is
 # not an extraction carries the previous report over, so the last fix stays
@@ -160,149 +164,146 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # 3) Publish. Runs only when every leg of the matrix succeeded, so the branch
-  #    never ends up with the release APK of one run and the debug APK of
-  #    another.
+  # 3) Publish the release APK. This job needs only the release leg: it runs as
+  #    soon as that leg's artifact exists, even while the debug leg is still
+  #    building or has failed. The artifact-presence check below is what decides
+  #    whether there is anything to publish, not the aggregate matrix result.
   # ---------------------------------------------------------------------------
-  publish:
-    name: Publish to apk-nightly
+  publish-release:
+    name: Publish the release APK
     needs: [plan, build]
-    if: ${{ always() && needs.plan.result == 'success' && needs.build.result == 'success' }}
+    if: ${{ always() && needs.plan.result == 'success' && (needs.plan.outputs.variant == 'both' || needs.plan.outputs.variant == 'release') }}
     runs-on: ubuntu-latest
+    # The two publish jobs must never write the branch at the same time.
+    concurrency:
+      group: apk-nightly-branch
+      cancel-in-progress: false
 
     steps:
       # The workspace is needed to inspect the commit that was built (and its
-      # parent) when writing the fix.zip report, and to read the previous report
-      # off the apk-nightly branch.
+      # parent) when writing the fix.zip report.
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Download the built APKs
+      - name: Download the built release APK
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
+          name: apk-release
           path: artifacts
-          merge-multiple: true
 
-      - name: Stage the branch contents
+      - name: Check that the release APK was built
+        id: presence
+        run: |
+          set -euo pipefail
+          if [ -n "$(find artifacts -type f -name '*.apk' 2>/dev/null || true)" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::The release build produced no APK — nothing to publish for this variant."
+          fi
+
+      - name: Stage the release build onto the branch
         id: stage
+        if: steps.presence.outputs.found == 'true'
         env:
-          VARIANT: ${{ needs.plan.outputs.variant }}
+          VARIANT: release
           VERSION_NAME: ${{ needs.plan.outputs.version_name }}
           VERSION_CODE: ${{ needs.plan.outputs.version_code }}
           ISO: ${{ needs.plan.outputs.iso }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-
-          echo "Publishing variant: $VARIANT"
-          find artifacts -type f -name '*.apk' -print
-
-          # download-artifact@v4 flattens uploaded paths unpredictably, so look
-          # the APKs up by name instead of assuming a layout.
-          APK_RELEASE="$(find artifacts -type f -name 'app-release.apk' | head -1 || true)"
-          APK_DEBUG="$(find artifacts -type f -name 'app-debug.apk' | head -1 || true)"
-
           STAGE="$(mktemp -d)"
           echo "dir=$STAGE" >> "$GITHUB_OUTPUT"
-
-          if [ "$VARIANT" = "release" ] || [ "$VARIANT" = "both" ]; then
-            if [ -z "$APK_RELEASE" ]; then
-              echo "::error::The release APK was expected but is missing — refusing to publish a partial build."
-              exit 1
-            fi
-            cp "$APK_RELEASE" "$STAGE/Ansu-nightly.apk"
-          fi
-
-          if [ "$VARIANT" = "debug" ] || [ "$VARIANT" = "both" ]; then
-            if [ -z "$APK_DEBUG" ]; then
-              echo "::error::The debug APK was expected but is missing — refusing to publish a partial build."
-              exit 1
-            fi
-            cp "$APK_DEBUG" "$STAGE/Ansu-nightly-debug.apk"
-          fi
-
-          # `apk` / `apkDebug` only list what this run actually published. The
-          # in-app updater reads `apk`, so the published file name can change
-          # without ever breaking updates.
-          {
-            echo "{"
-            echo "  \"app\": \"Ansu\","
-            echo "  \"package\": \"com.ansu.anime\","
-            echo "  \"versionName\": \"$VERSION_NAME\","
-            echo "  \"versionCode\": $VERSION_CODE,"
-            echo "  \"builtAt\": \"$ISO\","
-            echo "  \"commit\": \"$GITHUB_SHA\","
-            echo "  \"runId\": \"$GITHUB_RUN_ID\","
-            LAST="\"apk\": \"Ansu-nightly.apk\""
-            if [ "$VARIANT" = "debug" ]; then LAST="\"apkDebug\": \"Ansu-nightly-debug.apk\""; fi
-            if [ "$VARIANT" = "both" ]; then
-              echo "  \"apk\": \"Ansu-nightly.apk\","
-              LAST="\"apkDebug\": \"Ansu-nightly-debug.apk\""
-            fi
-            echo "  $LAST"
-            echo "}"
-          } > "$STAGE/nightly.json"
-
-          cat > "$STAGE/README.md" <<'MD'
-          # Ansu — nightly APK
-
-          [![Download the release APK](https://img.shields.io/badge/Download-Ansu--nightly.apk-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://raw.githubusercontent.com/Ansu216/Anisu/apk-nightly/Ansu-nightly.apk)
-          [![Download the debug APK](https://img.shields.io/badge/Download-Ansu--nightly--debug.apk-FF6D00?style=for-the-badge&logo=android&logoColor=white)](https://raw.githubusercontent.com/Ansu216/Anisu/apk-nightly/Ansu-nightly-debug.apk)
-
-          This branch is **generated automatically** by the
-          [`Ansu Nightly APK`](../actions/workflows/apk-nightly.yml) workflow.
-          Every run wipes the branch and replaces it with the newest build.
-
-          | File | Description |
-          |---|---|
-          | `Ansu-nightly.apk` | Signed **release** build (smaller, minified, R8). |
-          | `Ansu-nightly-debug.apk` | Signed **debug** build (easier to read stack traces). |
-          | `nightly.json` | Version / build metadata for this run. |
-          | `fix-report.json` | What the last `fix.zip` changed (commit, author, files). |
-          | `fix-report.md` | The same report, readable on this page. |
-
-          The `fix-report.*` files are written when a `fix.zip` was extracted into
-          the project and this build was made from the commit it produced. A build
-          that is not an extraction keeps the previous report, so it describes the
-          last fix that landed rather than disappearing on the next hourly build.
-
-          **Do not commit to this branch by hand — it is overwritten on every run.**
-
-          ## Install
-
-          Download `Ansu-nightly.apk` on your phone and open it. Android will ask
-          you to allow installing unknown apps for your browser/file manager.
-
-          Both APKs are signed with the same key, so each nightly installs as a
-          normal upgrade over the previous one (no uninstall needed).
-          MD
-
-          ls -la "$STAGE"
+          bash .github/scripts/stage-nightly.sh "$STAGE"
 
       - name: Stage the fix.zip report
+        if: steps.presence.outputs.found == 'true'
         env:
           STAGE: ${{ steps.stage.outputs.dir }}
           VERSION_NAME: ${{ needs.plan.outputs.version_name }}
           VERSION_CODE: ${{ needs.plan.outputs.version_code }}
-          VARIANT: ${{ needs.plan.outputs.variant }}
+          VARIANT: release
           ISO: ${{ needs.plan.outputs.iso }}
         run: python3 .github/scripts/fix-report.py "$STAGE"
 
       - name: Publish to the apk-nightly branch
+        if: steps.presence.outputs.found == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           STAGE: ${{ steps.stage.outputs.dir }}
-          STAMP: ${{ needs.plan.outputs.iso }}
+          ISO: ${{ needs.plan.outputs.iso }}
+        run: bash .github/scripts/push-nightly.sh "$STAGE"
+
+  # ---------------------------------------------------------------------------
+  # 4) Publish the debug APK. Symmetric to the release job above: it runs as soon
+  #    as the debug leg's artifact exists, independently of the release leg.
+  # ---------------------------------------------------------------------------
+  publish-debug:
+    name: Publish the debug APK
+    needs: [plan, build]
+    if: ${{ always() && needs.plan.result == 'success' && (needs.plan.outputs.variant == 'both' || needs.plan.outputs.variant == 'debug') }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: apk-nightly-branch
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download the built debug APK
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: apk-debug
+          path: artifacts
+
+      - name: Check that the debug APK was built
+        id: presence
         run: |
           set -euo pipefail
-          cd "$STAGE"
-          git init -q
-          git checkout -q -b apk-nightly
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -q -m "nightly APK ${STAMP}"
-          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push --force origin apk-nightly
-          echo "Published to branch apk-nightly"
+          if [ -n "$(find artifacts -type f -name '*.apk' 2>/dev/null || true)" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::The debug build produced no APK — nothing to publish for this variant."
+          fi
+
+      - name: Stage the debug build onto the branch
+        id: stage
+        if: steps.presence.outputs.found == 'true'
+        env:
+          VARIANT: debug
+          VERSION_NAME: ${{ needs.plan.outputs.version_name }}
+          VERSION_CODE: ${{ needs.plan.outputs.version_code }}
+          ISO: ${{ needs.plan.outputs.iso }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          STAGE="$(mktemp -d)"
+          echo "dir=$STAGE" >> "$GITHUB_OUTPUT"
+          bash .github/scripts/stage-nightly.sh "$STAGE"
+
+      - name: Stage the fix.zip report
+        if: steps.presence.outputs.found == 'true'
+        env:
+          STAGE: ${{ steps.stage.outputs.dir }}
+          VERSION_NAME: ${{ needs.plan.outputs.version_name }}
+          VERSION_CODE: ${{ needs.plan.outputs.version_code }}
+          VARIANT: debug
+          ISO: ${{ needs.plan.outputs.iso }}
+        run: python3 .github/scripts/fix-report.py "$STAGE"
+
+      - name: Publish to the apk-nightly branch
+        if: steps.presence.outputs.found == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STAGE: ${{ steps.stage.outputs.dir }}
+          ISO: ${{ needs.plan.outputs.iso }}
+        run: bash .github/scripts/push-nightly.sh "$STAGE"

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -108,6 +109,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     var availableByRepo by remember { mutableStateOf<Map<String, List<ExtensionRepoEntry>>>(emptyMap()) }
     var showRepos by remember { mutableStateOf(false) }
     var installError by remember { mutableStateOf<String?>(null) }
+    var extensionQuery by remember { mutableStateOf("") }
 
     var selectedKey by remember { mutableStateOf<String?>(null) }
     var testing by remember { mutableStateOf(false) }
@@ -130,6 +132,15 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
 
     val available = availableByRepo.flatMap { (indexUrl, entries) -> entries.map { AvailableExtension(indexUrl, it) } }
         .distinctBy { it.entry.pkg }
+    // The search box filters the catalogue by extension name, source name, package or language,
+    // so a long repo can be browsed by typing instead of scrolling.
+    val query = extensionQuery.trim()
+    val filteredAvailable = if (query.isEmpty()) available else available.filter { item ->
+        item.entry.name.contains(query, ignoreCase = true) ||
+            item.entry.pkg.contains(query, ignoreCase = true) ||
+            item.entry.lang.contains(query, ignoreCase = true) ||
+            item.entry.sources.any { it.name.contains(query, ignoreCase = true) }
+    }
     val installedPackages = extensions.map { it.packageName }.toSet()
 
     val extensionSources = extensions.flatMap { it.sources }
@@ -206,15 +217,26 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
 
             // --- Available Sources ---
             Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                SectionTitle("Available Sources (${available.size})", modifier = Modifier.weight(1f))
+                SectionTitle("Available Sources (${filteredAvailable.size})", modifier = Modifier.weight(1f))
                 TextButton(onClick = { showRepos = true }) { Text("Repos (${repoUrls.size})") }
             }
+            OutlinedTextField(
+                value = extensionQuery,
+                onValueChange = { extensionQuery = it },
+                placeholder = { Text("Search extensions by name or language") },
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                shape = RoundedCornerShape(50),
+                modifier = Modifier.fillMaxWidth(),
+            )
             installError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             ListBox {
                 if (available.isEmpty()) {
                     EmptyHint("Nothing here yet. Add a repo's index.min.json above.")
+                } else if (filteredAvailable.isEmpty()) {
+                    EmptyHint("No extension matches \"$query\".")
                 }
-                available.forEachIndexed { index, item ->
+                filteredAvailable.forEachIndexed { index, item ->
                     if (index > 0) HorizontalDivider(color = AnsuColors.StrokeGlass)
                     val isInstalled = item.entry.pkg in installedPackages
                     Row(
