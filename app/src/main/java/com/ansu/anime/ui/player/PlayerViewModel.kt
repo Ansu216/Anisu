@@ -24,7 +24,9 @@ import com.ansu.anime.data.repository.ContinueWatchingRepository
 import com.ansu.anime.extension.ExtensionManager
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -112,28 +114,51 @@ class PlayerViewModel(
 
         diagnostics?.log(LogCategory.PLAYBACK, "Resolving sources for ${anime.title} E${episode.episodeNumber} (ep id='${episode.id}')")
         viewModelScope.launch {
-            val sources = runCatching { resolveSources(anime, episode) }.getOrElse {
-                if (it is kotlinx.coroutines.CancellationException) throw it
-                android.util.Log.e("PlayerViewModel", "resolveSources failed", it)
-                diagnostics?.log(LogCategory.PLAYBACK, "Failed to load sources: ${it::class.simpleName}: ${it.message}", it)
-                _uiState.value = _uiState.value.copy(
-                    isLoadingSources = false,
-                    error = "${it::class.simpleName}: ${it.message ?: "Failed to load sources"}",
-                )
-                return@launch
+            var first = true
+            val collected = mutableListOf<PlayableSource>()
+            val onBatch: (List<PlayableSource>) -> Unit = { batch ->
+                val fresh = batch.filter { b -> collected.none { it.url == b.url } }
+                if (fresh.isNotEmpty()) {
+                    collected += fresh
+                    _uiState.value = _uiState.value.copy(isLoadingSources = false, sources = collected.toList(), error = null)
+                    if (!first && _uiState.value.error != null) {
+                        // Earlier streams all failed; a later source just answered, so try it.
+                        _uiState.value = _uiState.value.copy(error = null)
+                        selectSource(fresh.first())
+                    }
+                    if (first) {
+                        first = false
+                        selectSource(collected.first())
+                        resumeIfSaved(anime, episode)
+                    }
+                }
             }
-
-            if (sources.isEmpty()) {
+            try {
+                resolveSources(anime, episode, onBatch)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                android.util.Log.e("PlayerViewModel", "resolveSources failed", e)
+                diagnostics?.log(LogCategory.PLAYBACK, "Failed to load sources: ${e::class.simpleName}: ${e.message}", e)
+                if (collected.isEmpty()) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoadingSources = false,
+                        error = "${e::class.simpleName}: ${e.message ?: "Failed to load sources"}",
+                    )
+                    return@launch
+                }
+            }
+            if (collected.isEmpty()) {
                 _uiState.value = _uiState.value.copy(isLoadingSources = false, error = "No playable sources found")
                 diagnostics?.log(LogCategory.PLAYBACK, "No playable sources found for ${anime.title} E${episode.episodeNumber}")
-                return@launch
+            } else {
+                diagnostics?.log(LogCategory.PLAYBACK, "${collected.size} source(s) found for ${anime.title}")
             }
-            diagnostics?.log(LogCategory.PLAYBACK, "${sources.size} source(s) found for ${anime.title}")
+        }
+    }
 
-            _uiState.value = _uiState.value.copy(isLoadingSources = false, sources = sources)
-            selectSource(sources.first())
-
-            // Resume from a saved position if we have one for this exact episode.
+    private fun resumeIfSaved(anime: SAnime, episode: SEpisode) {
+        viewModelScope.launch {
             val resumePoint = anime.anilistId?.let { continueWatchingRepository.resumePointFor(it) }
             if (resumePoint != null && resumePoint.episodeId == episode.id && resumePoint.positionSeconds > 5) {
                 player.seekTo(resumePoint.positionSeconds * 1000)
@@ -141,46 +166,47 @@ class PlayerViewModel(
         }
     }
 
-    private suspend fun resolveSources(anime: SAnime, episode: SEpisode): List<PlayableSource> {
-        return when (val origin = anime.origin) {
+    private suspend fun resolveSources(anime: SAnime, episode: SEpisode, onBatch: (List<PlayableSource>) -> Unit) {
+        when (val origin = anime.origin) {
             is MediaOrigin.Extension -> {
-                // An episode matched in installed extensions remembers every source it was found in;
-                // ask them all at once and merge, so one broken source does not empty the list.
-                val candidates = listOf(episode.copy(alternates = emptyList())) + episode.alternates
+                // Ask EVERY source that has this episode, all at once; each source's streams appear in the
+                // list as soon as that source answers, so a slow or broken source never blocks the rest.
+                val candidates = (listOf(episode.copy(alternates = emptyList())) + episode.alternates)
+                    .distinctBy { it.sourceId ?: origin.sourceId }
                 kotlinx.coroutines.coroutineScope {
                     candidates.map { candidate ->
                         async {
                             val source = extensionManager.getSource(candidate.sourceId ?: origin.sourceId)
-                                ?: return@async emptyList<PlayableSource>()
+                                ?: return@async
                             try {
-                                val videos = kotlinx.coroutines.withTimeout(40_000L) { source.getVideoList(candidate) }
+                                val videos = kotlinx.coroutines.withTimeout(45_000L) { source.getVideoList(candidate) }
                                 diagnostics?.log(LogCategory.PLAYBACK, "  ${source.name}: ${videos.size} video(s) for ep ${candidate.episodeNumber} (id='${candidate.id}')")
-                                videos.map { video ->
+                                val mapped = videos.map { video ->
                                     PlayableSource(
-                                        label = "${video.sourceLabel} · ${video.quality}",
+                                        label = if (video.sourceLabel.isBlank() || video.quality.contains(video.sourceLabel, true)) video.quality
+                                        else "${video.sourceLabel} · ${video.quality}",
                                         url = video.url,
                                         headers = video.headers,
                                         subtitles = video.subtitleTracks,
                                     )
                                 }
+                                if (mapped.isNotEmpty()) withContext(Dispatchers.Main) { onBatch(mapped) }
                             } catch (e: kotlinx.coroutines.CancellationException) {
                                 if (e is kotlinx.coroutines.TimeoutCancellationException) {
                                     diagnostics?.log(LogCategory.PLAYBACK, "  ${source.name}: timeout")
-                                    emptyList()
                                 } else throw e
                             } catch (e: Throwable) {
                                 diagnostics?.log(LogCategory.PLAYBACK, "  ${source.name}: ${e::class.simpleName}: ${e.message}", e)
-                                emptyList()
                             }
                         }
-                    }.awaitAll().flatten()
+                    }.awaitAll()
                 }
             }
             is MediaOrigin.Addon -> {
                 // Stremio asks for streams by *video* id (for a series that is the episode id such as
                 // "tt0903747:1:2"); the show id only works for movies, and a movie's single episode carries it.
                 val streamsByAddon = addonManager.getStreamsFromAllAddons(origin.type, episode.id.ifBlank { origin.stremioId })
-                streamsByAddon.flatMap { (addonName, streams) -> streams.mapNotNull { it.toPlayableSource(addonName) } }
+                onBatch(streamsByAddon.flatMap { (addonName, streams) -> streams.mapNotNull { it.toPlayableSource(addonName) } })
             }
         }
     }

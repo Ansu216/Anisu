@@ -15,7 +15,7 @@ import com.ansu.anime.data.repository.EpisodeMetadataRepository
 import com.ansu.anime.data.repository.LocalListRepository
 import com.ansu.anime.extension.BUILT_IN_SOURCE_ID
 import com.ansu.anime.extension.ExtensionManager
-import com.ansu.anime.extension.findEpisodesByTitle
+import com.ansu.anime.extension.findEpisodesAcrossSources
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -144,14 +144,18 @@ class DetailsViewModel(
     private suspend fun loadEpisodes(anime: SAnime): List<SEpisode> = coroutineScope {
         when (val origin = anime.origin) {
             is MediaOrigin.Extension -> {
-                // An AniList-only title points at the built-in demo source; if real sources are installed,
-                // find the title in them first so the episodes (and playback) come from a real source.
-                val matched = if (origin.sourceId == BUILT_IN_SOURCE_ID && anime.anilistId != null) {
-                    runCatching { extensionManager.findEpisodesByTitle(anime) }.getOrDefault(emptyList())
+                // Search EVERY installed source for this title (not only for AniList-only ones), so the player
+                // can offer streams from all of them. A title opened from a real source is folded in too.
+                val ownEpisodes = if (origin.sourceId != BUILT_IN_SOURCE_ID) {
+                    runCatching { extensionManager.getSource(origin.sourceId)?.getEpisodeList(anime).orEmpty() }
+                        .getOrDefault(emptyList())
+                        .map { it.copy(sourceId = it.sourceId ?: origin.sourceId) }
                 } else {
                     emptyList()
                 }
-                val episodes = matched.ifEmpty { extensionManager.getSource(origin.sourceId)?.getEpisodeList(anime).orEmpty() }
+                val episodes = runCatching {
+                    extensionManager.findEpisodesAcrossSources(anime, origin.sourceId, ownEpisodes)
+                }.getOrDefault(emptyList()).ifEmpty { ownEpisodes }
                 // Extensions may not list movies as episodes; create a synthetic root episode so playback
                 // can query getVideoList(). The id is the anime's url, which real extensions use to fetch videos.
                 if (episodes.isEmpty()) {
