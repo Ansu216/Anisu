@@ -91,6 +91,10 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
             )
         }
 
+        if (state.isBuffering && state.error == null && !state.isLoadingSources) {
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+        }
+
         if (showSourceSheet) {
             SourceSelectSheet(
                 sources = state.sources,

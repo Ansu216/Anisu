@@ -13,7 +13,9 @@ import com.ansu.anime.data.repository.AnimeArtwork
 import com.ansu.anime.data.repository.ArtworkRepository
 import com.ansu.anime.data.repository.EpisodeMetadataRepository
 import com.ansu.anime.data.repository.LocalListRepository
+import com.ansu.anime.extension.BUILT_IN_SOURCE_ID
 import com.ansu.anime.extension.ExtensionManager
+import com.ansu.anime.extension.findEpisodesByTitle
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -141,19 +143,40 @@ class DetailsViewModel(
 
     private suspend fun loadEpisodes(anime: SAnime): List<SEpisode> = coroutineScope {
         when (val origin = anime.origin) {
-            is MediaOrigin.Extension ->
-                extensionManager.getSource(origin.sourceId)?.getEpisodeList(anime).orEmpty()
+            is MediaOrigin.Extension -> {
+                // An AniList-only title points at the built-in demo source; if real sources are installed,
+                // find the title in them first so the episodes (and playback) come from a real source.
+                val matched = if (origin.sourceId == BUILT_IN_SOURCE_ID && anime.anilistId != null) {
+                    runCatching { extensionManager.findEpisodesByTitle(anime) }.getOrDefault(emptyList())
+                } else {
+                    emptyList()
+                }
+                val episodes = matched.ifEmpty { extensionManager.getSource(origin.sourceId)?.getEpisodeList(anime).orEmpty() }
+                // Extensions may not list movies as episodes; create a synthetic root episode so playback
+                // can query getVideoList(). The id is the anime's url, which real extensions use to fetch videos.
+                if (episodes.isEmpty()) {
+                    listOf(SEpisode(id = origin.urlPath, name = anime.title, episodeNumber = 1f))
+                } else {
+                    episodes
+                }
+            }
 
             is MediaOrigin.Addon -> {
                 val addon = addonManager.installedAddons.first().firstOrNull { it.id == origin.addonId } ?: return@coroutineScope emptyList()
                 val meta = addonManager.getMeta(addon, origin.type, origin.stremioId)
-                meta?.videos.orEmpty().map { video ->
-                    SEpisode(
-                        id = video.id,
-                        name = video.title ?: "Episode ${video.episode ?: "?"}",
-                        episodeNumber = (video.episode ?: 0).toFloat(),
-                        thumbnailUrl = video.thumbnail,
-                    )
+                val videos = meta?.videos.orEmpty()
+                if (videos.isEmpty()) {
+                    // A movie (or a catalog entry with no episode list) is one playable item whose video id is its own id.
+                    listOf(SEpisode(id = origin.stremioId, name = meta?.name ?: anime.title, episodeNumber = 1f))
+                } else {
+                    videos.map { video ->
+                        SEpisode(
+                            id = video.id,
+                            name = video.title ?: "Episode ${video.episode ?: "?"}",
+                            episodeNumber = (video.episode ?: 0).toFloat(),
+                            thumbnailUrl = video.thumbnail,
+                        )
+                    }
                 }
             }
         }

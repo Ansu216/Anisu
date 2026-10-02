@@ -49,7 +49,9 @@ class CatalogRepository(
     private suspend fun buildAddonShelves(): List<Shelf> = coroutineScope {
         val seriesShelves = async { addonManager.getShelvesForType("series") }
         val movieShelves = async { addonManager.getShelvesForType("movie") }
-        val combined = seriesShelves.await() + movieShelves.await()
+        // Kitsu-style anime addons declare their own "anime" type rather than "series".
+        val animeShelves = async { addonManager.getShelvesForType("anime") }
+        val combined = seriesShelves.await() + movieShelves.await() + animeShelves.await()
         combined.map { (addon, metas) ->
             Shelf(
                 title = "From ${addon.name}",
@@ -102,7 +104,7 @@ class CatalogRepository(
     }
 
     /** The default source to resolve an AniList-only entry against until real per-title source matching exists. */
-    private fun defaultSource(): AnimeCatalogueSource? = extensionManager.allSources().firstOrNull()
+    private fun defaultSource(): AnimeCatalogueSource? = extensionManager.getSource(1L)
 
     private fun AniListMediaListEntry.toSAnime(): SAnime =
         media.toSAnime(sourceId = defaultSource()?.id ?: 1L)

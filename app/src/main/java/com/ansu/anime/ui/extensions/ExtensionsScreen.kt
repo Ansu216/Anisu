@@ -2,29 +2,46 @@
 
 package com.ansu.anime.ui.extensions
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,125 +49,426 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import coil.compose.AsyncImage
+import com.ansu.anime.addon.model.InstalledAddon
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.extension.ExtensionRepoEntry
 import com.ansu.anime.extension.InstalledExtension
+import com.ansu.anime.extension.JsonUrlResult
+import com.ansu.anime.extension.SourceTestResult
+import com.ansu.anime.extension.TestTarget
+import com.ansu.anime.extension.api.AnimeCatalogueSource
 import com.ansu.anime.ui.theme.AnsuColors
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/** An extension from a repo plus the repo (index URL) it was listed in, so its APK can be located. */
+private data class AvailableExtension(val indexUrl: String, val entry: ExtensionRepoEntry)
+
+/** One line of the "Installed Sources" box, whichever kind of source it is. */
+private data class InstalledRow(
+    val key: String,
+    val title: String,
+    val subtitle: String,
+    /** The logo square: an image URL, the extension's app icon, or null for a letter. */
+    val icon: Any? = null,
+    val error: String? = null,
+    /** Null when the row has no on/off switch (an extension that failed to load). */
+    val checked: Boolean? = null,
+    val onCheckedChange: (Boolean) -> Unit = {},
+    val onRemove: (() -> Unit)? = null,
+)
 
 @Composable
 fun ExtensionsScreen(container: AppContainer, navController: NavHostController) {
-    val installed by container.extensionManager.extensions.collectAsStateWithLifecycle()
-    var repoUrl by remember { mutableStateOf("") }
-    var repoEntries by remember { mutableStateOf<List<ExtensionRepoEntry>>(emptyList()) }
-    var repoError by remember { mutableStateOf<String?>(null) }
+    val manager = container.extensionManager
+    val repo = container.extensionRepo
     val scope = rememberCoroutineScope()
+    val packageManager = LocalContext.current.packageManager
+
+    val extensions by manager.extensions.collectAsStateWithLifecycle()
+    val disabledIds by manager.disabledSourceIds.collectAsStateWithLifecycle()
+    val addons by container.addonManager.installedAddons.collectAsStateWithLifecycle(initialValue = emptyList())
+
+    var jsonUrl by remember { mutableStateOf("") }
+    var isAdding by remember { mutableStateOf(false) }
+    var addMessage by remember { mutableStateOf<String?>(null) }
+    var addFailed by remember { mutableStateOf(false) }
+
+    var repoUrls by remember { mutableStateOf(repo.savedRepoUrls()) }
+    var availableByRepo by remember { mutableStateOf<Map<String, List<ExtensionRepoEntry>>>(emptyMap()) }
+    var showRepos by remember { mutableStateOf(false) }
+    var installError by remember { mutableStateOf<String?>(null) }
+
+    var selectedKey by remember { mutableStateOf<String?>(null) }
+    var testing by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<SourceTestResult?>(null) }
+
+    // Re-read every saved repo when the screen opens, so "Available Sources" survives a restart.
+    LaunchedEffect(repoUrls) {
+        val loaded = mutableMapOf<String, List<ExtensionRepoEntry>>()
+        for (url in repoUrls) {
+            val parsed = repo.resolve(url).getOrNull()
+            if (parsed is JsonUrlResult.Repo) loaded[parsed.indexUrl] = parsed.entries
+        }
+        availableByRepo = loaded
+    }
+
+    // Coming back from Android's installer: pick up the extension that was just installed or removed.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        scope.launch { withContext(Dispatchers.IO) { manager.reloadAll() } }
+    }
+
+    val available = availableByRepo.flatMap { (indexUrl, entries) -> entries.map { AvailableExtension(indexUrl, it) } }
+        .distinctBy { it.entry.pkg }
+    val installedPackages = extensions.map { it.packageName }.toSet()
+
+    val extensionSources = extensions.flatMap { it.sources }
+    val builtInSources = manager.allSourcesIncludingDisabled().filter { built -> extensionSources.none { it.id == built.id } }
+
+    val installedRows = buildList {
+        builtInSources.forEach { add(sourceRow(it, "Built-in", null, disabledIds, manager::setSourceEnabled, null)) }
+        extensions.forEach { ext ->
+            val icon = runCatching { packageManager.getApplicationIcon(ext.packageName) }.getOrNull()
+            addAll(extensionRows(ext, icon, disabledIds, manager::setSourceEnabled) { manager.uninstall(ext.packageName) })
+        }
+        addons.forEach { addon -> add(addonRow(addon, scope, container)) }
+    }
+
+    val targets: List<TestTarget> =
+        (builtInSources + extensionSources).map { TestTarget.Extension(it) } + addons.map { TestTarget.Addon(it) }
+    val selected = targets.firstOrNull { it.key == selectedKey }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Extensions") },
-                navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
+                navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
             )
         },
     ) { padding ->
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-            item {
-                Text(
-                    "Installed",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            // --- Add Extension JSON URL ---
+            SectionTitle("Add Extension JSON URL")
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = jsonUrl,
+                    onValueChange = { jsonUrl = it },
+                    placeholder = { Text("https://…/index.min.json") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.weight(1f),
                 )
-            }
-            if (installed.isEmpty()) {
-                item { Text("Only the built-in demo source is active. Install an extension APK to add real sources.", modifier = Modifier.padding(16.dp), color = AnsuColors.TextSecondary) }
-            }
-            items(installed) { ext -> InstalledExtensionRow(ext) }
-
-            item {
                 Button(
-                    onClick = { container.extensionManager.reloadAll() },
-                    modifier = Modifier.padding(16.dp),
-                ) { Text("Rescan installed extensions") }
+                    enabled = !isAdding && jsonUrl.isNotBlank(),
+                    onClick = {
+                        scope.launch {
+                            isAdding = true
+                            addMessage = null
+                            val outcome = repo.resolve(jsonUrl).mapCatching { parsed ->
+                                when (parsed) {
+                                    is JsonUrlResult.Repo -> {
+                                        repo.saveRepoUrl(parsed.indexUrl)
+                                        repoUrls = repo.savedRepoUrls()
+                                        availableByRepo = availableByRepo + (parsed.indexUrl to parsed.entries)
+                                        "Repo added: ${parsed.entries.size} extensions available"
+                                    }
+                                    is JsonUrlResult.AddonManifest ->
+                                        "Addon added: " + container.addonManager.addAddon(parsed.manifestUrl).getOrThrow().name
+                                }
+                            }
+                            outcome.fold(
+                                onSuccess = { addMessage = it; addFailed = false; jsonUrl = "" },
+                                onFailure = { addMessage = it.message ?: "Could not add that URL"; addFailed = true },
+                            )
+                            isAdding = false
+                        }
+                    },
+                ) {
+                    if (isAdding) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Add")
+                }
+            }
+            addMessage?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = if (addFailed) MaterialTheme.colorScheme.error else AnsuColors.TextSecondary)
             }
 
-            item { HorizontalDivider() }
-
-            item {
-                Text(
-                    "Browse a repo",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
-                )
-                Text(
-                    "Paste a Keiyoushi-style repo's index.min.json URL to see what it offers.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = AnsuColors.TextSecondary,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-                Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextField(
-                        value = repoUrl,
-                        onValueChange = { repoUrl = it },
-                        placeholder = { Text("https://.../index.min.json") },
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(onClick = {
-                        scope.launch {
-                            repoError = null
-                            container.extensionRepo.fetchIndex(repoUrl).fold(
-                                onSuccess = { repoEntries = it },
-                                onFailure = { repoError = it.message },
+            // --- Available Sources ---
+            Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                SectionTitle("Available Sources (${available.size})", modifier = Modifier.weight(1f))
+                TextButton(onClick = { showRepos = true }) { Text("Repos (${repoUrls.size})") }
+            }
+            installError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            ListBox {
+                if (available.isEmpty()) {
+                    EmptyHint("Nothing here yet. Add a repo's index.min.json above.")
+                }
+                available.forEachIndexed { index, item ->
+                    if (index > 0) HorizontalDivider(color = AnsuColors.StrokeGlass)
+                    val isInstalled = item.entry.pkg in installedPackages
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconSquare(model = repo.iconUrl(item.indexUrl, item.entry), fallback = item.entry.name)
+                        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                            Text(item.entry.name.removePrefix("Aniyomi: "), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                listOf(item.entry.lang, "v${item.entry.version}", if (item.entry.nsfw == 1) "18+" else null)
+                                    .filter { !it.isNullOrBlank() && it != "v" }.joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AnsuColors.TextSecondary,
                             )
                         }
-                    }) { Text("Load") }
+                        OutlinedButton(
+                            enabled = !isInstalled,
+                            onClick = {
+                                scope.launch {
+                                    installError = null
+                                    repo.downloadAndInstall(item.indexUrl, item.entry).onFailure { installError = it.message ?: "Install failed" }
+                                }
+                            },
+                        ) { Text(if (isInstalled) "Installed" else "Install") }
+                    }
                 }
-                repoError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) }
             }
 
-            items(repoEntries) { entry ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column {
-                        Text(entry.name, style = MaterialTheme.typography.titleSmall)
-                        Text("${entry.lang} · v${entry.version}", style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary)
-                    }
-                    TextButton(onClick = {
-                        scope.launch {
-                            val base = repoUrl.substringBeforeLast('/')
-                            container.extensionRepo.downloadAndInstall(base, entry)
+            // --- Installed Sources ---
+            Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                SectionTitle("Installed Sources (${installedRows.size})", modifier = Modifier.weight(1f))
+                TextButton(onClick = { scope.launch { withContext(Dispatchers.IO) { manager.reloadAll() } } }) { Text("Rescan") }
+            }
+            ListBox {
+                if (installedRows.isEmpty()) EmptyHint("No sources installed.")
+                installedRows.forEachIndexed { index, row ->
+                    if (index > 0) HorizontalDivider(color = AnsuColors.StrokeGlass)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconSquare(model = row.icon, fallback = row.title)
+                        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                            Text(row.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                row.error ?: row.subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (row.error != null) MaterialTheme.colorScheme.error else AnsuColors.TextSecondary,
+                            )
                         }
-                    }) { Text("Install") }
+                        if (row.checked != null) {
+                            Switch(checked = row.checked, onCheckedChange = row.onCheckedChange)
+                        }
+                        row.onRemove?.let { remove ->
+                            IconButton(onClick = remove) { Icon(Icons.Filled.Delete, contentDescription = "Remove ${row.title}") }
+                        }
+                    }
                 }
+            }
+
+            // --- Test Source ---
+            SectionTitle("Test Source", modifier = Modifier.padding(top = 8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                var menuOpen by remember { mutableStateOf(false) }
+                Box(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(50))
+                            .border(BorderStroke(1.dp, AnsuColors.StrokeGlass), RoundedCornerShape(50))
+                            .clickable { menuOpen = true }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            selected?.label ?: "Choose from installed Sources",
+                            modifier = Modifier.weight(1f),
+                            color = if (selected == null) AnsuColors.TextTertiary else AnsuColors.TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        if (targets.isEmpty()) DropdownMenuItem(text = { Text("No installed sources") }, onClick = { menuOpen = false })
+                        targets.forEach { target ->
+                            DropdownMenuItem(
+                                text = { Text(target.label) },
+                                onClick = { selectedKey = target.key; result = null; menuOpen = false },
+                            )
+                        }
+                    }
+                }
+                Button(
+                    enabled = selected != null && !testing,
+                    onClick = {
+                        val target = selected ?: return@Button
+                        scope.launch {
+                            testing = true
+                            result = container.sourceTester.test(target)
+                            testing = false
+                        }
+                    },
+                ) {
+                    if (testing) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Test")
+                }
+            }
+            TestResultBox(result = result, testing = testing)
+            Spacer(Modifier.size(24.dp))
+        }
+    }
+
+    if (showRepos) {
+        AlertDialog(
+            onDismissRequest = { showRepos = false },
+            confirmButton = { TextButton(onClick = { showRepos = false }) { Text("Done") } },
+            title = { Text("Added repos") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    if (repoUrls.isEmpty()) Text("No repos added yet.", color = AnsuColors.TextSecondary)
+                    repoUrls.forEach { url ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(url, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                            IconButton(onClick = {
+                                repo.removeRepoUrl(url)
+                                repoUrls = repo.savedRepoUrls()
+                            }) { Icon(Icons.Filled.Delete, contentDescription = "Remove repo") }
+                        }
+                    }
+                }
+            },
+        )
+    }
+}
+
+private fun sourceRow(
+    source: AnimeCatalogueSource,
+    kind: String,
+    icon: Any?,
+    disabledIds: Set<Long>,
+    setEnabled: (Long, Boolean) -> Unit,
+    onRemove: (() -> Unit)?,
+) = InstalledRow(
+    key = "src:${source.id}",
+    title = source.name,
+    subtitle = listOf(kind, source.lang.ifBlank { null }).filterNotNull().joinToString(" · "),
+    icon = icon,
+    checked = source.id !in disabledIds,
+    onCheckedChange = { setEnabled(source.id, it) },
+    onRemove = onRemove,
+)
+
+private fun extensionRows(
+    ext: InstalledExtension,
+    icon: Any?,
+    disabledIds: Set<Long>,
+    setEnabled: (Long, Boolean) -> Unit,
+    onRemove: () -> Unit,
+): List<InstalledRow> {
+    if (ext.sources.isEmpty()) {
+        return listOf(
+            InstalledRow(
+                key = "ext:${ext.packageName}",
+                title = ext.displayName,
+                subtitle = "v${ext.versionName}",
+                icon = icon,
+                error = ext.loadError ?: "No sources found",
+                onRemove = onRemove,
+            ),
+        )
+    }
+    return ext.sources.mapIndexed { index, source ->
+        sourceRow(source, "v${ext.versionName}", icon, disabledIds, setEnabled, if (index == 0) onRemove else null)
+    }
+}
+
+private fun addonRow(addon: InstalledAddon, scope: kotlinx.coroutines.CoroutineScope, container: AppContainer) = InstalledRow(
+    key = "addon:${addon.id}",
+    title = addon.name,
+    subtitle = "Addon · v${addon.version} · ${addon.types.joinToString(", ").ifEmpty { "no types declared" }}",
+    icon = addon.logoUrl,
+    checked = addon.enabled,
+    onCheckedChange = { checked -> scope.launch { container.addonManager.setEnabled(addon.id, checked) } },
+    onRemove = { scope.launch { container.addonManager.removeAddon(addon.id) } },
+)
+
+@Composable
+private fun SectionTitle(text: String, modifier: Modifier = Modifier) {
+    Text(text, style = MaterialTheme.typography.titleMedium, modifier = modifier)
+}
+
+@Composable
+private fun EmptyHint(text: String) {
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary, modifier = Modifier.padding(16.dp))
+}
+
+/** The rounded, scrollable frame the sketch draws around each list. */
+@Composable
+private fun ListBox(content: @Composable () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier = Modifier.fillMaxWidth()
+            .heightIn(max = 320.dp)
+            .clip(shape)
+            .background(AnsuColors.BackgroundElevated)
+            .border(BorderStroke(1.dp, AnsuColors.StrokeGlass), shape)
+            .verticalScroll(rememberScrollState()),
+    ) { content() }
+}
+
+@Composable
+private fun IconSquare(model: Any?, fallback: String) {
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        modifier = Modifier.size(40.dp).clip(shape).background(AnsuColors.SurfaceGlassBase),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(fallback.removePrefix("Aniyomi: ").firstOrNull()?.uppercase() ?: "?", color = AnsuColors.TextSecondary)
+        if (model != null) AsyncImage(model = model, contentDescription = null, modifier = Modifier.fillMaxSize())
+    }
+}
+
+@Composable
+private fun TestResultBox(result: SourceTestResult?, testing: Boolean) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier = Modifier.fillMaxWidth().clip(shape).background(AnsuColors.BackgroundElevated)
+            .border(BorderStroke(1.dp, AnsuColors.StrokeGlass), shape).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text("Test Result", style = MaterialTheme.typography.titleSmall)
+        when {
+            testing -> Text("Testing…", color = AnsuColors.TextSecondary)
+            result == null -> Text("Pick a source and press Test to see ping, latency and what it returns.", color = AnsuColors.TextSecondary)
+            else -> {
+                Text(
+                    if (result.ok) "${result.target}: working" else "${result.target}: failed",
+                    color = if (result.ok) AnsuColors.ScoreGreen else AnsuColors.Error,
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                ResultLine("Ping", result.pingMs?.let { "$it ms" + (result.httpStatus?.let { s -> " (HTTP $s)" } ?: "") } ?: "unreachable")
+                ResultLine("Latency", result.latencyMs?.let { "$it ms" } ?: "—")
+                ResultLine("Results", result.itemCount?.toString() ?: "—")
+                result.sampleTitle?.let { ResultLine("Sample", it) }
+                result.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
         }
     }
 }
 
 @Composable
-private fun InstalledExtensionRow(ext: InstalledExtension) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = if (ext.isValid) Icons.Filled.CheckCircle else Icons.Filled.Error,
-            contentDescription = null,
-            tint = if (ext.isValid) AnsuColors.Accent else MaterialTheme.colorScheme.error,
-        )
-        Column(modifier = Modifier.padding(start = 12.dp)) {
-            Text(ext.displayName, style = MaterialTheme.typography.titleSmall)
-            Text(
-                ext.loadError ?: "v${ext.versionName} · ${ext.sources.size} source(s)",
-                style = MaterialTheme.typography.bodyMedium,
-                color = AnsuColors.TextSecondary,
-            )
-        }
+private fun ResultLine(label: String, value: String) {
+    Row {
+        Text(label, modifier = Modifier.width(80.dp), color = AnsuColors.TextSecondary, style = MaterialTheme.typography.bodyMedium)
+        Text(value, style = MaterialTheme.typography.bodyMedium)
     }
 }

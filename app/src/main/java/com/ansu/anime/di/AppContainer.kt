@@ -22,6 +22,7 @@ import com.ansu.anime.data.update.UpdateManager
 import com.ansu.anime.core.util.SelectionHolder
 import com.ansu.anime.extension.ExtensionManager
 import com.ansu.anime.extension.ExtensionRepo
+import com.ansu.anime.extension.SourceTester
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -60,6 +61,7 @@ class AppContainer(context: Context) {
     val extensionManager: ExtensionManager = ExtensionManager(appContext)
     val extensionRepo: ExtensionRepo = ExtensionRepo(appContext, okHttpClient)
     val addonManager: AddonManager = AddonManager(stremioAddonApi, database.installedAddonDao())
+    val sourceTester: SourceTester = SourceTester(okHttpClient, addonManager)
 
     val apiErrorHandler: ApiErrorHandler = ApiErrorHandler(diagnostics)
 
@@ -92,10 +94,13 @@ class AppContainer(context: Context) {
     val updateManager: UpdateManager = UpdateManager(appContext, okHttpClient, diagnostics)
 
     init {
-        // The demo source ships built into the app so there's content on
-        // first launch; reloadAll() then adds any real installed extensions
-        // alongside it.
-        extensionManager.registerBuiltIn(com.ansu.anime.extension.DemoSource { appearancePrefs.titleLanguage.value })
-        extensionManager.reloadAll()
+        // Aniyomi/Keiyoushi extensions need the Injekt container filled in before they are instantiated.
+        // Do not swallow a failure silently: without this, every extension fails with "No registered instance".
+        try {
+            com.ansu.anime.extension.aniyomi.AniyomiRuntime.install(appContext, okHttpClient)
+        } catch (t: Throwable) {
+            android.util.Log.e("AniyomiRuntime", "Injekt setup failed", t)
+        }
+        runCatching { extensionManager.reloadAll() }
     }
 }

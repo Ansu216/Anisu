@@ -75,6 +75,13 @@ data class StremioStream(
 data class StremioBehaviorHints(
     val bingeGroup: String? = null,
     val notWebReady: Boolean? = null,
+    val proxyHeaders: StremioProxyHeaders? = null,
+)
+
+/** Request headers an addon says the player must send when fetching the stream URL. */
+@Serializable
+data class StremioProxyHeaders(
+    val request: Map<String, String>? = null,
 )
 
 /** An addon that has been added, persisted, and can be queried. */

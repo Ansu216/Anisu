@@ -3,9 +3,14 @@ package com.ansu.anime.ui.player
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.net.Uri
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.ansu.anime.addon.AddonManager
 import com.ansu.anime.addon.model.StremioStream
 import com.ansu.anime.core.model.MediaOrigin
@@ -13,9 +18,12 @@ import com.ansu.anime.core.diagnostics.Diagnostics
 import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.SEpisode
+import com.ansu.anime.core.model.SubtitleTrack
 import com.ansu.anime.core.util.SelectionHolder
 import com.ansu.anime.data.repository.ContinueWatchingRepository
 import com.ansu.anime.extension.ExtensionManager
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +34,7 @@ data class PlayableSource(
     val label: String,
     val url: String,
     val headers: Map<String, String> = emptyMap(),
+    val subtitles: List<SubtitleTrack> = emptyList(),
 )
 
 data class PlayerUiState(
@@ -39,6 +48,7 @@ data class PlayerUiState(
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val showControls: Boolean = true,
+    val isBuffering: Boolean = false,
 )
 
 class PlayerViewModel(
@@ -50,7 +60,17 @@ class PlayerViewModel(
     private val diagnostics: Diagnostics? = null,
 ) : ViewModel() {
 
-    val player: ExoPlayer = ExoPlayer.Builder(context).build()
+    // Large buffers + a small start threshold: playback starts after a few seconds of data and the
+    // rest keeps loading ahead in chunks, like other streaming apps (matters for big movie files).
+    @androidx.annotation.OptIn(UnstableApi::class)
+    val player: ExoPlayer = ExoPlayer.Builder(context)
+        .setLoadControl(
+            androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                .setBufferDurationsMs(30_000, 120_000, 1_500, 3_000)
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build(),
+        )
+        .build()
 
     private val _uiState = MutableStateFlow(
         PlayerUiState(anime = selectionHolder.currentAnime.value, episode = selectionHolder.currentEpisode.value),
@@ -64,8 +84,17 @@ class PlayerViewModel(
                 diagnostics?.log(LogCategory.PLAYBACK, if (isPlaying) "Playback started" else "Playback paused")
             }
 
+            override fun onPlaybackStateChanged(state: Int) {
+                _uiState.value = _uiState.value.copy(isBuffering = state == Player.STATE_BUFFERING)
+            }
+
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 diagnostics?.log(LogCategory.PLAYBACK, "Player error: ${error.errorCodeName}", error)
+                // Fall through to the next listed source instead of leaving a black screen.
+                val list = _uiState.value.sources
+                val index = list.indexOf(_uiState.value.selectedSource)
+                if (index in 0 until list.lastIndex) selectSource(list[index + 1])
+                else _uiState.value = _uiState.value.copy(error = "Playback failed (${error.errorCodeName})")
             }
         })
         loadSources()
@@ -81,11 +110,16 @@ class PlayerViewModel(
             return
         }
 
-        diagnostics?.log(LogCategory.PLAYBACK, "Resolving sources for ${anime.title} E${episode.episodeNumber}")
+        diagnostics?.log(LogCategory.PLAYBACK, "Resolving sources for ${anime.title} E${episode.episodeNumber} (ep id='${episode.id}')")
         viewModelScope.launch {
             val sources = runCatching { resolveSources(anime, episode) }.getOrElse {
-                diagnostics?.log(LogCategory.PLAYBACK, "Failed to load sources", it)
-                _uiState.value = _uiState.value.copy(isLoadingSources = false, error = it.message ?: "Failed to load sources")
+                if (it is kotlinx.coroutines.CancellationException) throw it
+                android.util.Log.e("PlayerViewModel", "resolveSources failed", it)
+                diagnostics?.log(LogCategory.PLAYBACK, "Failed to load sources: ${it::class.simpleName}: ${it.message}", it)
+                _uiState.value = _uiState.value.copy(
+                    isLoadingSources = false,
+                    error = "${it::class.simpleName}: ${it.message ?: "Failed to load sources"}",
+                )
                 return@launch
             }
 
@@ -110,31 +144,185 @@ class PlayerViewModel(
     private suspend fun resolveSources(anime: SAnime, episode: SEpisode): List<PlayableSource> {
         return when (val origin = anime.origin) {
             is MediaOrigin.Extension -> {
-                val source = extensionManager.getSource(origin.sourceId) ?: return emptyList()
-                source.getVideoList(episode).map { video ->
-                    PlayableSource(label = "${video.sourceLabel} · ${video.quality}", url = video.url, headers = video.headers)
+                // An episode matched in installed extensions remembers every source it was found in;
+                // ask them all at once and merge, so one broken source does not empty the list.
+                val candidates = listOf(episode.copy(alternates = emptyList())) + episode.alternates
+                kotlinx.coroutines.coroutineScope {
+                    candidates.map { candidate ->
+                        async {
+                            val source = extensionManager.getSource(candidate.sourceId ?: origin.sourceId)
+                                ?: return@async emptyList<PlayableSource>()
+                            try {
+                                val videos = kotlinx.coroutines.withTimeout(40_000L) { source.getVideoList(candidate) }
+                                diagnostics?.log(LogCategory.PLAYBACK, "  ${source.name}: ${videos.size} video(s) for ep ${candidate.episodeNumber} (id='${candidate.id}')")
+                                videos.map { video ->
+                                    PlayableSource(
+                                        label = "${video.sourceLabel} · ${video.quality}",
+                                        url = video.url,
+                                        headers = video.headers,
+                                        subtitles = video.subtitleTracks,
+                                    )
+                                }
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                if (e is kotlinx.coroutines.TimeoutCancellationException) {
+                                    diagnostics?.log(LogCategory.PLAYBACK, "  ${source.name}: timeout")
+                                    emptyList()
+                                } else throw e
+                            } catch (e: Throwable) {
+                                diagnostics?.log(LogCategory.PLAYBACK, "  ${source.name}: ${e::class.simpleName}: ${e.message}", e)
+                                emptyList()
+                            }
+                        }
+                    }.awaitAll().flatten()
                 }
             }
             is MediaOrigin.Addon -> {
-                val streamsByAddon = addonManager.getStreamsFromAllAddons(origin.type, origin.stremioId)
+                // Stremio asks for streams by *video* id (for a series that is the episode id such as
+                // "tt0903747:1:2"); the show id only works for movies, and a movie's single episode carries it.
+                val streamsByAddon = addonManager.getStreamsFromAllAddons(origin.type, episode.id.ifBlank { origin.stremioId })
                 streamsByAddon.flatMap { (addonName, streams) -> streams.mapNotNull { it.toPlayableSource(addonName) } }
             }
         }
     }
 
     private fun StremioStream.toPlayableSource(addonName: String): PlayableSource? {
+        // Torrent-only and external-app streams carry no direct URL; ExoPlayer cannot play them.
         val streamUrl = url ?: return null
-        val label = listOfNotNull(addonName, name ?: title).joinToString(" · ")
-        return PlayableSource(label = label, url = streamUrl)
+        val label = listOfNotNull(addonName, name ?: title?.lineSequence()?.firstOrNull()).joinToString(" · ")
+        return PlayableSource(label = label, url = streamUrl, headers = behaviorHints?.proxyHeaders?.request.orEmpty())
     }
 
+    @androidx.annotation.OptIn(UnstableApi::class)
     fun selectSource(source: PlayableSource) {
         diagnostics?.log(LogCategory.PLAYBACK, "Source selected: ${source.label} → ${source.url}")
         _uiState.value = _uiState.value.copy(selectedSource = source)
-        val mediaItem = MediaItem.Builder().setUri(source.url).build()
-        player.setMediaItem(mediaItem)
+        
+        val mediaItem = MediaItem.Builder()
+            .setUri(source.url)
+            .apply {
+                // Detect container type from URL or explicit hints
+                val mimeType = detectMimeType(source.url)
+                if (mimeType != null) {
+                    diagnostics?.log(LogCategory.PLAYBACK, "Detected MIME type: $mimeType for ${source.url.substringBefore('?')}")
+                    setMimeType(mimeType)
+                }
+                
+                if (source.subtitles.isNotEmpty()) {
+                    setSubtitleConfigurations(
+                        source.subtitles.map { track ->
+                            MediaItem.SubtitleConfiguration.Builder(Uri.parse(track.url))
+                                .setMimeType(subtitleMimeType(track.url))
+                                .setLanguage(track.lang)
+                                .build()
+                        },
+                    )
+                }
+            }
+            .build()
+        
+        if (source.headers.isEmpty()) {
+            player.setMediaItem(mediaItem)
+        } else {
+            // Extension sites usually insist on a Referer/User-Agent; send what the source asked for.
+            val dataSource = DefaultHttpDataSource.Factory()
+                .setAllowCrossProtocolRedirects(true)
+                .setDefaultRequestProperties(source.headers)
+            player.setMediaSource(DefaultMediaSourceFactory(dataSource).createMediaSource(mediaItem))
+        }
         player.prepare()
         player.playWhenReady = true
+    }
+
+    /**
+     * Detect video container MIME type from URL.
+     * Handles HLS, DASH, MP4, WebM, MKV, and other common formats.
+     * Query parameters are stripped before checking extension.
+     */
+    private fun detectMimeType(url: String): String? {
+        val lowerUrl = url.lowercase()
+        // Remove query parameters and fragments
+        val pathOnly = lowerUrl.substringBefore('?').substringBefore('#')
+        
+        return when {
+            // HLS streams - most common for anime sites
+            pathOnly.endsWith(".m3u8") || 
+            lowerUrl.contains("hls") ||
+            lowerUrl.contains("master.m3u8") ||
+            lowerUrl.contains("/playlist/") -> 
+                MimeTypes.APPLICATION_M3U8
+            
+            // DASH streams
+            pathOnly.endsWith(".mpd") || 
+            lowerUrl.contains("dash") -> 
+                MimeTypes.APPLICATION_MPD
+            
+            // Progressive download - MP4
+            pathOnly.endsWith(".mp4") -> 
+                MimeTypes.VIDEO_MP4
+            
+            // WebM
+            pathOnly.endsWith(".webm") -> 
+                MimeTypes.VIDEO_WEBM
+            
+            // Matroska (MKV/MKA)
+            pathOnly.endsWith(".mkv") || 
+            pathOnly.endsWith(".mka") -> 
+                MimeTypes.VIDEO_MATROSKA
+            
+            // MPEG-TS (common for streaming)
+            pathOnly.endsWith(".ts") || 
+            pathOnly.endsWith(".m2ts") ||
+            pathOnly.endsWith(".mts") -> 
+                MimeTypes.VIDEO_MP2T
+            
+            // AVI
+            pathOnly.endsWith(".avi") -> 
+                MimeTypes.VIDEO_AVI
+            
+            // QuickTime/MOV
+            pathOnly.endsWith(".mov") || 
+            pathOnly.endsWith(".qt") -> 
+                MimeTypes.VIDEO_QUICKTIME
+            
+            // FLV
+            pathOnly.endsWith(".flv") -> 
+                MimeTypes.VIDEO_FLV
+            
+            // 3GPP
+            pathOnly.endsWith(".3gp") || 
+            pathOnly.endsWith(".3g2") -> 
+                MimeTypes.VIDEO_3GPP
+            
+            // Heuristics for streaming URLs without clear extensions
+            // These usually come from anime/CDN streaming providers
+            lowerUrl.contains("stream") && 
+            (lowerUrl.contains("m3u8") || lowerUrl.contains("hls")) ->
+                MimeTypes.APPLICATION_M3U8
+            
+            lowerUrl.contains("stream") && 
+            (lowerUrl.contains("mpd") || lowerUrl.contains("dash")) ->
+                MimeTypes.APPLICATION_MPD
+            
+            // Generic CDN/streaming URLs without extension - try MP4 as most common fallback
+            lowerUrl.contains("cdn") ||
+            lowerUrl.contains("stream") ||
+            lowerUrl.contains("video") ||
+            lowerUrl.contains("media") ->
+                MimeTypes.VIDEO_MP4 // Fallback to MP4 for unknown streaming URLs
+            
+            // No detection possible - let ExoPlayer auto-detect (less reliable)
+            else -> null
+        }
+    }
+
+    private fun subtitleMimeType(url: String): String {
+        val path = url.substringBefore('?').lowercase()
+        return when {
+            path.endsWith(".srt") -> MimeTypes.APPLICATION_SUBRIP
+            path.endsWith(".ass") || path.endsWith(".ssa") -> MimeTypes.TEXT_SSA
+            path.endsWith(".vtt") -> MimeTypes.TEXT_VTT
+            else -> MimeTypes.TEXT_VTT // Default to VTT
+        }
     }
 
     fun togglePlayPause() {

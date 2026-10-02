@@ -110,14 +110,26 @@ dependencies {
 
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
+    // Extensions call these at runtime and bundle none of them (Aniyomi ships them too).
+    implementation(libs.okhttp.dnsoverhttps)
     implementation(libs.retrofit)
     implementation(libs.retrofit.kotlinx.serialization)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.serialization.json.okio)
+    implementation(libs.kotlinx.serialization.protobuf)
     implementation(libs.kotlinx.coroutines.android)
 
     implementation(libs.coil.compose)
 
+    // Aniyomi/Keiyoushi extension runtime (see extension/aniyomi and eu.kanade.tachiyomi).
+    implementation(libs.androidx.preference.ktx)
+    implementation(libs.rxjava)
+    implementation(libs.jsoup)
+    implementation(libs.injekt.core)
+
     implementation(libs.media3.exoplayer)
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
     implementation(libs.media3.datasource.okhttp)

@@ -9,6 +9,8 @@
     <!-- Needed to discover installed source extensions and to sideload their APKs,
          the same way Aniyomi / Keiyoushi extensions are installed. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Needed for ACTION_DELETE: without it Android silently ignores the uninstall request. -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
 

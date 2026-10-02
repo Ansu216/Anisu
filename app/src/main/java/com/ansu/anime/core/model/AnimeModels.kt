@@ -37,6 +37,10 @@ data class SEpisode(
     val dateUpload: Long = 0L,
     val description: String? = null,
     val airDate: String? = null,
+    /** Set when the episode came from a source other than the show's own origin (a title matched in an installed extension). */
+    val sourceId: Long? = null,
+    /** The same episode as found in the other installed sources, so playback can offer every source's streams. */
+    val alternates: List<SEpisode> = emptyList(),
 )
 
 data class Video(
