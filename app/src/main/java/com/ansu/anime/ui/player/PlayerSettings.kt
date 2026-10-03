@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ansu.anime.ui.theme.AnsuColors
 
 data class SubtitleLanguage(
@@ -348,13 +349,13 @@ fun StreamCard(
                 text = source,
                 style = MaterialTheme.typography.labelSmall,
                 color = if (isSelected) Color.Black.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.7f),
-                fontSize = androidx.compose.ui.unit.sp(10),
+                fontSize = 10.sp,
             )
             Text(
                 text = "${delay}ms",
                 style = MaterialTheme.typography.labelSmall,
                 color = if (isSelected) Color.Black.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.7f),
-                fontSize = androidx.compose.ui.unit.sp(10),
+                fontSize = 10.sp,
             )
         }
     }
