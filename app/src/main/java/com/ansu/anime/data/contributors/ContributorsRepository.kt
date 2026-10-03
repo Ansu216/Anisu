@@ -62,7 +62,7 @@ class ContributorsRepository(
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("Contributors: HTTP ${response.code}")
-            val body = response.body?.string().orEmpty()
+            val body = response.body.string()
             json.decodeFromString<ContributorsFile>(body).contributors
         }
     }

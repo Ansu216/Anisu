@@ -49,6 +49,8 @@ data class Video(
     val sourceLabel: String,
     val headers: Map<String, String> = emptyMap(),
     val subtitleTracks: List<SubtitleTrack> = emptyList(),
+    /** Separate audio streams (dubs) the source offers next to the video; [SubtitleTrack] is just a url + language. */
+    val audioTracks: List<SubtitleTrack> = emptyList(),
 )
 
 data class SubtitleTrack(val url: String, val lang: String)

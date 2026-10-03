@@ -507,7 +507,7 @@ class AniListApi(
         authManager.accessToken.value?.let { token -> requestBuilder.addHeader("Authorization", "Bearer $token") }
 
         client.newCall(requestBuilder.build()).execute().use { response ->
-            val text = response.body?.string().orEmpty()
+            val text = response.body.string()
             val root = runCatching { json.parseToJsonElement(text) as? JsonObject }.getOrNull()
             val data = root?.get("data") as? JsonObject
             if (response.isSuccessful && data != null) return data

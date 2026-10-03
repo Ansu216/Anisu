@@ -94,7 +94,7 @@ class DemoSource(
                     .build()
                 client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) return@use null
-                    val media = json.parseToJsonElement(response.body?.string().orEmpty())
+                    val media = json.parseToJsonElement(response.body.string())
                         .jsonObject["data"]?.jsonObject?.get("Media")?.jsonObject ?: return@use null
                     val total = media["episodes"]?.jsonPrimitive?.content?.toIntOrNull()
                     val aired = media["nextAiringEpisode"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }
@@ -138,7 +138,7 @@ class DemoSource(
             .build()
 
         client.newCall(request).execute().use { response ->
-            val bodyText = response.body?.string().orEmpty()
+            val bodyText = response.body.string()
             if (!response.isSuccessful) return AnimesPage(emptyList(), false)
             val root = json.parseToJsonElement(bodyText).jsonObject
             val page = root["data"]?.jsonObject?.get("Page")?.jsonObject ?: return AnimesPage(emptyList(), false)

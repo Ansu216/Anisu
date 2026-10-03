@@ -11,6 +11,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MergingMediaSource
 import com.ansu.anime.addon.AddonManager
 import com.ansu.anime.addon.model.StremioStream
 import com.ansu.anime.core.model.MediaOrigin
@@ -22,6 +23,7 @@ import com.ansu.anime.core.model.SubtitleTrack
 import com.ansu.anime.core.util.SelectionHolder
 import com.ansu.anime.data.repository.ContinueWatchingRepository
 import com.ansu.anime.extension.ExtensionManager
+import com.ansu.anime.extension.findEpisodesByTitle
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +39,7 @@ data class PlayableSource(
     val url: String,
     val headers: Map<String, String> = emptyMap(),
     val subtitles: List<SubtitleTrack> = emptyList(),
+    val audioTracks: List<SubtitleTrack> = emptyList(),
 )
 
 data class PlayerUiState(
@@ -104,11 +107,6 @@ class PlayerViewModel(
     }
 
     private fun loadSources() {
-        val anime = _uiState.value.anime
-        if (anime?.anilistId != null) {
-            // Cache anime for continue-watching recovery
-            continueWatchingRepository.cacheAnime(anime.anilistId, anime)
-        }
         val anime = _uiState.value.anime
         val episode = _uiState.value.episode
         if (anime == null || episode == null) {
@@ -208,6 +206,7 @@ class PlayerViewModel(
                                         url = video.url,
                                         headers = video.headers,
                                         subtitles = video.subtitleTracks,
+                                        audioTracks = video.audioTracks,
                                     )
                                 }
                                 if (mapped.isNotEmpty()) withContext(Dispatchers.Main) { onBatch(mapped) }
@@ -266,14 +265,25 @@ class PlayerViewModel(
             }
             .build()
         
-        if (source.headers.isEmpty()) {
+        if (source.headers.isEmpty() && source.audioTracks.isEmpty()) {
             player.setMediaItem(mediaItem)
         } else {
             // Extension sites usually insist on a Referer/User-Agent; send what the source asked for.
             val dataSource = DefaultHttpDataSource.Factory()
                 .setAllowCrossProtocolRedirects(true)
                 .setDefaultRequestProperties(source.headers)
-            player.setMediaSource(DefaultMediaSourceFactory(dataSource).createMediaSource(mediaItem))
+            val factory = DefaultMediaSourceFactory(dataSource)
+            val main = factory.createMediaSource(mediaItem)
+            // External audio streams (dubs) are merged into the video; the player lists them as audio tracks.
+            val audio = source.audioTracks.map { track ->
+                factory.createMediaSource(
+                    MediaItem.Builder()
+                        .setUri(track.url)
+                        .apply { detectMimeType(track.url)?.let { setMimeType(it) } }
+                        .build(),
+                )
+            }
+            player.setMediaSource(if (audio.isEmpty()) main else MergingMediaSource(main, *audio.toTypedArray()))
         }
         player.prepare()
         player.playWhenReady = true

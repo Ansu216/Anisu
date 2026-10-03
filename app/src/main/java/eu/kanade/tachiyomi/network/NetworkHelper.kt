@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.network
 
+import android.content.Context
+import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -7,10 +9,10 @@ import java.util.concurrent.TimeUnit
 
 /**
  * The network access an extension source gets through `network.client`. Ansu builds it from its
- * own OkHttp client. **Not implemented:** Cloudflare challenge solving, so `cloudflareClient` is
- * the plain client and a site behind a challenge will answer 403/503.
+ * own OkHttp client. When a [context] is given, a Cloudflare challenge (403/503 from Cloudflare) is solved
+ * in a hidden WebView and the request repeated, like Aniyomi; `cloudflareClient` is the same client.
  */
-class NetworkHelper(baseClient: OkHttpClient) {
+class NetworkHelper(baseClient: OkHttpClient, context: Context? = null) {
 
     val cookieJar = AndroidCookieJar()
 
@@ -20,6 +22,9 @@ class NetworkHelper(baseClient: OkHttpClient) {
         .readTimeout(30, TimeUnit.SECONDS)
         .callTimeout(2, TimeUnit.MINUTES)
         .addInterceptor(DefaultUserAgentInterceptor())
+        .apply {
+            if (context != null) addInterceptor(CloudflareInterceptor(context, cookieJar, ::defaultUserAgentProvider))
+        }
         .build()
 
     val cloudflareClient: OkHttpClient

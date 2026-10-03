@@ -2,6 +2,7 @@ package com.ansu.anime.extension.aniyomi
 
 import android.app.Application
 import android.content.Context
+import eu.kanade.tachiyomi.network.JavaScriptEngine
 import eu.kanade.tachiyomi.network.NetworkHelper
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.Json
@@ -15,16 +16,17 @@ import kotlin.coroutines.resumeWithException
 /**
  * Sets up what an Aniyomi/Keiyoushi extension expects to find around it: the `eu.kanade.tachiyomi.*`
  * API classes (compiled into Ansu) and an Injekt container holding `Application`, `NetworkHelper`
- * and `Json`, which is how those extensions reach them.
+ * `JavaScriptEngine` and `Json`, which is how those extensions reach them.
  */
 object AniyomiRuntime {
 
     /**
      * First extension API version Ansu can run, and the last one. Version 16 replaced "episode -> videos"
-     * with "episode -> hosters -> videos"; both are implemented side by side in `eu.kanade.tachiyomi.animesource`.
+     * with "episode -> hosters -> videos" and version 17 added the combined update calls; all of them are
+     * implemented side by side in `eu.kanade.tachiyomi.animesource`.
      */
     const val MIN_LIB_VERSION = 12.0
-    const val MAX_LIB_VERSION = 16.0
+    const val MAX_LIB_VERSION = 17.0
 
     @Volatile
     private var installed = false
@@ -41,7 +43,8 @@ object AniyomiRuntime {
         sharedClient = client
         val app = context.applicationContext as Application
         Injekt.addSingleton(app)
-        Injekt.addSingleton(NetworkHelper(client))
+        Injekt.addSingleton(NetworkHelper(client, app))
+        Injekt.addSingleton(JavaScriptEngine(app))
         Injekt.addSingleton(Json { ignoreUnknownKeys = true })
         installed = true
     }

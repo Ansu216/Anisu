@@ -7,6 +7,7 @@ import dalvik.system.PathClassLoader
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.AnimeSourceFactory
+import eu.kanade.tachiyomi.util.system.ChildFirstPathClassLoader
 
 /**
  * Loads an Aniyomi/Keiyoushi extension APK the way Aniyomi does: read the class names from the
@@ -18,7 +19,7 @@ internal class AniyomiExtensionLoader(private val context: Context) {
     fun load(pkgInfo: PackageInfo, label: String): InstalledExtension {
         val appInfo = pkgInfo.applicationInfo
         val versionName = pkgInfo.versionName ?: "?"
-        val displayName = label.removePrefix("Aniyomi: ")
+        val displayName = appInfo?.metaData?.getString(NAME_METADATA) ?: label.removePrefix("Aniyomi: ")
         fun failed(message: String) = InstalledExtension(
             packageName = pkgInfo.packageName,
             displayName = displayName,
@@ -29,7 +30,9 @@ internal class AniyomiExtensionLoader(private val context: Context) {
         )
 
         if (appInfo == null) return failed("Not installed correctly")
-        val libVersion = versionName.substringBeforeLast('.').toDoubleOrNull()
+        // Aniyomi's own builds declare the library in metadata; Keiyoushi/older ones only in the version name.
+        val libVersion = appInfo.metaData?.getInt(LIB_METADATA)?.takeIf { it != 0 }?.toDouble()
+            ?: versionName.substringBeforeLast('.').toDoubleOrNull()
             ?: return failed("Unreadable extension version \"$versionName\"")
         if (libVersion < AniyomiRuntime.MIN_LIB_VERSION || libVersion > AniyomiRuntime.MAX_LIB_VERSION) {
             return failed(
@@ -53,35 +56,54 @@ internal class AniyomiExtensionLoader(private val context: Context) {
             return failed("Injekt setup failed: ${t::class.java.simpleName}: ${t.message}")
         }
 
-        val classLoader = PathClassLoader(appInfo.sourceDir, appInfo.nativeLibraryDir, context.classLoader)
+        val classLoader = try {
+            ChildFirstPathClassLoader(appInfo.sourceDir, appInfo.nativeLibraryDir, context.classLoader)
+        } catch (e: Exception) {
+            android.util.Log.e("AniyomiLoader", "Could not open $displayName", e)
+            return failed("Could not open the extension: ${e.message ?: e::class.java.simpleName}")
+        }
         val errors = mutableListOf<String>()
         val sources = classNames.flatMap { className ->
             try {
-                val instance = Class.forName(className, false, classLoader).getDeclaredConstructor().newInstance()
-                when (instance) {
-                    is AnimeSourceFactory -> instance.createSources()
-                    is AnimeSource -> listOf(instance)
-                    else -> emptyList()
+                instantiate(className, classLoader)
+            } catch (e: LinkageError) {
+                // The extension's own copy of a class clashed with Ansu's; Aniyomi retries with the plain
+                // parent-first loader before giving up.
+                try {
+                    instantiate(className, PathClassLoader(appInfo.sourceDir, appInfo.nativeLibraryDir, context.classLoader))
+                } catch (e2: Throwable) {
+                    errors += describe(className, e2)
+                    emptyList()
                 }
             } catch (e: Throwable) {
-                // newInstance() wraps anything the constructor throws in InvocationTargetException,
-                // which hides the real problem. Unwrap to the actual cause.
-                val root = rootCause(e)
-                android.util.Log.e("AniyomiLoader", "Failed to load $className", e)
-                errors += "${root::class.java.simpleName}: ${root.message ?: className}"
+                errors += describe(className, e)
                 emptyList()
             }
-        }.filterIsInstance<AnimeCatalogueSource>().map { AniyomiSourceAdapter(it) }
+        }.filterIsInstance<AnimeCatalogueSource>().map { AniyomiSourceAdapter(it, libVersion) }
 
         return InstalledExtension(
             packageName = pkgInfo.packageName,
             displayName = displayName,
             versionName = versionName,
             sources = sources,
-            isNsfw = metaData?.getInt(NSFW_METADATA, 0) == 1,
+            isNsfw = metaData?.getInt(NSFW_METADATA, 0) == 1 || (metaData?.getInt(CONTENT_WARNING_METADATA, 0) ?: 0) > 0,
             loadError = if (sources.isEmpty()) errors.firstOrNull() ?: "No sources found in this extension" else null,
             isAniyomiFormat = true,
         )
+    }
+
+    private fun instantiate(className: String, classLoader: ClassLoader): List<AnimeSource> =
+        when (val instance = Class.forName(className, false, classLoader).getDeclaredConstructor().newInstance()) {
+            is AnimeSourceFactory -> instance.createSources()
+            is AnimeSource -> listOf(instance)
+            else -> throw IllegalStateException("Unknown source class type: ${instance.javaClass}")
+        }
+
+    /** `newInstance()` wraps what a constructor throws in InvocationTargetException; report the real cause. */
+    private fun describe(className: String, e: Throwable): String {
+        val root = rootCause(e)
+        android.util.Log.e("AniyomiLoader", "Failed to load $className", e)
+        return "${root::class.java.simpleName}: ${root.message ?: className}"
     }
 
     private fun rootCause(e: Throwable): Throwable {
@@ -100,5 +122,8 @@ internal class AniyomiExtensionLoader(private val context: Context) {
     private companion object {
         const val CLASS_METADATA = "tachiyomi.animeextension.class"
         const val NSFW_METADATA = "tachiyomi.animeextension.nsfw"
+        const val NAME_METADATA = "aniyomix.name"
+        const val LIB_METADATA = "aniyomix.extensionLib"
+        const val CONTENT_WARNING_METADATA = "aniyomix.contentWarning"
     }
 }

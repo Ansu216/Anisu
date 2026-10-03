@@ -1,7 +1,6 @@
 package com.ansu.anime.data.repository
 
 import com.ansu.anime.anilist.AniListRepository
-import com.ansu.anime.extension.ExtensionManager
 import com.ansu.anime.core.model.MediaOrigin
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.SEpisode
@@ -9,7 +8,7 @@ import com.ansu.anime.data.db.ContinueWatchingDao
 import com.ansu.anime.data.db.ContinueWatchingEntity
 import kotlinx.coroutines.flow.Flow
 
-class ContinueWatchingRepository(private val extensionManager: ExtensionManager,
+class ContinueWatchingRepository(
     private val dao: ContinueWatchingDao,
     private val aniList: AniListRepository,
     private val localList: LocalListRepository,

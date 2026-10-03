@@ -76,7 +76,7 @@ class EpisodeMetadataRepository(
             // ani.zip answers 404 for shows it has no mapping for; that is "no data", not a failure.
             if (response.code == 404) return@use ""
             if (!response.isSuccessful) throw httpApiException(response.code, response.header("Retry-After")?.toLongOrNull(), null)
-            response.body?.string().orEmpty()
+            response.body.string()
         }
         if (text.isBlank()) return@withContext emptyMap()
         val episodes = json.parseToJsonElement(text).jsonObject["episodes"] as? JsonObject

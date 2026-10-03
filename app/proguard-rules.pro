@@ -28,6 +28,9 @@
 -keep class kotlinx.coroutines.** { public protected *; }
 -keep class kotlinx.serialization.** { public protected *; }
 -keep class androidx.preference.** { public protected *; }
+-keep class app.cash.quickjs.** { *; }
+-keep class fi.iki.elonen.** { public protected *; }
+-dontwarn fi.iki.elonen.**
 -dontwarn rx.**
 -dontwarn org.jsoup.**
 -dontwarn uy.kohesive.injekt.**

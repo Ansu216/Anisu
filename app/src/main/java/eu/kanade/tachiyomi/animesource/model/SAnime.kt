@@ -1,8 +1,9 @@
 package eu.kanade.tachiyomi.animesource.model
 
+import kotlinx.serialization.json.JsonObject
 import java.io.Serializable
 
-/** Aniyomi extension API (library versions 12-15): the anime a source lists. */
+/** Aniyomi extension API (library versions 12-17): the anime a source lists. */
 interface SAnime : Serializable {
     var url: String
     var title: String
@@ -12,10 +13,14 @@ interface SAnime : Serializable {
     var genre: String?
     var status: Int
     var thumbnail_url: String?
+    var background_url: String?
     var update_strategy: AnimeUpdateStrategy
     var initialized: Boolean
     var fetch_type: FetchType
     var season_number: Double
+
+    /** Library 17: source-specific data the app never shows. */
+    var memo: JsonObject
 
     fun getGenres(): List<String>? {
         if (genre.isNullOrBlank()) return null
@@ -31,10 +36,12 @@ interface SAnime : Serializable {
         it.genre = genre
         it.status = status
         it.thumbnail_url = thumbnail_url
+        it.background_url = background_url
         it.update_strategy = update_strategy
         it.initialized = initialized
         it.fetch_type = fetch_type
         it.season_number = season_number
+        it.memo = memo
     }
 
     companion object {
@@ -45,6 +52,7 @@ interface SAnime : Serializable {
         const val PUBLISHING_FINISHED = 4
         const val CANCELLED = 5
         const val ON_HIATUS = 6
+        const val UPCOMING = 7
 
         fun create(): SAnime = SAnimeImpl()
     }
@@ -59,10 +67,12 @@ class SAnimeImpl : SAnime {
     override var genre: String? = null
     override var status: Int = 0
     override var thumbnail_url: String? = null
+    override var background_url: String? = null
     override var update_strategy: AnimeUpdateStrategy = AnimeUpdateStrategy.ALWAYS_UPDATE
     override var initialized: Boolean = false
     override var fetch_type: FetchType = FetchType.Episodes
     override var season_number: Double = -1.0
+    override var memo: JsonObject = EmptyMemo
 }
 
 enum class AnimeUpdateStrategy { ALWAYS_UPDATE, ONLY_FETCH_ONCE }

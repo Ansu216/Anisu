@@ -9,12 +9,16 @@ import com.ansu.anime.core.model.SubtitleTrack
 import com.ansu.anime.core.model.Video as AnsuVideo
 import com.ansu.anime.extension.api.AnimeCatalogueSource as AnsuSource
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
+import eu.kanade.tachiyomi.animesource.AnimeSource
+import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
+import eu.kanade.tachiyomi.animesource.preferenceKey
 import eu.kanade.tachiyomi.animesource.model.Hoster
 import eu.kanade.tachiyomi.animesource.model.Hoster.Companion.toHosterList
 import eu.kanade.tachiyomi.animesource.model.AnimesPage
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.animesource.model.Video
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -31,7 +35,11 @@ import kotlinx.coroutines.withTimeoutOrNull
  * [AnsuSource] contract, so Home, Search, Details and the player treat it like any other.
  * Extension code does blocking network I/O, so every call is moved to [Dispatchers.IO].
  */
-class AniyomiSourceAdapter(private val source: AnimeCatalogueSource) : AnsuSource {
+class AniyomiSourceAdapter(
+    private val source: AnimeCatalogueSource,
+    /** The extension API the source was built for; library 17 sources answer the combined update calls. */
+    private val libVersion: Double = AniyomiRuntime.MIN_LIB_VERSION,
+) : AnsuSource {
 
     /**
      * Runs extension code on [Dispatchers.IO]. An extension built for a different API version can raise
@@ -51,6 +59,19 @@ class AniyomiSourceAdapter(private val source: AnimeCatalogueSource) : AnsuSourc
         }
     }
 
+
+    /** True when the extension declares settings (Aniyomi's `ConfigurableAnimeSource`). */
+    val hasSettings: Boolean get() = source is ConfigurableAnimeSource
+
+    /** The SharedPreferences file name the extension's settings are stored in, or null without settings. */
+    val settingsKey: String? get() = (source as? ConfigurableAnimeSource)?.preferenceKey()
+
+    /** Lets the extension fill [screen] with its settings; returns false when it has none. */
+    fun setupSettings(screen: androidx.preference.PreferenceScreen): Boolean {
+        val configurable = source as? ConfigurableAnimeSource ?: return false
+        configurable.setupPreferenceScreen(screen)
+        return true
+    }
 
     override val id: Long get() = source.id
     override val name: String get() = source.name
@@ -73,7 +94,11 @@ class AniyomiSourceAdapter(private val source: AnimeCatalogueSource) : AnsuSourc
         }
 
     override suspend fun getAnimeDetails(anime: AnsuAnime): AnsuAnime = io {
-        val details = source.getAnimeDetails(anime.toSource())
+        val details = if (libVersion >= LIB_17) {
+            source.getAnimeEpisodeUpdate(anime.toSource(), emptyList(), fetchDetails = true, fetchEpisodes = false).anime
+        } else {
+            source.getAnimeDetails(anime.toSource())
+        }
         anime.copy(
             title = anime.title,
             posterUrl = details.thumbnail_url ?: anime.posterUrl,
@@ -83,7 +108,11 @@ class AniyomiSourceAdapter(private val source: AnimeCatalogueSource) : AnsuSourc
     }
 
     override suspend fun getEpisodeList(anime: AnsuAnime): List<AnsuEpisode> = io {
-        val episodes = source.getEpisodeList(anime.toSource())
+        val episodes = if (libVersion >= LIB_17) {
+            source.getAnimeEpisodeUpdate(anime.toSource(), emptyList(), fetchDetails = false, fetchEpisodes = true).episodes
+        } else {
+            source.getEpisodeList(anime.toSource())
+        }
         // Sources list newest first. With real episode numbers sort by them; otherwise number from the bottom up.
         val useNumbers = episodes.isNotEmpty() && episodes.all { it.episode_number > 0f }
         val ordered = if (useNumbers) episodes.sortedBy { it.episode_number } else episodes.reversed()
@@ -106,31 +135,7 @@ class AniyomiSourceAdapter(private val source: AnimeCatalogueSource) : AnsuSourc
             name = episode.name
             episode_number = episode.episodeNumber
         }
-        // Library 16 extensions list hosters first and videos second; library 12-15 ones return a single
-        // pseudo hoster that already carries the videos. getHosterList handles both.
-        val hosters = try {
-            source.getHosterList(sourceEpisode)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: UnsupportedOperationException) {
-            // A message-less UnsupportedOperationException comes from the extension's own stub
-            // (e.g. `override fun videoListParse(...) = throw UnsupportedOperationException()`).
-            // Try the other API generation before giving up, and say where it was thrown.
-            android.util.Log.w("AniyomiSource", "$name: getHosterList threw UnsupportedOperationException", e)
-            try {
-                source.getVideoList(sourceEpisode).toHosterList()
-            } catch (e2: CancellationException) {
-                throw e2
-            } catch (e2: Throwable) {
-                android.util.Log.w("AniyomiSource", "$name: legacy getVideoList also failed", e2)
-                val frame = e.stackTrace.firstOrNull { !it.className.startsWith("eu.kanade.tachiyomi.animesource") }
-                throw ExtensionApiError(
-                    "$name: extension cannot list videos for this episode (${e::class.java.simpleName}" +
-                        (frame?.let { " at ${it.className.substringAfterLast('.')}.${it.methodName}" } ?: "") + ")",
-                    e,
-                )
-            }
-        }
+        val hosters = loadHosters(sourceEpisode)
         val gate = Semaphore(HOSTER_PARALLELISM)
         coroutineScope {
             hosters.map { hoster ->
@@ -139,7 +144,7 @@ class AniyomiSourceAdapter(private val source: AnimeCatalogueSource) : AnsuSourc
                         // One broken hoster must not take the others down with it.
                         withTimeoutOrNull(HOSTER_TIMEOUT_MS) {
                             try {
-                                videosOf(hoster).mapNotNull { resolve(it) }
+                                videosOf(hoster).mapNotNull { video -> resolve(video)?.let { video.preferred to it } }
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (e: Throwable) {
@@ -151,7 +156,68 @@ class AniyomiSourceAdapter(private val source: AnimeCatalogueSource) : AnsuSourc
                 }
             }.awaitAll().flatten()
         }
+            // The source's own "preferred" videos go first (Aniyomi plays the first preferred one), then source order.
+            .sortedByDescending { it.first }
+            .map { it.second }
     }
+
+    /**
+     * Gets the hosters of an episode the way Aniyomi's EpisodeLoader does: a source that really implements
+     * hosters is asked for them (then `sortHosters`), every other source is asked for its videos (then
+     * `sortVideos`) which are wrapped in one pseudo hoster. If the chosen way is not implemented, the other
+     * one is tried before giving up.
+     */
+    private suspend fun loadHosters(episode: SEpisode): List<Hoster> {
+        val http = source as? AnimeHttpSource
+        val viaHosters = http == null || implementsHosters(http)
+        return try {
+            if (viaHosters) fromHosters(episode, http) else fromVideos(episode, http)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: UnsupportedOperationException) {
+            // A message-less UnsupportedOperationException comes from the extension's own stub
+            // (e.g. `override fun videoListParse(...) = throw UnsupportedOperationException()`).
+            android.util.Log.w("AniyomiSource", "$name: ${if (viaHosters) "hoster" else "video"} list threw UnsupportedOperationException", e)
+            try {
+                if (viaHosters) fromVideos(episode, http) else fromHosters(episode, http)
+            } catch (e2: CancellationException) {
+                throw e2
+            } catch (e2: Throwable) {
+                android.util.Log.w("AniyomiSource", "$name: the other video list API also failed", e2)
+                val frame = e.stackTrace.firstOrNull { !it.className.startsWith("eu.kanade.tachiyomi.animesource") }
+                throw ExtensionApiError(
+                    "$name: extension cannot list videos for this episode (${e::class.java.simpleName}" +
+                        (frame?.let { " at ${it.className.substringAfterLast('.')}.${it.methodName}" } ?: "") + ")",
+                    e,
+                )
+            }
+        }
+    }
+
+    private suspend fun fromHosters(episode: SEpisode, http: AnimeHttpSource?): List<Hoster> {
+        val hosters = source.getHosterList(episode)
+        return if (http != null) with(http) { hosters.sortHosters() } else hosters
+    }
+
+    private suspend fun fromVideos(episode: SEpisode, http: AnimeHttpSource?): List<Hoster> {
+        val videos = source.getVideoList(episode)
+        return (if (http != null) with(http) { videos.sortVideos() } else videos).toHosterList()
+    }
+
+    /** True when the extension itself declares `getHosterList`, `hosterListRequest` or `hosterListParse`. */
+    private fun implementsHosters(http: AnimeHttpSource): Boolean = runCatching {
+        var current: Class<*>? = http.javaClass
+        var found = false
+        while (current != null && !found &&
+            current != ParsedAnimeHttpSource::class.java &&
+            current != AnimeHttpSource::class.java &&
+            current != AnimeSource::class.java
+        ) {
+            found = current.declaredMethods.any { it.name in HOSTER_METHODS }
+            current = current.superclass
+        }
+        found
+    }.getOrDefault(true)
 
     private suspend fun videosOf(hoster: Hoster): List<Video> {
         val label = hoster.hosterName.takeUnless { it == Hoster.NO_HOSTER_LIST || it.isBlank() }
@@ -169,21 +235,88 @@ class AniyomiSourceAdapter(private val source: AnimeCatalogueSource) : AnsuSourc
     private suspend fun resolve(video: Video): AnsuVideo? {
         val http = source as? AnimeHttpSource
         val ready = if (!video.initialized && http != null) {
-            runCatching { http.resolveVideo(video) }.getOrNull() ?: video
+            try {
+                http.resolveVideo(video)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                android.util.Log.w("AniyomiSource", "$name: resolving '${video.videoTitle}' failed", e)
+                null
+            } ?: video
         } else {
             video
         }
-        val finalUrl = ready.videoUrl.takeIf { it.isNotBlank() }
-            ?: http?.let { runCatching { it.getVideoUrl(ready) }.getOrNull() }
+        val finalUrl = ready.videoUrl.takeIf { it.isNotBlank() && it != "null" }
+            ?: http?.let {
+                try {
+                    it.getVideoUrl(ready)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    android.util.Log.w("AniyomiSource", "$name: getVideoUrl for '${ready.videoTitle}' failed", e)
+                    null
+                }
+            }
             ?: ready.url.takeIf { it.startsWith("http") }
             ?: return null
+        // Streams that need the source's local proxy: start it and point the video at its real port.
+        val withUrl = ready.copy(videoUrl = finalUrl)
+        val playable = if (withUrl.usesHttpServer()) withLocalServer(withUrl) else withUrl
         return AnsuVideo(
-            url = finalUrl,
-            quality = ready.videoTitle,
+            url = playable.videoUrl,
+            quality = playable.videoTitle,
             sourceLabel = name,
-            headers = ready.headers?.toMultimap()?.mapValues { (_, values) -> values.first() }.orEmpty(),
-            subtitleTracks = ready.subtitleTracks.map { track -> SubtitleTrack(track.url, track.lang) },
+            headers = (
+                playable.headers?.toMultimap()?.mapKeys { it.key.lowercase() }?.mapValues { (_, values) -> values.first() }.orEmpty() +
+                    mpvHeaders(playable.mpvArgs)
+                ),
+            subtitleTracks = playable.subtitleTracks.map { track -> SubtitleTrack(track.url, track.lang) },
+            audioTracks = playable.audioTracks.map { track -> SubtitleTrack(track.url, track.lang) },
         )
+    }
+
+    /**
+     * Aniyomi plays with MPV and lets a source pass it options; Ansu plays with Media3, which has no such
+     * options. The ones that only describe the HTTP request are translated into request headers
+     * (`user-agent`, `referrer`, `http-header-fields`, `cookies`); every other option is not applicable here.
+     */
+    private fun mpvHeaders(args: List<Pair<String, String>>): Map<String, String> {
+        val out = linkedMapOf<String, String>()
+        for ((rawName, value) in args) {
+            when (rawName.trim().removePrefix("--").lowercase()) {
+                "user-agent" -> out["user-agent"] = value
+                "referrer", "referer" -> out["referer"] = value
+                "cookies" -> if (value.isNotBlank() && value != "no") out["cookie"] = value
+                "http-header-fields" -> value.split(',').forEach { field ->
+                    val index = field.indexOf(':')
+                    if (index > 0) {
+                        val name = field.substring(0, index).trim().lowercase()
+                        if (name.isNotEmpty()) out[name] = field.substring(index + 1).trim()
+                    }
+                }
+            }
+        }
+        return out
+    }
+
+    @Volatile
+    private var localServer: eu.kanade.tachiyomi.animesource.model.HttpServer? = null
+
+    /** Starts (once) the source's local HTTP server and rewrites [video] to use it; unchanged if it has none. */
+    private fun withLocalServer(video: Video): Video {
+        val http = source as? AnimeHttpSource ?: return video
+        return try {
+            val server = synchronized(this) {
+                localServer?.takeIf { it.isRunning() } ?: http.createHttpServer()?.also {
+                    it.start()
+                    localServer = it
+                }
+            } ?: return video
+            video.copyHttpServer(server.listeningPort)
+        } catch (e: Exception) {
+            android.util.Log.w("AniyomiSource", "$name: could not start the local http server", e)
+            video
+        }
     }
 
     private fun AnimesPage.toAnsu() = AnsuPage(animes.map { it.toAnsu() }, hasNextPage)
@@ -206,6 +339,8 @@ class AniyomiSourceAdapter(private val source: AnimeCatalogueSource) : AnsuSourc
     }
 
     private companion object {
+        const val LIB_17 = 17.0
+        val HOSTER_METHODS = listOf("getHosterList", "hosterListRequest", "hosterListParse")
         const val HOSTER_PARALLELISM = 4
         const val HOSTER_TIMEOUT_MS = 25_000L
     }

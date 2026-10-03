@@ -114,7 +114,7 @@ class ExtensionRepo(
         val request = Request.Builder().url(url).build()
         val body = client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("HTTP ${response.code} from $url")
-            response.body?.string().orEmpty()
+            response.body.string()
         }
         val root = json.parseToJsonElement(body)
         return classify(url, root)
@@ -172,7 +172,7 @@ class ExtensionRepo(
                 client.newCall(Request.Builder().url(apkUrl).build()).execute().use { response ->
                     lastCode = response.code
                     if (!response.isSuccessful) return@use
-                    val stream = response.body?.byteStream() ?: return@use
+                    val stream = response.body.byteStream()
                     stream.use { input -> apkFile.outputStream().use { output -> input.copyTo(output) } }
                     downloaded = true
                 }

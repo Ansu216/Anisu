@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.animesource.model
 
+import kotlinx.serialization.json.JsonObject
 import java.io.Serializable
 
 interface SEpisode : Serializable {
@@ -12,6 +13,9 @@ interface SEpisode : Serializable {
     var preview_url: String?
     var fillermark: Boolean
 
+    /** Library 17: source-specific data the app never shows. */
+    var memo: JsonObject
+
     fun copyFrom(other: SEpisode) {
         name = other.name
         url = other.url
@@ -21,6 +25,7 @@ interface SEpisode : Serializable {
         summary = other.summary
         preview_url = other.preview_url
         fillermark = other.fillermark
+        memo = other.memo
     }
 
     companion object {
@@ -37,4 +42,5 @@ class SEpisodeImpl : SEpisode {
     override var summary: String? = null
     override var preview_url: String? = null
     override var fillermark: Boolean = false
+    override var memo: JsonObject = EmptyMemo
 }

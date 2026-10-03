@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.animesource.model
 
 import android.net.Uri
+import kotlinx.serialization.json.JsonObject
 import okhttp3.Headers
 
 /** A sub/dub track. */
@@ -17,7 +18,7 @@ data class TimeStamp(
 )
 
 /**
- * Extension API library 16 `Video` (a data class), plus the library 12-15 constructors, `url`, `quality`
+ * Extension API library 17 `Video` (a data class), plus the library 12-15 constructors, `url`, `quality`
  * and the mutable `videoUrl` so that older extensions keep linking.
  */
 data class Video(
@@ -35,6 +36,7 @@ data class Video(
     val ffmpegVideoArgs: List<Pair<String, String>> = emptyList(),
     val internalData: String = "",
     val initialized: Boolean = false,
+    val memo: JsonObject = EmptyMemo,
 ) {
 
     /** Library 12-15: the page the video is on (used to resolve [videoUrl] later). */
@@ -72,6 +74,79 @@ data class Video(
         headers: Headers? = null,
     ) : this(url, quality, videoUrl, headers, emptyList(), emptyList())
 
+    // ---- library 16 constructor and copy (no `memo`), kept so extensions built for 16 still link ----
+
+    @Deprecated("Used only for compatibility with ext lib 16, do not use", level = DeprecationLevel.HIDDEN)
+    constructor(
+        videoUrl: String = "",
+        videoTitle: String = "",
+        resolution: Int? = null,
+        bitrate: Int? = null,
+        headers: Headers? = null,
+        preferred: Boolean = false,
+        subtitleTracks: List<Track> = emptyList(),
+        audioTracks: List<Track> = emptyList(),
+        timestamps: List<TimeStamp> = emptyList(),
+        mpvArgs: List<Pair<String, String>> = emptyList(),
+        ffmpegStreamArgs: List<Pair<String, String>> = emptyList(),
+        ffmpegVideoArgs: List<Pair<String, String>> = emptyList(),
+        internalData: String = "",
+        initialized: Boolean = false,
+    ) : this(
+        videoUrl, videoTitle, resolution, bitrate, headers, preferred, subtitleTracks, audioTracks, timestamps,
+        mpvArgs, ffmpegStreamArgs, ffmpegVideoArgs, internalData, initialized, EmptyMemo,
+    )
+
+    @Deprecated("Used only for compatibility with ext lib 16, do not use", level = DeprecationLevel.HIDDEN)
+    fun copy(
+        videoUrl: String = this.videoUrl,
+        videoTitle: String = this.videoTitle,
+        resolution: Int? = this.resolution,
+        bitrate: Int? = this.bitrate,
+        headers: Headers? = this.headers,
+        preferred: Boolean = this.preferred,
+        subtitleTracks: List<Track> = this.subtitleTracks,
+        audioTracks: List<Track> = this.audioTracks,
+        timestamps: List<TimeStamp> = this.timestamps,
+        mpvArgs: List<Pair<String, String>> = this.mpvArgs,
+        ffmpegStreamArgs: List<Pair<String, String>> = this.ffmpegStreamArgs,
+        ffmpegVideoArgs: List<Pair<String, String>> = this.ffmpegVideoArgs,
+        internalData: String = this.internalData,
+        initialized: Boolean = this.initialized,
+    ): Video = Video(
+        videoUrl = videoUrl,
+        videoTitle = videoTitle,
+        resolution = resolution,
+        bitrate = bitrate,
+        headers = headers,
+        preferred = preferred,
+        subtitleTracks = subtitleTracks,
+        audioTracks = audioTracks,
+        timestamps = timestamps,
+        mpvArgs = mpvArgs,
+        ffmpegStreamArgs = ffmpegStreamArgs,
+        ffmpegVideoArgs = ffmpegVideoArgs,
+        internalData = internalData,
+        initialized = initialized,
+        memo = memo,
+    ).also { it.url = url }
+
+    /** True when the video, an audio track or a subtitle points at the `http://localhost:1` placeholder. */
+    fun usesHttpServer(): Boolean =
+        LOCAL_URL.find(videoUrl) != null ||
+            audioTracks.any { LOCAL_URL.find(it.url) != null } ||
+            subtitleTracks.any { LOCAL_URL.find(it.url) != null }
+
+    /** The same video with the placeholder swapped for the real local server on [port]. */
+    fun copyHttpServer(port: Int): Video {
+        val host = "http://localhost:$port"
+        return copy(
+            videoUrl = LOCAL_URL.replace(videoUrl, host),
+            subtitleTracks = subtitleTracks.map { it.copy(url = LOCAL_URL.replace(it.url, host)) },
+            audioTracks = audioTracks.map { it.copy(url = LOCAL_URL.replace(it.url, host)) },
+        ).also { it.url = url }
+    }
+
     @Transient
     @Volatile
     var progress: Int = 0
@@ -81,4 +156,8 @@ data class Video(
     var status: State = State.QUEUE
 
     enum class State { QUEUE, LOAD_VIDEO, READY, ERROR }
+
+    private companion object {
+        val LOCAL_URL = Regex("""http://localhost:1(?!\d)""")
+    }
 }

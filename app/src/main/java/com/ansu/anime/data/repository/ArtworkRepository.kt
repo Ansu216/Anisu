@@ -115,7 +115,7 @@ class ArtworkRepository(
             val request = Request.Builder().url(url).header("Accept", "application/vnd.api+json").build()
             val text = client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@use ""
-                response.body?.string().orEmpty()
+                response.body.string()
             }
             if (text.isBlank()) return@withContext null
             val included = json.parseToJsonElement(text).jsonObject["included"] as? JsonArray ?: return@withContext null
@@ -140,7 +140,7 @@ class ArtworkRepository(
             // ani.zip answers 404 for shows it has no mapping for; that is "no data", not a failure.
             if (response.code == 404) return@use ""
             if (!response.isSuccessful) throw httpApiException(response.code, response.header("Retry-After")?.toLongOrNull(), null)
-            response.body?.string().orEmpty()
+            response.body.string()
         }
         if (text.isBlank()) return@withContext AnimeArtwork()
         val images = json.parseToJsonElement(text).jsonObject["images"] as? JsonArray

@@ -69,4 +69,4 @@ fun Call.asObservableSuccess(): Observable<Response> = asObservable().doOnNext {
 inline fun <reified T> Response.parseAs(): T = decodeFromJsonResponse(serializer(), this)
 
 fun <T> decodeFromJsonResponse(deserializer: DeserializationStrategy<T>, response: Response): T =
-    response.use { json.decodeFromString(deserializer, it.body!!.string()) }
+    response.use { json.decodeFromString(deserializer, it.body.string()) }

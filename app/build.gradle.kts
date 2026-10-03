@@ -126,6 +126,10 @@ dependencies {
     implementation(libs.rxjava)
     implementation(libs.jsoup)
     implementation(libs.injekt.core)
+    // JavaScriptEngine for extensions that evaluate site scripts (Aniyomi registers it in Injekt too).
+    implementation(libs.quickjs.android)
+    // Base of HttpServer, the local proxy some extensions start to serve their streams.
+    implementation(libs.nanohttpd)
 
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)

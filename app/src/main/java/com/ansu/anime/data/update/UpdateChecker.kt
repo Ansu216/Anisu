@@ -158,7 +158,7 @@ class UpdateChecker(private val client: OkHttpClient) {
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw HttpStatusException(response.code)
-            return response.body?.string().orEmpty()
+            return response.body.string()
         }
     }
 

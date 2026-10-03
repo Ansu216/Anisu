@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.animesource.online
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import com.ansu.anime.extension.aniyomi.awaitFirst
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.NotImplementedByExtensionException
@@ -7,8 +9,10 @@ import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.AnimesPage
 import eu.kanade.tachiyomi.animesource.model.Hoster
 import eu.kanade.tachiyomi.animesource.model.Hoster.Companion.toHosterList
+import eu.kanade.tachiyomi.animesource.model.HttpServer
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
+import eu.kanade.tachiyomi.animesource.model.ThumbnailInfo
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -30,6 +34,9 @@ abstract class AnimeHttpSource : AnimeCatalogueSource {
     protected val network: NetworkHelper by injectLazy()
 
     abstract val baseUrl: String
+
+    /** Library 17: the page to open when the person wants this source's website. */
+    open fun getHomeUrl(): String = baseUrl
 
     open val versionId = 1
 
@@ -57,9 +64,9 @@ abstract class AnimeHttpSource : AnimeCatalogueSource {
     override fun fetchPopularAnime(page: Int): Observable<AnimesPage> =
         client.newCall(popularAnimeRequest(page)).asObservableSuccess().map { popularAnimeParse(it) }
 
-    protected abstract fun popularAnimeRequest(page: Int): Request
+    protected open fun popularAnimeRequest(page: Int): Request = throw UnsupportedOperationException()
 
-    protected abstract fun popularAnimeParse(response: Response): AnimesPage
+    protected open fun popularAnimeParse(response: Response): AnimesPage = throw UnsupportedOperationException()
 
     // Search
 
@@ -70,9 +77,10 @@ abstract class AnimeHttpSource : AnimeCatalogueSource {
         Observable.defer { client.newCall(searchAnimeRequest(page, query, filters)).asObservableSuccess() }
             .map { searchAnimeParse(it) }
 
-    protected abstract fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request
+    protected open fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request =
+        throw UnsupportedOperationException()
 
-    protected abstract fun searchAnimeParse(response: Response): AnimesPage
+    protected open fun searchAnimeParse(response: Response): AnimesPage = throw UnsupportedOperationException()
 
     // Latest
 
@@ -81,9 +89,9 @@ abstract class AnimeHttpSource : AnimeCatalogueSource {
     override fun fetchLatestUpdates(page: Int): Observable<AnimesPage> =
         client.newCall(latestUpdatesRequest(page)).asObservableSuccess().map { latestUpdatesParse(it) }
 
-    protected abstract fun latestUpdatesRequest(page: Int): Request
+    protected open fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
 
-    protected abstract fun latestUpdatesParse(response: Response): AnimesPage
+    protected open fun latestUpdatesParse(response: Response): AnimesPage = throw UnsupportedOperationException()
 
     // Details
 
@@ -101,7 +109,7 @@ abstract class AnimeHttpSource : AnimeCatalogueSource {
 
     open fun animeDetailsRequest(anime: SAnime): Request = GET(baseUrl + anime.url, headers)
 
-    protected abstract fun animeDetailsParse(response: Response): SAnime
+    protected open fun animeDetailsParse(response: Response): SAnime = throw UnsupportedOperationException()
 
     // Episodes
 
@@ -119,7 +127,7 @@ abstract class AnimeHttpSource : AnimeCatalogueSource {
 
     protected open fun episodeListRequest(anime: SAnime): Request = GET(baseUrl + anime.url, headers)
 
-    protected abstract fun episodeListParse(response: Response): List<SEpisode>
+    protected open fun episodeListParse(response: Response): List<SEpisode> = throw UnsupportedOperationException()
 
     // Seasons (library 16)
 
@@ -173,7 +181,23 @@ abstract class AnimeHttpSource : AnimeCatalogueSource {
 
     open fun List<Video>.sort(): List<Video> = this
 
-    private fun List<Video>.sortVideos(): List<Video> = with(this@AnimeHttpSource) { sort() }
+    /** Library 16: orders the videos of an episode; the default defers to the older [sort]. */
+    open fun List<Video>.sortVideos(): List<Video> = with(this@AnimeHttpSource) { sort() }
+
+    /** Library 16: orders the hosters of an episode. */
+    open fun List<Hoster>.sortHosters(): List<Hoster> = this
+
+    // Seek-bar thumbnails (library 17)
+
+    /** Library 17: a local proxy for streams that cannot be played directly; `null` when the source needs none. */
+    open fun createHttpServer(): HttpServer? = null
+
+    open suspend fun getVideoThumbnails(video: Video): ThumbnailInfo? = null
+
+    open suspend fun getImageTile(url: String): Bitmap? =
+        client.newCall(GET(url, headers)).awaitSuccess().use { response ->
+            response.body.byteStream().use { BitmapFactory.decodeStream(it) }
+        }
 
     // Video url (for videos the source returned without a final `videoUrl`)
 

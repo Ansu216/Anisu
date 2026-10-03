@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -67,6 +68,7 @@ import com.ansu.anime.extension.JsonUrlResult
 import com.ansu.anime.extension.SourceTestResult
 import com.ansu.anime.extension.TestTarget
 import com.ansu.anime.extension.api.AnimeCatalogueSource
+import com.ansu.anime.extension.aniyomi.AniyomiSourceAdapter
 import com.ansu.anime.ui.theme.AnsuColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -87,6 +89,8 @@ private data class InstalledRow(
     val checked: Boolean? = null,
     val onCheckedChange: (Boolean) -> Unit = {},
     val onRemove: (() -> Unit)? = null,
+    /** Opens the extension's own settings; null when the source declares none. */
+    val onSettings: (() -> Unit)? = null,
 )
 
 @Composable
@@ -111,6 +115,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     var installError by remember { mutableStateOf<String?>(null) }
     var extensionQuery by remember { mutableStateOf("") }
 
+    var settingsFor by remember { mutableStateOf<AniyomiSourceAdapter?>(null) }
     var selectedKey by remember { mutableStateOf<String?>(null) }
     var testing by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<SourceTestResult?>(null) }
@@ -150,7 +155,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
         builtInSources.forEach { add(sourceRow(it, "Built-in", null, disabledIds, manager::setSourceEnabled, null)) }
         extensions.forEach { ext ->
             val icon = runCatching { packageManager.getApplicationIcon(ext.packageName) }.getOrNull()
-            addAll(extensionRows(ext, icon, disabledIds, manager::setSourceEnabled) { manager.uninstall(ext.packageName) })
+            addAll(extensionRows(ext, icon, disabledIds, manager::setSourceEnabled, onSettings = { settingsFor = it }) { manager.uninstall(ext.packageName) })
         }
         addons.forEach { addon -> add(addonRow(addon, scope, container)) }
     }
@@ -158,6 +163,8 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     val targets: List<TestTarget> =
         (builtInSources + extensionSources).map { TestTarget.Extension(it) } + addons.map { TestTarget.Addon(it) }
     val selected = targets.firstOrNull { it.key == selectedKey }
+
+    settingsFor?.let { adapter -> ExtensionSettingsSheet(source = adapter, onDismiss = { settingsFor = null }) }
 
     Scaffold(
         topBar = {
@@ -291,6 +298,9 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                         if (row.checked != null) {
                             Switch(checked = row.checked, onCheckedChange = row.onCheckedChange)
                         }
+                        row.onSettings?.let { openSettings ->
+                            IconButton(onClick = openSettings) { Icon(Icons.Filled.Settings, contentDescription = "Settings for ${row.title}") }
+                        }
                         row.onRemove?.let { remove ->
                             IconButton(onClick = remove) { Icon(Icons.Filled.Delete, contentDescription = "Remove ${row.title}") }
                         }
@@ -379,6 +389,7 @@ private fun sourceRow(
     disabledIds: Set<Long>,
     setEnabled: (Long, Boolean) -> Unit,
     onRemove: (() -> Unit)?,
+    onSettings: (() -> Unit)? = null,
 ) = InstalledRow(
     key = "src:${source.id}",
     title = source.name,
@@ -387,6 +398,7 @@ private fun sourceRow(
     checked = source.id !in disabledIds,
     onCheckedChange = { setEnabled(source.id, it) },
     onRemove = onRemove,
+    onSettings = onSettings,
 )
 
 private fun extensionRows(
@@ -394,6 +406,7 @@ private fun extensionRows(
     icon: Any?,
     disabledIds: Set<Long>,
     setEnabled: (Long, Boolean) -> Unit,
+    onSettings: (AniyomiSourceAdapter) -> Unit,
     onRemove: () -> Unit,
 ): List<InstalledRow> {
     if (ext.sources.isEmpty()) {
@@ -409,7 +422,8 @@ private fun extensionRows(
         )
     }
     return ext.sources.mapIndexed { index, source ->
-        sourceRow(source, "v${ext.versionName}", icon, disabledIds, setEnabled, if (index == 0) onRemove else null)
+        val settings: (() -> Unit)? = (source as? AniyomiSourceAdapter)?.takeIf { it.hasSettings }?.let { adapter -> { onSettings(adapter) } }
+        sourceRow(source, "v${ext.versionName}", icon, disabledIds, setEnabled, if (index == 0) onRemove else null, settings)
     }
 }
 

@@ -61,7 +61,7 @@ class UpdateInstaller(
 
             response.use { res ->
                 if (!res.isSuccessful) error("Download failed: HTTP ${res.code}")
-                val body = res.body ?: error("Download failed: empty response")
+                val body = res.body
                 val length = body.contentLength()
                 val total = if (length > 0) resumeFrom + length else -1L
 
