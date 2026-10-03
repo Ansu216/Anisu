@@ -1,0 +1,70 @@
+{
+  "type": "fix-zip",
+  "apkBuiltFromFix": false,
+  "commit": {
+    "sha": "db5a767e18a01268e570f0475bb91d9cb0a13664",
+    "short": "db5a767",
+    "message": "extract fix.zip and updated the app",
+    "author": {
+      "name": "github-actions[bot]",
+      "email": "41898282+github-actions[bot]@users.noreply.github.com"
+    },
+    "authoredAt": "2026-10-02T19:11:32Z",
+    "committedBy": {
+      "name": "github-actions[bot]",
+      "email": "41898282+github-actions[bot]@users.noreply.github.com"
+    },
+    "committedAt": "2026-10-02T19:11:32Z",
+    "url": "https://github.com/Ansu216/Anisu/commit/db5a767e18a01268e570f0475bb91d9cb0a13664"
+  },
+  "fixZipCommit": {
+    "sha": "7df08ccd32fd8c2740b45ceda5c47bab445dda2c",
+    "short": "7df08cc",
+    "message": "Add files via upload",
+    "author": {
+      "name": "Ansuman sahu",
+      "email": "ansumansahu216@gmail.com"
+    },
+    "authoredAt": "2026-10-03T00:41:20+05:30",
+    "committedBy": {
+      "name": "GitHub",
+      "email": "noreply@github.com"
+    },
+    "committedAt": "2026-10-03T00:41:20+05:30",
+    "url": "https://github.com/Ansu216/Anisu/commit/7df08ccd32fd8c2740b45ceda5c47bab445dda2c"
+  },
+  "changes": {
+    "fileCount": 2,
+    "additions": 250,
+    "deletions": 4,
+    "files": [
+      {
+        "path": "fixed_project/FIXED_CHANGES.md",
+        "status": "A",
+        "label": "added",
+        "additions": 250,
+        "deletions": 0
+      },
+      {
+        "path": "fixed_project/app/src/main/java/com/ansu/anime/di/AppContainer.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 0,
+        "deletions": 4
+      }
+    ]
+  },
+  "build": {
+    "runId": "37052486775",
+    "runUrl": "https://github.com/Ansu216/Anisu/actions/runs/37052486775",
+    "workflow": "apk-nightly.yml",
+    "versionName": "2026.10.02.1913",
+    "versionCode": "2026100219",
+    "variant": "both",
+    "apk": [
+      "Ansu-nightly.apk",
+      "Ansu-nightly-debug.apk"
+    ],
+    "publishedAt": "2026-10-02T19:13:08Z"
+  }
+}
