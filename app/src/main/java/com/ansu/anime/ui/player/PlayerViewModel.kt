@@ -105,6 +105,11 @@ class PlayerViewModel(
 
     private fun loadSources() {
         val anime = _uiState.value.anime
+        if (anime?.anilistId != null) {
+            // Cache anime for continue-watching recovery
+            continueWatchingRepository.cacheAnime(anime.anilistId, anime)
+        }
+        val anime = _uiState.value.anime
         val episode = _uiState.value.episode
         if (anime == null || episode == null) {
             _uiState.value = _uiState.value.copy(isLoadingSources = false, error = "Nothing to play")
@@ -169,9 +174,24 @@ class PlayerViewModel(
     private suspend fun resolveSources(anime: SAnime, episode: SEpisode, onBatch: (List<PlayableSource>) -> Unit) {
         when (val origin = anime.origin) {
             is MediaOrigin.Extension -> {
+                // If the episode came from continue-watching and has no alternates, re-match all sources
+                // to find every possible stream.
+                val enrichedEpisode = if (episode.alternates.isEmpty() && episode.id.isNotBlank()) {
+                    try {
+                        val allEpisodes = extensionManager.findEpisodesByTitle(anime, emptyList())
+                        // Find the matching episode by number
+                        val matched = allEpisodes.firstOrNull { it.episodeNumber == episode.episodeNumber }
+                        matched ?: episode
+                    } catch (e: Exception) {
+                        episode
+                    }
+                } else {
+                    episode
+                }
+                
                 // Ask EVERY source that has this episode, all at once; each source's streams appear in the
                 // list as soon as that source answers, so a slow or broken source never blocks the rest.
-                val candidates = (listOf(episode.copy(alternates = emptyList())) + episode.alternates)
+                val candidates = (listOf(enrichedEpisode.copy(alternates = emptyList())) + enrichedEpisode.alternates)
                     .distinctBy { it.sourceId ?: origin.sourceId }
                 kotlinx.coroutines.coroutineScope {
                     candidates.map { candidate ->

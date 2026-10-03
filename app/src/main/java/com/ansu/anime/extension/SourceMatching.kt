@@ -12,7 +12,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 internal const val BUILT_IN_SOURCE_ID = 1L
 
 private const val MIN_MATCH_SCORE = 0.5
-private const val SOURCE_TIMEOUT_MS = 30_000L
+private const val SOURCE_TIMEOUT_MS = 45_000L
 
 private class SourceMatch(val source: AnimeCatalogueSource, val score: Double, val episodes: List<SEpisode>)
 
@@ -24,16 +24,17 @@ private class SourceMatch(val source: AnimeCatalogueSource, val score: Double, v
  * A source that fails, times out or finds nothing is skipped; it never hides the others.
  * Episode numbers are united across sources, so a source with a shorter list does not cut the others off.
  */
-suspend fun ExtensionManager.findEpisodesByTitle(anime: SAnime): List<SEpisode> = coroutineScope {
+suspend fun ExtensionManager.findEpisodesByTitle(anime: SAnime, extraTitles: List<String> = emptyList()): List<SEpisode> = coroutineScope {
     val candidates = allSources().filter { it.id != BUILT_IN_SOURCE_ID }
     if (candidates.isEmpty()) return@coroutineScope emptyList()
-    val queries = titleQueries(anime.title)
+    val allTitles = (listOf(anime.title) + extraTitles).distinct()
+    val queries = allTitles.flatMap { titleQueries(it) }.distinct().take(8)
     val matches = candidates
         .map { source ->
             async {
                 withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
                     try {
-                        matchIn(source, anime.title, queries)
+                        matchIn(source, allTitles, queries)
                     } catch (e: kotlinx.coroutines.CancellationException) {
                         throw e
                     } catch (e: Throwable) {
@@ -57,8 +58,9 @@ suspend fun ExtensionManager.findEpisodesAcrossSources(
     anime: SAnime,
     originSourceId: Long,
     originEpisodes: List<SEpisode>,
+    extraTitles: List<String> = emptyList(),
 ): List<SEpisode> {
-    val found = runCatching { findEpisodesByTitle(anime) }.getOrDefault(emptyList())
+    val found = runCatching { findEpisodesByTitle(anime, extraTitles) }.getOrDefault(emptyList())
     if (originEpisodes.isEmpty()) return found
     if (found.isEmpty()) return originEpisodes.map { it.copy(sourceId = it.sourceId ?: originSourceId) }
     // Fold the origin's own episodes into the merged list as alternates where numbers line up.
@@ -89,7 +91,7 @@ private fun mergeMatches(matches: List<SourceMatch>): List<SEpisode> {
     }
 }
 
-private suspend fun matchIn(source: AnimeCatalogueSource, title: String, queries: List<String>): SourceMatch? {
+private suspend fun matchIn(source: AnimeCatalogueSource, titles: List<String>, queries: List<String>): SourceMatch? {
     var bestOverall: SourceMatch? = null
     for (query in queries) {
         val results = try {
@@ -102,7 +104,7 @@ private suspend fun matchIn(source: AnimeCatalogueSource, title: String, queries
         // Try the few best-looking results rather than only the top one; the top hit is often a
         // different season or a dub entry with no episodes.
         val ranked = results
-            .map { it to similarity(it.title, title) }
+            .map { it to titles.maxOf { t -> similarity(it.title, t) } }
             .filter { it.second >= MIN_MATCH_SCORE }
             .sortedByDescending { it.second }
             .take(3)

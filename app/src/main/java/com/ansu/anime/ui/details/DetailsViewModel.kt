@@ -154,7 +154,10 @@ class DetailsViewModel(
                     emptyList()
                 }
                 val episodes = runCatching {
-                    extensionManager.findEpisodesAcrossSources(anime, origin.sourceId, ownEpisodes)
+                    extensionManager.findEpisodesAcrossSources(
+                        anime, origin.sourceId, ownEpisodes,
+                        extraTitles = anime.anilistId?.let { aniListRepository.getAllTitles(it) }.orEmpty(),
+                    )
                 }.getOrDefault(emptyList()).ifEmpty { ownEpisodes }
                 // Extensions may not list movies as episodes; create a synthetic root episode so playback
                 // can query getVideoList(). The id is the anime's url, which real extensions use to fetch videos.

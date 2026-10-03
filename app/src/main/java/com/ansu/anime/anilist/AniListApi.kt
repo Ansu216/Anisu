@@ -308,6 +308,23 @@ class AniListApi(
         return media.toMediaDetails()
     }
 
+    /** Every name AniList has for a show (romaji, English, native, synonyms), so sources can be searched under each. */
+    suspend fun getAllTitles(mediaId: Int): List<String> {
+        val gql = """
+            query (${'$'}id: Int) {
+              Media(id: ${'$'}id, type: ANIME) { title { romaji english native userPreferred } synonyms }
+            }
+        """.trimIndent()
+        val data = execute(gql, mapOf("id" to mediaId)) ?: return emptyList()
+        val media = data["Media"]?.jsonObject ?: return emptyList()
+        val title = media["title"] as? JsonObject
+        val names = listOf("english", "romaji", "userPreferred", "native").mapNotNull {
+            (title?.get(it) as? JsonPrimitive)?.contentOrNull
+        }
+        val synonyms = media["synonyms"]?.jsonArray.orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+        return (names + synonyms).map { it.trim() }.filter { it.length >= 2 }.distinct()
+    }
+
     /** Episode titles and thumbnails AniList knows about for a show; empty when it has none. */
     suspend fun getStreamingEpisodes(mediaId: Int): List<AniListStreamingEpisode> {
         val gql = """

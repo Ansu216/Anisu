@@ -12,12 +12,14 @@ private val DEFAULT_CACHE_CONTROL = CacheControl.Builder().maxAge(10, MINUTES).b
 private val DEFAULT_HEADERS = Headers.Builder().build()
 private val DEFAULT_BODY: RequestBody = FormBody.Builder().build()
 
+@JvmOverloads
 fun GET(
     url: String,
     headers: Headers = DEFAULT_HEADERS,
     cache: CacheControl = DEFAULT_CACHE_CONTROL,
 ): Request = Request.Builder().url(url).headers(headers).cacheControl(cache).build()
 
+@JvmOverloads
 fun GET(
     url: HttpUrl,
     headers: Headers = DEFAULT_HEADERS,
