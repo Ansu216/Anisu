@@ -4,9 +4,12 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.net.Uri
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -42,6 +45,14 @@ data class PlayableSource(
     val audioTracks: List<SubtitleTrack> = emptyList(),
 )
 
+/** One selectable audio or subtitle track the player reported. */
+data class TrackOption(
+    val groupIndex: Int,
+    val trackIndex: Int,
+    val label: String,
+    val selected: Boolean,
+)
+
 data class PlayerUiState(
     val isLoadingSources: Boolean = true,
     val anime: SAnime? = null,
@@ -54,6 +65,12 @@ data class PlayerUiState(
     val durationMs: Long = 0L,
     val showControls: Boolean = true,
     val isBuffering: Boolean = false,
+    /** Playable episodes of the show (for previous/next and the episode list). */
+    val episodes: List<SEpisode> = emptyList(),
+    val speed: Float = 1f,
+    val audioOptions: List<TrackOption> = emptyList(),
+    val textOptions: List<TrackOption> = emptyList(),
+    val textEnabled: Boolean = false,
 )
 
 class PlayerViewModel(
@@ -61,7 +78,7 @@ class PlayerViewModel(
     private val extensionManager: ExtensionManager,
     private val addonManager: AddonManager,
     private val continueWatchingRepository: ContinueWatchingRepository,
-    selectionHolder: SelectionHolder,
+    private val selectionHolder: SelectionHolder,
     private val diagnostics: Diagnostics? = null,
 ) : ViewModel() {
 
@@ -77,8 +94,16 @@ class PlayerViewModel(
         )
         .build()
 
+    // Declared before init{}: loadSources() runs from init and assigns these.
+    private var loadJob: kotlinx.coroutines.Job? = null
+    private var playbackJob: kotlinx.coroutines.Job? = null
+
     private val _uiState = MutableStateFlow(
-        PlayerUiState(anime = selectionHolder.currentAnime.value, episode = selectionHolder.currentEpisode.value),
+        PlayerUiState(
+            anime = selectionHolder.currentAnime.value,
+            episode = selectionHolder.currentEpisode.value,
+            episodes = selectionHolder.episodes.value,
+        ),
     )
     val uiState: StateFlow<PlayerUiState> = _uiState
 
@@ -87,6 +112,15 @@ class PlayerViewModel(
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _uiState.value = _uiState.value.copy(isPlaying = isPlaying)
                 diagnostics?.log(LogCategory.PLAYBACK, if (isPlaying) "Playback started" else "Playback paused")
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                _uiState.value = _uiState.value.copy(
+                    audioOptions = tracks.toOptions(C.TRACK_TYPE_AUDIO),
+                    textOptions = tracks.toOptions(C.TRACK_TYPE_TEXT),
+                    textEnabled = !player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) &&
+                        tracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected },
+                )
             }
 
             override fun onPlaybackStateChanged(state: Int) {
@@ -116,7 +150,8 @@ class PlayerViewModel(
         }
 
         diagnostics?.log(LogCategory.PLAYBACK, "Resolving sources for ${anime.title} E${episode.episodeNumber} (ep id='${episode.id}')")
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             var first = true
             val collected = mutableListOf<PlayableSource>()
             val onBatch: (List<PlayableSource>) -> Unit = { batch ->
@@ -249,8 +284,6 @@ class PlayerViewModel(
             startPlayback(source, mimeType)
         }
     }
-
-    private var playbackJob: kotlinx.coroutines.Job? = null
 
     private val probeClient: okhttp3.OkHttpClient by lazy {
         okhttp3.OkHttpClient.Builder()
@@ -416,6 +449,96 @@ class PlayerViewModel(
             path.endsWith(".vtt") -> MimeTypes.TEXT_VTT
             else -> MimeTypes.TEXT_VTT // Default to VTT
         }
+    }
+
+    private fun Tracks.toOptions(type: Int): List<TrackOption> {
+        val out = mutableListOf<TrackOption>()
+        groups.forEachIndexed { groupIndex, group ->
+            if (group.type != type) return@forEachIndexed
+            for (trackIndex in 0 until group.length) {
+                if (!group.isTrackSupported(trackIndex)) continue
+                val format = group.getTrackFormat(trackIndex)
+                val language = format.language
+                    ?.takeIf { it.isNotBlank() && it != "und" }
+                    ?.let { code -> java.util.Locale.forLanguageTag(code).displayLanguage.ifBlank { code } }
+                val label = listOfNotNull(format.label, language).distinct().joinToString(" · ")
+                    .ifBlank { "Track ${out.size + 1}" }
+                out += TrackOption(groupIndex, trackIndex, label, group.isTrackSelected(trackIndex))
+            }
+        }
+        return out
+    }
+
+    fun selectAudioTrack(option: TrackOption) = overrideTrack(option)
+
+    /** Picks a subtitle track, or turns subtitles off when [option] is null. */
+    fun selectTextTrack(option: TrackOption?) {
+        if (option == null) {
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                .build()
+            _uiState.value = _uiState.value.copy(textEnabled = false)
+        } else {
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .build()
+            overrideTrack(option)
+            _uiState.value = _uiState.value.copy(textEnabled = true)
+        }
+    }
+
+    private fun overrideTrack(option: TrackOption) {
+        val group = player.currentTracks.groups.getOrNull(option.groupIndex) ?: return
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, option.trackIndex))
+            .build()
+    }
+
+    fun setSpeed(speed: Float) {
+        player.setPlaybackSpeed(speed)
+        _uiState.value = _uiState.value.copy(speed = speed)
+    }
+
+    /** Episodes ordered by number, whatever order the details screen listed them in. */
+    private fun ordered(): List<SEpisode> = _uiState.value.episodes.sortedBy { it.episodeNumber }
+
+    fun previousEpisode(): SEpisode? {
+        val current = _uiState.value.episode ?: return null
+        return ordered().lastOrNull { it.episodeNumber < current.episodeNumber }
+    }
+
+    fun nextEpisode(): SEpisode? {
+        val current = _uiState.value.episode ?: return null
+        return ordered().firstOrNull { it.episodeNumber > current.episodeNumber }
+    }
+
+    fun playEpisode(target: SEpisode) {
+        val current = _uiState.value.episode
+        if (current != null && current.id == target.id && current.episodeNumber == target.episodeNumber) return
+        diagnostics?.log(LogCategory.CLICK, "Episode switched to E${target.episodeNumber}")
+        loadJob?.cancel()
+        playbackJob?.cancel()
+        player.stop()
+        player.clearMediaItems()
+        selectionHolder.selectEpisode(target)
+        _uiState.value = _uiState.value.copy(
+            episode = target,
+            sources = emptyList(),
+            selectedSource = null,
+            isLoadingSources = true,
+            error = null,
+            positionMs = 0L,
+            durationMs = 0L,
+            audioOptions = emptyList(),
+            textOptions = emptyList(),
+        )
+        loadSources()
+    }
+
+    fun skipOutro() {
+        val next = nextEpisode()
+        if (next != null) playEpisode(next)
+        else player.seekTo((player.duration - 1000).coerceAtLeast(0))
     }
 
     fun togglePlayPause() {

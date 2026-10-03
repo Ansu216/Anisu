@@ -118,6 +118,11 @@ fun DetailsScreen(
     // Episodes that have not aired yet: shown as compact rows and not playable.
     val upcomingIds = remember(state.episodes) { upcomingEpisodeIds(state.episodes) }
 
+    // Hand the playable episodes to the player (previous/next and its "more episodes" list).
+    LaunchedEffect(state.episodes, upcomingIds) {
+        container.selectionHolder.selectEpisodes(state.episodes.filter { it.id !in upcomingIds })
+    }
+
     // One line per opened title, so an exported report shows what the user was looking at.
     LaunchedEffect(anime?.id) {
         anime?.let { container.diagnostics.log(LogCategory.CLICK, "Details opened: ${it.title}") }

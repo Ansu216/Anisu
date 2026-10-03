@@ -19,8 +19,17 @@ class SelectionHolder {
     private val _currentEpisode = MutableStateFlow<SEpisode?>(null)
     val currentEpisode: StateFlow<SEpisode?> = _currentEpisode
 
+    /** Playable episodes of [currentAnime], so the player can offer previous/next and a "more episodes" list. */
+    private val _episodes = MutableStateFlow<List<SEpisode>>(emptyList())
+    val episodes: StateFlow<List<SEpisode>> = _episodes
+
     fun selectAnime(anime: SAnime) {
+        if (_currentAnime.value?.id != anime.id) _episodes.value = emptyList()
         _currentAnime.value = anime
+    }
+
+    fun selectEpisodes(list: List<SEpisode>) {
+        _episodes.value = list
     }
 
     fun selectEpisode(episode: SEpisode) {
