@@ -241,12 +241,68 @@ class PlayerViewModel(
     fun selectSource(source: PlayableSource) {
         diagnostics?.log(LogCategory.PLAYBACK, "Source selected: ${source.label} → ${source.url}")
         _uiState.value = _uiState.value.copy(selectedSource = source)
-        
+
+        // A URL that does not name its container (most extension streams) is asked what it is, instead of guessed.
+        playbackJob?.cancel()
+        playbackJob = viewModelScope.launch {
+            val mimeType = detectMimeType(source.url) ?: probeMimeType(source.url, source.headers)
+            startPlayback(source, mimeType)
+        }
+    }
+
+    private var playbackJob: kotlinx.coroutines.Job? = null
+
+    private val probeClient: okhttp3.OkHttpClient by lazy {
+        okhttp3.OkHttpClient.Builder()
+            .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .followRedirects(true)
+            .build()
+    }
+
+    /**
+     * Asks the stream what it is: the first bytes (`#EXTM3U` is HLS, `<MPD` is DASH) and its Content-Type.
+     * Returns null when it cannot tell, so ExoPlayer sniffs the container itself.
+     */
+    private suspend fun probeMimeType(url: String, headers: Map<String, String>): String? = withContext(Dispatchers.IO) {
+        try {
+            val request = okhttp3.Request.Builder()
+                .url(url)
+                .apply { headers.forEach { (name, value) -> header(name, value) } }
+                .header("Range", "bytes=0-1023")
+                .build()
+            probeClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val head = response.peekBody(1024).string().trimStart('\uFEFF', ' ', '\n', '\r', '\t')
+                val type = response.header("Content-Type")?.substringBefore(';')?.trim()?.lowercase().orEmpty()
+                val mime = when {
+                    head.startsWith("#EXTM3U") -> MimeTypes.APPLICATION_M3U8
+                    head.contains("<MPD") -> MimeTypes.APPLICATION_MPD
+                    "mpegurl" in type -> MimeTypes.APPLICATION_M3U8
+                    "dash+xml" in type -> MimeTypes.APPLICATION_MPD
+                    type == "video/mp4" -> MimeTypes.VIDEO_MP4
+                    type == "video/webm" -> MimeTypes.VIDEO_WEBM
+                    type == "video/x-matroska" -> MimeTypes.VIDEO_MATROSKA
+                    type == "video/mp2t" -> MimeTypes.VIDEO_MP2T
+                    else -> null
+                }
+                diagnostics?.log(LogCategory.PLAYBACK, "Probed ${url.substringBefore('?')}: Content-Type=$type → ${mime ?: "unknown"}")
+                mime
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            diagnostics?.log(LogCategory.PLAYBACK, "Probe failed for ${url.substringBefore('?')}: ${e.message}")
+            null
+        }
+    }
+
+    @androidx.annotation.OptIn(UnstableApi::class)
+    private fun startPlayback(source: PlayableSource, mimeType: String?) {
         val mediaItem = MediaItem.Builder()
             .setUri(source.url)
             .apply {
                 // Detect container type from URL or explicit hints
-                val mimeType = detectMimeType(source.url)
                 if (mimeType != null) {
                     diagnostics?.log(LogCategory.PLAYBACK, "Detected MIME type: $mimeType for ${source.url.substringBefore('?')}")
                     setMimeType(mimeType)
@@ -302,14 +358,12 @@ class PlayerViewModel(
         return when {
             // HLS streams - most common for anime sites
             pathOnly.endsWith(".m3u8") || 
-            lowerUrl.contains("hls") ||
-            lowerUrl.contains("master.m3u8") ||
-            lowerUrl.contains("/playlist/") -> 
+            lowerUrl.contains(".m3u8") -> 
                 MimeTypes.APPLICATION_M3U8
             
             // DASH streams
             pathOnly.endsWith(".mpd") || 
-            lowerUrl.contains("dash") -> 
+            lowerUrl.contains(".mpd") -> 
                 MimeTypes.APPLICATION_MPD
             
             // Progressive download - MP4
@@ -349,24 +403,7 @@ class PlayerViewModel(
             pathOnly.endsWith(".3g2") -> 
                 "video/3gpp"
             
-            // Heuristics for streaming URLs without clear extensions
-            // These usually come from anime/CDN streaming providers
-            lowerUrl.contains("stream") && 
-            (lowerUrl.contains("m3u8") || lowerUrl.contains("hls")) ->
-                MimeTypes.APPLICATION_M3U8
-            
-            lowerUrl.contains("stream") && 
-            (lowerUrl.contains("mpd") || lowerUrl.contains("dash")) ->
-                MimeTypes.APPLICATION_MPD
-            
-            // Generic CDN/streaming URLs without extension - try MP4 as most common fallback
-            lowerUrl.contains("cdn") ||
-            lowerUrl.contains("stream") ||
-            lowerUrl.contains("video") ||
-            lowerUrl.contains("media") ->
-                MimeTypes.VIDEO_MP4 // Fallback to MP4 for unknown streaming URLs
-            
-            // No detection possible - let ExoPlayer auto-detect (less reliable)
+            // The URL does not name its container: selectSource asks the stream itself (probeMimeType).
             else -> null
         }
     }

@@ -46,6 +46,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showSourceSheet by remember { mutableStateOf(false) }
+    var showSubtitleSheet by remember { mutableStateOf(false) }
+    var showStreamSheet by remember { mutableStateOf(false) }
 
     // Auto-hide controls after a few seconds of inactivity, like Nuvio's player.
     LaunchedEffect(state.showControls, state.isPlaying) {
@@ -104,6 +106,36 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     showSourceSheet = false
                 },
                 onDismiss = { showSourceSheet = false },
+            )
+        }
+
+        if (showSubtitleSheet) {
+            SubtitleSettingsSheet(
+                languages = listOf(
+                    SubtitleLanguage("en", "English"),
+                    SubtitleLanguage("es", "Spanish"),
+                    SubtitleLanguage("de", "German"),
+                    SubtitleLanguage("fr", "French"),
+                    SubtitleLanguage("ja", "Japanese"),
+                ),
+                selectedLanguage = null,
+                onLanguageSelect = { /* Handle selection */ },
+                onSizeChange = { /* Handle size change */ },
+                onDismiss = { showSubtitleSheet = false },
+            )
+        }
+
+        if (showStreamSheet) {
+            StreamSelectionSheet(
+                streams = listOf(
+                    StreamInfo("1080p", "Source 1", 84),
+                    StreamInfo("720p", "Source 1", 84),
+                    StreamInfo("1080p", "Source 2", 122),
+                    StreamInfo("720p", "Source 3", 310),
+                ),
+                selectedStream = null,
+                onStreamSelect = { /* Handle selection */ },
+                onDismiss = { showStreamSheet = false },
             )
         }
     }
