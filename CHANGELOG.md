@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Episode lists of lib-16 sources (AnimeKai, Anichi and others) no longer fail with `NoSuchMethodError: get$default`.** Catalogue and search worked but opening an anime failed because the extensions call the suspend `OkHttpClient.get(url, headers, cache)` helper from `eu.kanade.tachiyomi.network.Requests`, which Ansu did not provide. It now exists there and returns the response after `awaitSuccess()`. **Constraint:** the build could not be run in this environment, so compile it once before release.
+
 ### Added
 
 - **Extensions now install inside Ansu instead of on the phone.** Tapping Install on an available source used to download the APK and open Android's package installer, which put a separate app on the device. Ansu now downloads the APK, checks it is an anime extension and keeps it in its own private storage (`files/exts/<package>.ext`), then loads it from there with the same loader as before, so there is no installer prompt, no "install unknown apps" permission step and nothing extra in the phone's app list. The button shows a spinner while it works, offers **Update** when the repo lists a newer version code, and the delete button on an installed source simply removes the stored file. Extensions already installed on the phone as APKs are still found and loaded; a copy installed inside Ansu wins if both exist. The stored file is made read-only because Android 14+ refuses to load code from a writable file, and native libraries (`.so`) bundled in an extension are unpacked for the device's own ABI into `files/exts-libs/<package>` and handed to the class loader, so extensions that need one load too; removing an extension deletes its libraries as well. **Constraint:** the build could not be run in this environment, so compile it once before release.
