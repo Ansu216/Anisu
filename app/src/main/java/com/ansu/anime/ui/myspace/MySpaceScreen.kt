@@ -3,6 +3,7 @@ package com.ansu.anime.ui.myspace
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -174,8 +175,12 @@ fun MySpaceScreen(
                 }
             }
 
+            // Scrolls sideways instead of squeezing the chips, so a long label like "Completed" never wraps.
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(androidx.compose.foundation.rememberScrollState())
+                    .padding(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 ListTab.entries.forEach { tab ->
@@ -278,7 +283,7 @@ private fun ListChip(text: String, selected: Boolean, onClick: () -> Unit) {
         Box(
             modifier = Modifier.clip(shape).background(AnsuColors.Accent).clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 9.dp),
             contentAlignment = Alignment.Center,
-        ) { Text(text, color = AnsuColors.Background, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+        ) { Text(text, color = AnsuColors.Background, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
     } else {
         FrostedGlassCard(modifier = Modifier.clickable(onClick = onClick), shape = shape, tintAlpha = 0.45f) {
             Text(
@@ -286,6 +291,8 @@ private fun ListChip(text: String, selected: Boolean, onClick: () -> Unit) {
                 color = AnsuColors.TextSecondary,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                softWrap = false,
                 modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp),
             )
         }

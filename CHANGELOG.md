@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Posters and thumbnails load from a shared, longer-lived cache.** The app now configures one image loader with a 200 MB disk cache and a 20% memory cache, and reuses a cached image without asking the server whether it changed. This removes a network round trip per image while scrolling, so lists stay smooth and posters still appear on a weak connection. **Constraint:** a poster that a site replaces under the same address keeps showing the old image until the cache is cleared or it is evicted. The build could not be run in this environment, so compile it once before release.
+
 - **The app is now named "Anisu".** The launcher label and every user-visible string inside the app — About, Updates, the update notification and banner, the diagnostics report, the login screen, the contributors screen, the extensions screens and the extension-load error messages — now say *Anisu* instead of *Ansu*. The package / application id stays `com.ansu.anime`, and the technical identifiers (`AnsuApp`, `AnsuTheme`, `AnsuColors`, the `ansu_*` resources, the `ansu://` scheme and the `Ansu-*.apk` asset names the updater matches) keep their spelling on purpose, so updates, saved data and the extension runtime are untouched. **Constraint:** the GitHub repository slug `Ansu216/Anisu` and the signing keystore are unchanged.
 
 - **The launcher icon is now the project's `logo.jpg`.** The image is installed at every density for the legacy icon and its round variant, and as the adaptive-icon foreground on Android 8+, so the home screen shows the logo instead of the old vector play mark.
@@ -36,11 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The "Completed" chip in My List no longer wraps onto two lines.** On narrower screens the four chips (Liked, Watching, Planning, Completed) shared one row and the last label broke into "Complete" and "d". The labels are now forced onto a single line and the row scrolls sideways when it does not fit. **Constraint:** on a screen wide enough for all four chips nothing changes visually.
+
 - **The details screen compiles again.** `DetailsViewModel` called the cross-source `findEpisodesByTitle` helper without importing it, so `compileDebugKotlin` and `compileReleaseKotlin` both failed with `Unresolved reference 'findEpisodesByTitle'` and the follow-on type-inference errors. The import is added; nothing else changes.
 
 - **The build is warning-free again.** `CloudflareInterceptor` set the long-deprecated `WebSettings.databaseEnabled`, which has been a no-op since API 19 (the Web SQL Database API was removed) and produced a compiler warning on every build. The dead assignment is gone; the anti-bot WebView still enables JavaScript and DOM storage, which is what it actually uses.
 
-- **Episode lists of lib-16 sources (AnimeKai, Anichi and others) no longer fail with `NoSuchMethodError: get$default`.** Catalogue and search worked but opening an anime failed because the extensions call the suspend `OkHttpClient.get(url, headers, cache)` helper from `eu.kanade.tachiyomi.network.Requests`, which Ansu did not provide. It now exists there and returns the response after `awaitSuccess()`. **Constraint:** the build could not be run in this environment, so compile it once before release.
+- **Episode lists of lib-16 sources (AnimeKai, Anichi and others) no longer fail with `NoSuchMethodError: get$default`.** Catalogue and search worked but opening an anime failed because the extensions call the suspend `OkHttpClient.get(url, headers, cache)` helper from `eu.kanade.tachiyomi.network.Requests`, which Ansu did not provide. It now exists there, for both `String` and `HttpUrl` URLs (Anikoto uses the `HttpUrl` form, which is a separate method to the extension), and returns the response after `awaitSuccess()`. **Constraint:** the build could not be run in this environment, so compile it once before release.
 
 ### Added
 

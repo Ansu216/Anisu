@@ -60,3 +60,14 @@ suspend fun OkHttpClient.get(
     headers: Headers = DEFAULT_HEADERS,
     cache: CacheControl = DEFAULT_CACHE_CONTROL,
 ): Response = newCall(GET(url, headers, cache)).awaitSuccess()
+
+/**
+ * The same helper for extensions that pass an [HttpUrl] (for example Anikoto). A separate overload is needed
+ * because the extension links against `RequestsKt.get$default(OkHttpClient, HttpUrl, Headers, CacheControl,
+ * Continuation, int, Object)`, which is a different method from the `String` one.
+ */
+suspend fun OkHttpClient.get(
+    url: HttpUrl,
+    headers: Headers = DEFAULT_HEADERS,
+    cache: CacheControl = DEFAULT_CACHE_CONTROL,
+): Response = newCall(GET(url, headers, cache)).awaitSuccess()

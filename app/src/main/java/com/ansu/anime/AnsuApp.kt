@@ -1,12 +1,28 @@
 package com.ansu.anime
 
 import android.app.Application
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.di.AppContainer
 
-class AnsuApp : Application() {
+class AnsuApp : Application(), ImageLoaderFactory {
     lateinit var container: AppContainer
         private set
+
+    /**
+     * One app-wide image loader. Posters and thumbnails from AniList and the sources rarely change, so cached
+     * copies are reused without asking the server again (`respectCacheHeaders(false)`), which removes a network
+     * round trip per image while scrolling and keeps lists smooth and working on a weak connection.
+     */
+    override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
+        .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.20).build() }
+        .diskCache { DiskCache.Builder().directory(cacheDir.resolve("image_cache")).maxSizeBytes(200L * 1024 * 1024).build() }
+        .respectCacheHeaders(false)
+        .crossfade(false)
+        .build()
 
     override fun onCreate() {
         super.onCreate()
