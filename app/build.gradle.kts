@@ -42,6 +42,13 @@ android {
             storePassword = (project.findProperty("ANSU_STORE_PASSWORD") as String?) ?: "android"
             keyAlias = (project.findProperty("ANSU_KEY_ALIAS") as String?) ?: "anisu"
             keyPassword = (project.findProperty("ANSU_KEY_PASSWORD") as String?) ?: "android"
+            // Sign with every scheme Android understands, not just v2. A v2-only APK is
+            // rejected or flagged as untrusted by some installers, OEM package managers
+            // and older devices; v1 (JAR) covers them, v2 is the modern baseline and v3
+            // adds key-rotation support. The certificate is unchanged either way.
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
 
