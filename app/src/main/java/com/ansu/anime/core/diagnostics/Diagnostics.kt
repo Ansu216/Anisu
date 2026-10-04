@@ -80,7 +80,7 @@ class Diagnostics(private val context: Context) {
                 buffer.addLast(entry)
                 while (buffer.size > MAX_BUFFER) buffer.removeFirst()
             }
-            val tag = "Ansu/${category.label}"
+            val tag = "Anisu/${category.label}"
             if (error != null) Log.w(tag, message, error) else Log.i(tag, message)
             if (category == LogCategory.CRASH) {
                 lastCrashAt = millis
@@ -136,7 +136,7 @@ class Diagnostics(private val context: Context) {
         val uri = FileProvider.getUriForFile(appContext, "${appContext.packageName}.fileprovider", file)
         android.content.Intent(android.content.Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(android.content.Intent.EXTRA_SUBJECT, "Ansu diagnostics report")
+            putExtra(android.content.Intent.EXTRA_SUBJECT, "Anisu diagnostics report")
             putExtra(android.content.Intent.EXTRA_STREAM, uri)
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
@@ -144,7 +144,7 @@ class Diagnostics(private val context: Context) {
 
     private fun report(): String {
         val builder = StringBuilder()
-        builder.append("Ansu diagnostics report\n")
+        builder.append("Anisu diagnostics report\n")
         builder.append("Generated: ").append(timestampFormat().format(Date())).append('\n')
         builder.append("Report id: ").append(BuildConfig.VERSION_CODE).append('-').append(System.currentTimeMillis()).append("\n\n")
 

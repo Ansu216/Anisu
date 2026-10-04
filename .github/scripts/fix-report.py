@@ -183,7 +183,7 @@ def render_markdown(report):
         "# fix.zip report",
         "",
         "Published automatically by the "
-        f"[`Ansu Nightly APK`](https://github.com/{repo}/actions/workflows/apk-nightly.yml) "
+        f"[`Anisu Nightly APK`](https://github.com/{repo}/actions/workflows/apk-nightly.yml) "
         "workflow when a `fix.zip` was extracted into the project.",
         "",
     ]

@@ -1,4 +1,4 @@
-name: Ansu Nightly APK
+name: Anisu Nightly APK
 
 # Builds signed APKs and force-publishes them to the `apk-nightly` branch (the
 # branch contents are fully replaced on every run). Can also be started by hand
@@ -143,7 +143,7 @@ jobs:
             -PversionCode="${{ needs.plan.outputs.version_code }}" \
             -PversionName="${{ needs.plan.outputs.version_name }}"
 
-      - name: Verify the APK signature
+      - name: Verify the APK is signed (an unsigned build is never published)
         run: |
           set -euo pipefail
           BUILD_TOOLS="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
@@ -153,7 +153,16 @@ jobs:
             echo "::error::No APK produced for variant ${{ matrix.variant }}"
             exit 1
           fi
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          # `apksigner verify` exits non-zero for an unsigned or broken APK; the
+          # second check refuses one that verified but carries no signer certificate.
+          if ! "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"; then
+            echo "::error::The ${{ matrix.variant }} APK is not validly signed — refusing to publish it."
+            exit 1
+          fi
+          if ! "$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | grep -qi "certificate DN"; then
+            echo "::error::The ${{ matrix.variant }} APK carries no signer certificate — refusing to publish it."
+            exit 1
+          fi
 
       - name: Upload the APK as a workflow artifact
         uses: actions/upload-artifact@v4
@@ -205,6 +214,29 @@ jobs:
             echo "::notice::The release build produced no APK — nothing to publish for this variant."
           fi
 
+      - name: Verify the APK is signed before publishing
+        if: steps.presence.outputs.found == 'true'
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(ls -d "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1 || true)"
+          fi
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            "$SDKMANAGER" "platform-tools" "build-tools;35.0.0" "build-tools;34.0.0" > /dev/null
+          fi
+          BUILD_TOOLS="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
+          echo "Using build-tools: $BUILD_TOOLS"
+          APK="$(find artifacts -type f -name '*.apk' | head -1)"
+          if [ -z "$APK" ]; then
+            echo "::error::No APK artifact was found — refusing to publish."
+            exit 1
+          fi
+          if ! "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"; then
+            echo "::error::The downloaded APK is not validly signed — refusing to publish it."
+            exit 1
+          fi
       - name: Stage the release build onto the branch
         id: stage
         if: steps.presence.outputs.found == 'true'
@@ -275,6 +307,29 @@ jobs:
             echo "::notice::The debug build produced no APK — nothing to publish for this variant."
           fi
 
+      - name: Verify the APK is signed before publishing
+        if: steps.presence.outputs.found == 'true'
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(ls -d "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1 || true)"
+          fi
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            "$SDKMANAGER" "platform-tools" "build-tools;35.0.0" "build-tools;34.0.0" > /dev/null
+          fi
+          BUILD_TOOLS="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
+          echo "Using build-tools: $BUILD_TOOLS"
+          APK="$(find artifacts -type f -name '*.apk' | head -1)"
+          if [ -z "$APK" ]; then
+            echo "::error::No APK artifact was found — refusing to publish."
+            exit 1
+          fi
+          if ! "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"; then
+            echo "::error::The downloaded APK is not validly signed — refusing to publish it."
+            exit 1
+          fi
       - name: Stage the debug build onto the branch
         id: stage
         if: steps.presence.outputs.found == 'true'

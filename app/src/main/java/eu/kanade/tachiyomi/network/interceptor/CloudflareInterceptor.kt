@@ -70,7 +70,6 @@ class CloudflareInterceptor(
                 webView = WebView(appContext).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
-                    settings.databaseEnabled = true
                     settings.useWideViewPort = true
                     settings.loadWithOverviewMode = true
                     settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT

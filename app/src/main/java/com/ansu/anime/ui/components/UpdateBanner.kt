@@ -58,7 +58,7 @@ fun UpdateBanner(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "Ansu ${update.versionName} · " +
+                    text = "Anisu ${update.versionName} · " +
                         if (update.channel == UpdateChannel.NIGHTLY) "Nightly" else "Release",
                     style = MaterialTheme.typography.labelSmall,
                     color = AnsuColors.TextSecondary,

@@ -167,9 +167,9 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
             )
 
             Text(
-                text = "Builds are published from the official Ansu repository " +
+                text = "Builds are published from the official Anisu repository " +
                     "(github.com/Ansu216/Anisu). Android verifies the signature before installing, " +
-                    "so an update can only ever be Ansu itself.",
+                    "so an update can only ever be Anisu itself.",
                 style = MaterialTheme.typography.labelSmall,
                 color = AnsuColors.TextTertiary,
             )
@@ -204,7 +204,7 @@ private fun TestNotificationRow(result: String?, onSend: () -> Unit, onOpenSetti
                     modifier = Modifier.padding(top = 2.dp),
                 ) {
                     Text(
-                        text = "Open Ansu's notification settings",
+                        text = "Open Anisu's notification settings",
                         color = AnsuColors.Accent,
                         fontWeight = FontWeight.Bold,
                     )
@@ -253,7 +253,7 @@ private fun InstalledVersionCard() {
                     .background(AnsuColors.AccentSoft)
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             ) {
-                Text("Ansu", color = AnsuColors.TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                Text("Anisu", color = AnsuColors.TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
             }
         }
     }
@@ -332,7 +332,7 @@ private fun StatusSection(state: UpdateState, onCheck: () -> Unit, onInstall: ()
             null -> Unit
             is UpdateCheckResult.UpToDate -> StatusLine(
                 icon = Icons.Filled.CheckCircle,
-                text = "Ansu is up to date (${result.latestVersionName}).",
+                text = "Anisu is up to date (${result.latestVersionName}).",
                 tint = AnsuColors.ScoreGreen,
             )
             is UpdateCheckResult.Failed -> StatusLine(
@@ -374,7 +374,7 @@ private fun AvailableUpdateCard(
     FrostedGlassCard(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, tintAlpha = 0.4f) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Text(
-                text = "Ansu ${update.versionName} is available",
+                text = "Anisu ${update.versionName} is available",
                 style = MaterialTheme.typography.titleSmall,
                 color = AnsuColors.TextPrimary,
                 fontWeight = FontWeight.Bold,

@@ -18,7 +18,7 @@ class AnsuApp : Application() {
         installLinkageGuard()
         container.diagnostics.log(
             LogCategory.APP,
-            "Ansu ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) started · " +
+            "Anisu ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) started · " +
                 "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT}) · " +
                 "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}",
         )

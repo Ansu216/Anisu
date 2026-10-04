@@ -45,7 +45,7 @@ class UpdateNotifier(
         val channelLabel = if (update.channel == UpdateChannel.NIGHTLY) "Nightly build" else "Stable release"
         return post(
             id = NOTIFICATION_ID,
-            title = "Ansu ${update.versionName} is available",
+            title = "Anisu ${update.versionName} is available",
             text = "$channelLabel ready to install · tap to open",
             bigText = update.notes?.take(400)?.takeIf { it.isNotBlank() } ?: "$channelLabel ready to install.",
         )
@@ -58,10 +58,10 @@ class UpdateNotifier(
      */
     fun notifyTest(): Boolean = post(
         id = TEST_NOTIFICATION_ID,
-        title = "Ansu notifications are working",
+        title = "Anisu notifications are working",
         text = "Real system notification · new builds will arrive like this",
         bigText = "This is a real Android notification, posted by the system through the \"App updates\" " +
-            "channel. A new Ansu build is announced the same way, even when the app is closed.",
+            "channel. A new Anisu build is announced the same way, even when the app is closed.",
     )
 
     /** Removes the "update available" notification once the user is up to date. */
@@ -80,7 +80,7 @@ class UpdateNotifier(
         val enabled = runCatching {
             NotificationManagerCompat.from(context).areNotificationsEnabled()
         }.getOrDefault(false)
-        if (!enabled) return "notifications are turned off for Ansu in Android settings"
+        if (!enabled) return "notifications are turned off for Anisu in Android settings"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
@@ -141,7 +141,7 @@ class UpdateNotifier(
             "App updates",
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
-            description = "Tells you when a new Ansu build is available."
+            description = "Tells you when a new Anisu build is available."
         }
         manager.createNotificationChannel(channel)
     }

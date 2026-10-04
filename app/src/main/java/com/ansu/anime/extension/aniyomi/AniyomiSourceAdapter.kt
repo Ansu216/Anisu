@@ -55,7 +55,7 @@ class AniyomiSourceAdapter(
             throw e
         } catch (e: Throwable) {
             android.util.Log.e("AniyomiSource", "${source.name}: extension raised ${e::class.java.name}", e)
-            throw ExtensionApiError("${e::class.java.simpleName}: ${e.message ?: "extension is not compatible with Ansu"}", e)
+            throw ExtensionApiError("${e::class.java.simpleName}: ${e.message ?: "extension is not compatible with Anisu"}", e)
         }
     }
 

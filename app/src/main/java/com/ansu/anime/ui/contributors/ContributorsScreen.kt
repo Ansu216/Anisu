@@ -93,7 +93,7 @@ fun ContributorsScreen(container: AppContainer, navController: NavHostController
         ) {
             item {
                 Text(
-                    text = "Ansu exists thanks to these people. The list is read live from the project " +
+                    text = "Anisu exists thanks to these people. The list is read live from the project " +
                         "repository, so it always reflects who is helping right now.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = AnsuColors.TextSecondary,

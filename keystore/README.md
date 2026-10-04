@@ -4,10 +4,10 @@
 that every APK we publish (nightly and release) has the same signature and installs
 as a normal upgrade over the previous one.
 
-> The file name, key alias and certificate subject still say "Anisu": the keystore
-> predates the app's rename to **Ansu**. They are kept on purpose — changing them
-> would change the signing certificate, and then no existing install could ever be
-> updated in place. The application id is, and stays, `com.ansu.anime`.
+> The file name, key alias and certificate subject say "Anisu", which is also the
+> app's user-visible name. They are kept exactly as they are on purpose — changing
+> them would change the signing certificate, and then no existing install could
+> ever be updated in place. The application id is, and stays, `com.ansu.anime`.
 
 | Field | Value |
 |---|---|

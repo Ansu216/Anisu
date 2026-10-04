@@ -22,7 +22,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The app is now named "Anisu".** The launcher label and every user-visible string inside the app — About, Updates, the update notification and banner, the diagnostics report, the login screen, the contributors screen, the extensions screens and the extension-load error messages — now say *Anisu* instead of *Ansu*. The package / application id stays `com.ansu.anime`, and the technical identifiers (`AnsuApp`, `AnsuTheme`, `AnsuColors`, the `ansu_*` resources, the `ansu://` scheme and the `Ansu-*.apk` asset names the updater matches) keep their spelling on purpose, so updates, saved data and the extension runtime are untouched. **Constraint:** the GitHub repository slug `Ansu216/Anisu` and the signing keystore are unchanged.
+
+- **The launcher icon is now the project's `logo.jpg`.** The image is installed at every density for the legacy icon and its round variant, and as the adaptive-icon foreground on Android 8+, so the home screen shows the logo instead of the old vector play mark.
+
+- **An APK that is not signed can no longer be published.** Both workflows already signed every build; the signature is now also asserted with an explicit `::error::` before a build is uploaded (it must verify and carry a signer certificate) and again in every publishing job — the two nightly branch jobs and the GitHub Release job — right before anything is written out. A build whose APK fails that check is never uploaded as an artifact, so the publish jobs find nothing and publish nothing. **Constraint:** the check uses the Android SDK's `apksigner` and the committed `keystore/anisu.jks`; the APK asset file names stay `Ansu-*.apk` so the in-app updater keeps matching them.
+
+- **The details page shows six episodes first, with a "More episodes" chip for the rest.** A show with 50 episodes used to draw all of them at once. Each group now lists its first six episodes followed by a "More episodes (N)" pill; tapping it shows the rest of that group. Switching to another group (1-50, 51-100, …) or opening another show starts collapsed again. **Constraint:** the chip sits at the end of the list rather than floating over the screen, and the build could not be run in this environment, so compile it once before release.
+
+- **The details page loads faster.** Everything on it used to wait for the slowest part, the title search across every installed source, so the synopsis, stats and episode list all appeared together and only after the slowest source answered or timed out. AniList details, episode info and the episode list now each appear the moment they arrive. The opened source's own episode list is fetched at the same time as the search across the other sources (it used to run first) and is shown immediately; the merged multi-source list replaces it when the search finishes. The per-source timeout in that search dropped from 45 s to 20 s, so one slow or dead source holds the merge back for at most 20 s. **Constraint:** the episode list can change once more when the cross-source merge finishes (extra streams are added as alternates); the build could not be run in this environment, so compile it once before release.
+
 ### Fixed
+
+- **The details screen compiles again.** `DetailsViewModel` called the cross-source `findEpisodesByTitle` helper without importing it, so `compileDebugKotlin` and `compileReleaseKotlin` both failed with `Unresolved reference 'findEpisodesByTitle'` and the follow-on type-inference errors. The import is added; nothing else changes.
+
+- **The build is warning-free again.** `CloudflareInterceptor` set the long-deprecated `WebSettings.databaseEnabled`, which has been a no-op since API 19 (the Web SQL Database API was removed) and produced a compiler warning on every build. The dead assignment is gone; the anti-bot WebView still enables JavaScript and DOM storage, which is what it actually uses.
 
 - **Episode lists of lib-16 sources (AnimeKai, Anichi and others) no longer fail with `NoSuchMethodError: get$default`.** Catalogue and search worked but opening an anime failed because the extensions call the suspend `OkHttpClient.get(url, headers, cache)` helper from `eu.kanade.tachiyomi.network.Requests`, which Ansu did not provide. It now exists there and returns the response after `awaitSuccess()`. **Constraint:** the build could not be run in this environment, so compile it once before release.
 

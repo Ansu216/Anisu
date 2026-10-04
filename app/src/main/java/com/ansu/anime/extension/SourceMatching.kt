@@ -12,7 +12,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 internal const val BUILT_IN_SOURCE_ID = 1L
 
 private const val MIN_MATCH_SCORE = 0.5
-private const val SOURCE_TIMEOUT_MS = 45_000L
+private const val SOURCE_TIMEOUT_MS = 20_000L
 
 private class SourceMatch(val source: AnimeCatalogueSource, val score: Double, val episodes: List<SEpisode>)
 
@@ -61,6 +61,11 @@ suspend fun ExtensionManager.findEpisodesAcrossSources(
     extraTitles: List<String> = emptyList(),
 ): List<SEpisode> {
     val found = runCatching { findEpisodesByTitle(anime, extraTitles) }.getOrDefault(emptyList())
+    return foldOriginEpisodes(found, originSourceId, originEpisodes)
+}
+
+/** Folds the origin source's own episodes into [found] (the merged cross-source list) as alternates. */
+fun foldOriginEpisodes(found: List<SEpisode>, originSourceId: Long, originEpisodes: List<SEpisode>): List<SEpisode> {
     if (originEpisodes.isEmpty()) return found
     if (found.isEmpty()) return originEpisodes.map { it.copy(sourceId = it.sourceId ?: originSourceId) }
     // Fold the origin's own episodes into the merged list as alternates where numbers line up.

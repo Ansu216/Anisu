@@ -110,7 +110,7 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
             ActionRow(
                 icon = Icons.Filled.Group,
                 title = "Contributors",
-                subtitle = "The people who build and test Ansu",
+                subtitle = "The people who build and test Anisu",
                 onClick = {
                     container.diagnostics.log(
                         com.ansu.anime.core.diagnostics.LogCategory.CLICK,
@@ -131,7 +131,7 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
 
             SectionTitle("Credits")
             Text(
-                text = "Ansu aggregates metadata from the public AniList API and plays media through " +
+                text = "Anisu aggregates metadata from the public AniList API and plays media through " +
                     "third-party sources, extensions and Stremio addons. It is not affiliated with, " +
                     "endorsed by or sponsored by AniList or by any provider you connect.",
                 style = MaterialTheme.typography.bodyMedium,

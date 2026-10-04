@@ -1,4 +1,4 @@
-name: Ansu Release APK
+name: Anisu Release APK
 
 # Builds signed APKs and attaches them to a GitHub Release.
 #
@@ -142,7 +142,7 @@ jobs:
             -PversionCode="${{ github.run_number }}" \
             -PversionName="${{ needs.plan.outputs.version }}"
 
-      - name: Verify the APK signature
+      - name: Verify the APK is signed (an unsigned build is never published)
         run: |
           set -euo pipefail
           BUILD_TOOLS="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
@@ -152,7 +152,16 @@ jobs:
             echo "::error::No APK produced for variant ${{ matrix.variant }}"
             exit 1
           fi
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          # `apksigner verify` exits non-zero for an unsigned or broken APK; the
+          # second check refuses one that verified but carries no signer certificate.
+          if ! "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"; then
+            echo "::error::The ${{ matrix.variant }} APK is not validly signed — refusing to publish it."
+            exit 1
+          fi
+          if ! "$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | grep -qi "certificate DN"; then
+            echo "::error::The ${{ matrix.variant }} APK carries no signer certificate — refusing to publish it."
+            exit 1
+          fi
 
       - name: Upload the APK as a workflow artifact
         uses: actions/upload-artifact@v4
@@ -201,6 +210,25 @@ jobs:
           cp "$APK_DEBUG"   "Ansu-${VERSION}-debug.apk"
           ls -la Ansu-*.apk
 
+      - name: Verify both APKs are signed before publishing
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(ls -d "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1 || true)"
+          fi
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            "$SDKMANAGER" "platform-tools" "build-tools;35.0.0" "build-tools;34.0.0" > /dev/null
+          fi
+          BUILD_TOOLS="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
+          echo "Using build-tools: $BUILD_TOOLS"
+          for apk in Ansu-*.apk; do
+            if ! "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$apk"; then
+              echo "::error::$apk is not validly signed — refusing to publish the release."
+              exit 1
+            fi
+          done
       - name: Extract the changelog section for this version
         id: changelog
         run: |
@@ -254,7 +282,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.plan.outputs.tag }}
-          name: Ansu ${{ needs.plan.outputs.version }}
+          name: Anisu ${{ needs.plan.outputs.version }}
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: ${{ needs.plan.outputs.prerelease == 'true' }}
@@ -266,7 +294,7 @@ jobs:
             Ansu-${{ needs.plan.outputs.version }}.apk
             Ansu-${{ needs.plan.outputs.version }}-debug.apk
           body: |
-            ## Ansu ${{ needs.plan.outputs.version }}
+            ## Anisu ${{ needs.plan.outputs.version }}
             **Release channel:** `${{ needs.plan.outputs.channel }}`
 
             ${{ steps.changelog.outputs.section }}

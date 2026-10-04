@@ -21,13 +21,13 @@ that have broken this build before. Section 7 is mandatory: every change touches
 
 ## 1. Project overview
 
-**Ansu** is an Android client for [AniList](https://anilist.co) with anime
+**Anisu** is an Android client for [AniList](https://anilist.co) with anime
 catalogue browsing, an airing schedule and news feed, library tracking and
 playback through pluggable sources (built-in demo source, Stremio addons,
 extensions).
 
 - **Package / application id**: `com.ansu.anime`
-- **Display name**: `Ansu`
+- **Display name**: `Anisu`
 - **Language/build**: Kotlin 2.1.0, Java 17 bytecode target, JDK 21 toolchain,
   Gradle Kotlin DSL, Gradle 8.9 (wrapper committed), AGP 8.7.2.
 - **UI**: Jetpack Compose + Material 3, Navigation Compose, Coil for images.
@@ -56,7 +56,7 @@ them fails the build.
 
 ## 2. Architecture and module structure
 
-`settings.gradle.kts` sets `rootProject.name = "Ansu"` and declares a single
+`settings.gradle.kts` sets `rootProject.name = "Anisu"` and declares a single
 module: `:app`. There are no other Gradle modules — do not introduce one unless
 the user explicitly asks.
 
@@ -184,10 +184,10 @@ toolchain, or disabling a lint/compiler check. Fix the cause.
 
 ```bash
 "$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk
-# must report: package: name='com.ansu.anime'   application-label:'Ansu'   launchable-activity: com.ansu.anime.MainActivity
+# must report: package: name='com.ansu.anime'   application-label:'Anisu'   launchable-activity: com.ansu.anime.MainActivity
 
 "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk
-# must report: Verified using v1/v2 scheme ... and the Ansu certificate
+# must report: Verified using v1/v2 scheme ... and the Anisu certificate
 ```
 
 A wrong `package:`/`application-label:`, or a missing `launchable-activity`,
@@ -197,7 +197,7 @@ means the manifest and the package name have drifted — that is an instant
 ### 4.5 Checklist before you say "done"
 
 - [ ] `./gradlew assembleDebug assembleRelease` → **0 errors, 0 warnings**.
-- [ ] `aapt dump badging` still reports `com.ansu.anime` / `Ansu`.
+- [ ] `aapt dump badging` still reports `com.ansu.anime` / `Anisu`.
 - [ ] No new `com.kernel.anime` / `Anisu` / `StreamHub` name anywhere (§5).
 - [ ] No duplicate top-level symbols were introduced (§4.3.2).
 - [ ] `CHANGELOG.md` `## [Unreleased]` updated (§7).
@@ -257,18 +257,23 @@ means the manifest and the package name have drifted — that is an instant
 
 ### Branding — never regress this
 
-The app is **Ansu** and its package is `com.ansu.anime`. There must be **no**
-`com.kernel.anime` and no leftover `Anisu`/`StreamHub` naming anywhere, in any
-file name, path or source line. Keep the class names `AnsuApp`, `AnsuTheme`,
-`AnsuNavGraph`, `AnsuColors`, the colour resources `ansu_*`, the URI scheme
-`ansu://` and the app label `Ansu`.
+The app is **Anisu**: that is the launcher label and every user-visible string,
+and its package / application id stays `com.ansu.anime`. There must be **no**
+`com.kernel.anime` and no `StreamHub` naming anywhere, in any file name, path or
+source line.
 
-The only intentional legacy names are the **signing identity**: the keystore
-file `keystore/anisu.jks` and its key alias `anisu`, plus the prefs file name in
-`AniListAuthManager`. Do not rename them — that would change the signing
-certificate or silently log every user out. The GitHub repository slug
-(`Ansu216/Anisu`, used in the workflow badge URLs and by the in-app updater) is
-also fixed and must not be rewritten.
+The technical identifiers deliberately keep the older `Ansu` spelling and must
+**not** be renamed: the package `com.ansu.anime`, the class names `AnsuApp`,
+`AnsuTheme`, `AnsuNavGraph`, `AnsuColors`, the colour resources `ansu_*`, the URI
+scheme `ansu://`, and the `Ansu`-named APK assets and `Ansu-Android` user agents
+the updater matches on. Renaming them would break the updater, the saved data or
+the extension runtime for no user-visible gain.
+
+The **signing identity** is also fixed: the keystore file `keystore/anisu.jks`
+and its key alias `anisu`, plus the prefs file name in `AniListAuthManager`. Do
+not rename them — that would change the signing certificate or silently log every
+user out. The GitHub repository slug (`Ansu216/Anisu`, used in the workflow badge
+URLs and by the in-app updater) is also fixed and must not be rewritten.
 
 ## 6. Golden rule: "if it works, don't touch it"
 
@@ -531,7 +536,7 @@ so the documentation ships with the code it describes.
 
 ## 12. Legal and content compliance
 
-Ansu aggregates metadata from the public AniList API and plays media through
+Anisu aggregates metadata from the public AniList API and plays media through
 third-party sources, extensions and Stremio addons. Never hardcode credentials,
 API keys or tokens into the repository or into commit messages, and do not add
 code whose only purpose is to bypass a paywall, DRM or an access control. The

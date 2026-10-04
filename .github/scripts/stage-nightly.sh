@@ -82,7 +82,7 @@ import sys
 
 stage, name, code, iso, sha, run = sys.argv[1:7]
 manifest = {
-    "app": "Ansu",
+    "app": "Anisu",
     "package": "com.ansu.anime",
     "versionName": name,
     "versionCode": int(code),
@@ -100,13 +100,13 @@ with open(os.path.join(stage, "nightly.json"), "w", encoding="utf-8", newline="\
 PY
 
 cat > "$STAGE/README.md" <<'MD'
-# Ansu — nightly APK
+# Anisu — nightly APK
 
 [![Download the release APK](https://img.shields.io/badge/Download-Ansu--nightly.apk-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://raw.githubusercontent.com/Ansu216/Anisu/apk-nightly/Ansu-nightly.apk)
 [![Download the debug APK](https://img.shields.io/badge/Download-Ansu--nightly--debug.apk-FF6D00?style=for-the-badge&logo=android&logoColor=white)](https://raw.githubusercontent.com/Ansu216/Anisu/apk-nightly/Ansu-nightly-debug.apk)
 
 This branch is **generated automatically** by the
-[`Ansu Nightly APK`](../actions/workflows/apk-nightly.yml) workflow.
+[`Anisu Nightly APK`](../actions/workflows/apk-nightly.yml) workflow.
 Every run replaces the branch with the newest build. The release and the debug
 APK are published independently, as soon as their own build succeeds.
 

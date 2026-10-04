@@ -15,7 +15,7 @@ import com.ansu.anime.data.repository.EpisodeMetadataRepository
 import com.ansu.anime.data.repository.LocalListRepository
 import com.ansu.anime.extension.BUILT_IN_SOURCE_ID
 import com.ansu.anime.extension.ExtensionManager
-import com.ansu.anime.extension.findEpisodesAcrossSources
+import com.ansu.anime.extension.findEpisodesByTitle
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -75,53 +75,66 @@ class DetailsViewModel(
                     _uiState.value = _uiState.value.copy(artwork = artwork, artworkLoaded = true)
                 }
             }
+            // Each piece is published the moment it arrives instead of waiting for the slowest one (the
+            // cross-source episode search), so the header, synopsis and stats show up straight away.
             viewModelScope.launch {
-                val episodesDeferred = async { runCatching { loadEpisodes(current) }.getOrDefault(emptyList()) }
-                val metaDeferred = async {
-                    current.anilistId?.let { id -> episodeMetadataRepository.getEpisodeMeta(id) }.orEmpty()
+                current.anilistId?.let { id ->
+                    episodeMeta = runCatching { episodeMetadataRepository.getEpisodeMeta(id) }.getOrDefault(emptyMap())
+                    publishEpisodes(current)
                 }
-                val detailsDeferred = async {
-                    current.anilistId?.let { id -> aniListRepository.getMediaDetails(id) }
-                }
-                val meta = metaDeferred.await()
-                // Real sources occasionally repeat an episode or hand back a blank id. Compose keys the
-                // episode list by that id, and a duplicate would crash the page as soon as it scrolled,
-                // so give every episode a unique id and drop the repeats here.
-                val loaded = episodesDeferred.await()
-                val episodes = loaded.map { episode ->
-                    val number = episode.episodeNumber.takeIf { it % 1f == 0f }?.toInt()
-                    val info = number?.let { meta[it] } ?: return@map episode
-                    episode.copy(
-                        name = info.title ?: episode.name,
-                        thumbnailUrl = episode.thumbnailUrl ?: info.thumbnailUrl,
-                        description = info.overview ?: episode.description,
-                        airDate = episode.airDate ?: info.airDate,
-                    )
-                }
-                val details = try {
-                    detailsDeferred.await()
-                } catch (e: Exception) {
-                    null
-                }
+            }
+            viewModelScope.launch {
+                val details = current.anilistId?.let { id -> runCatching { aniListRepository.getMediaDetails(id) }.getOrNull() }
                 // Saved shows made before My Space showed year/format get them filled in here.
                 if (details != null) {
                     runCatching { localListRepository.backfillDetails(details.id, details.format, details.year, details.title) }
                 }
-                val uniqueEpisodes = episodes
-                    .mapIndexed { index, episode ->
-                        if (episode.id.isBlank()) episode.copy(id = "${current.id}-ep-${episode.episodeNumber}-$index") else episode
-                    }
-                    .distinctBy { it.id }
                 _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    episodes = uniqueEpisodes,
                     aniListDetails = details,
                     isFavourite = details?.isFavourite ?: false,
                     remoteListStatus = details?.listStatus,
-                    error = if (episodes.isEmpty() && details == null) "Couldn't load this title" else null,
+                    error = if (_uiState.value.episodes.isEmpty() && !_uiState.value.isLoading && details == null) "Couldn't load this title" else _uiState.value.error,
                 )
             }
+            viewModelScope.launch {
+                runCatching { loadEpisodes(current) { partial -> rawEpisodes = partial; publishEpisodes(current, finished = false) } }
+                    .onSuccess { rawEpisodes = it }
+                    .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+                publishEpisodes(current, finished = true)
+            }
         }
+    }
+
+    private var rawEpisodes: List<SEpisode> = emptyList()
+    private var episodeMeta: Map<Int, com.ansu.anime.data.repository.EpisodeMeta> = emptyMap()
+
+    /** Applies AniList episode info to the source episodes and shows the result. */
+    private fun publishEpisodes(current: SAnime, finished: Boolean? = null) {
+        val episodes = rawEpisodes.map { episode ->
+            val number = episode.episodeNumber.takeIf { it % 1f == 0f }?.toInt()
+            val info = number?.let { episodeMeta[it] } ?: return@map episode
+            episode.copy(
+                name = info.title ?: episode.name,
+                thumbnailUrl = episode.thumbnailUrl ?: info.thumbnailUrl,
+                description = info.overview ?: episode.description,
+                airDate = episode.airDate ?: info.airDate,
+            )
+        }
+        // Real sources occasionally repeat an episode or hand back a blank id. Compose keys the
+        // episode list by that id, and a duplicate would crash the page as soon as it scrolled,
+        // so give every episode a unique id and drop the repeats here.
+        val uniqueEpisodes = episodes
+            .mapIndexed { index, episode ->
+                if (episode.id.isBlank()) episode.copy(id = "${current.id}-ep-${episode.episodeNumber}-$index") else episode
+            }
+            .distinctBy { it.id }
+        val state = _uiState.value
+        val stillLoading = if (finished == true) false else state.isLoading && uniqueEpisodes.isEmpty()
+        _uiState.value = state.copy(
+            isLoading = stillLoading,
+            episodes = uniqueEpisodes,
+            error = if (finished == true && uniqueEpisodes.isEmpty() && state.aniListDetails == null) "Couldn't load this title" else state.error,
+        )
     }
 
     private fun observeLocalLibrary(current: SAnime) {
@@ -141,24 +154,34 @@ class DetailsViewModel(
         }
     }
 
-    private suspend fun loadEpisodes(anime: SAnime): List<SEpisode> = coroutineScope {
+    private suspend fun loadEpisodes(anime: SAnime, onPartial: (List<SEpisode>) -> Unit): List<SEpisode> = coroutineScope {
         when (val origin = anime.origin) {
             is MediaOrigin.Extension -> {
                 // Search EVERY installed source for this title (not only for AniList-only ones), so the player
                 // can offer streams from all of them. A title opened from a real source is folded in too.
-                val ownEpisodes = if (origin.sourceId != BUILT_IN_SOURCE_ID) {
-                    runCatching { extensionManager.getSource(origin.sourceId)?.getEpisodeList(anime).orEmpty() }
-                        .getOrDefault(emptyList())
-                        .map { it.copy(sourceId = it.sourceId ?: origin.sourceId) }
-                } else {
-                    emptyList()
+                // The origin source's own list and the search across all sources run side by side; the own
+                // list is shown as soon as it is in, and the merged list replaces it when the search ends.
+                val ownDeferred = async {
+                    if (origin.sourceId != BUILT_IN_SOURCE_ID) {
+                        runCatching { extensionManager.getSource(origin.sourceId)?.getEpisodeList(anime).orEmpty() }
+                            .getOrDefault(emptyList())
+                            .map { it.copy(sourceId = it.sourceId ?: origin.sourceId) }
+                    } else {
+                        emptyList()
+                    }
                 }
-                val episodes = runCatching {
-                    extensionManager.findEpisodesAcrossSources(
-                        anime, origin.sourceId, ownEpisodes,
-                        extraTitles = anime.anilistId?.let { aniListRepository.getAllTitles(it) }.orEmpty(),
-                    )
-                }.getOrDefault(emptyList()).ifEmpty { ownEpisodes }
+                val foundDeferred = async {
+                    runCatching {
+                        extensionManager.findEpisodesByTitle(
+                            anime,
+                            extraTitles = anime.anilistId?.let { aniListRepository.getAllTitles(it) }.orEmpty(),
+                        )
+                    }.getOrDefault(emptyList())
+                }
+                val ownEpisodes = ownDeferred.await()
+                if (ownEpisodes.isNotEmpty()) onPartial(ownEpisodes)
+                val episodes = com.ansu.anime.extension.foldOriginEpisodes(foundDeferred.await(), origin.sourceId, ownEpisodes)
+                    .ifEmpty { ownEpisodes }
                 // Extensions may not list movies as episodes; create a synthetic root episode so playback
                 // can query getVideoList(). The id is the anime's url, which real extensions use to fetch videos.
                 if (episodes.isEmpty()) {

@@ -1,6 +1,6 @@
-# How to Compile the Ansu APK
+# How to Compile the Anisu APK
 
-This guide explains, step by step, how to build the Ansu Android app from source.
+This guide explains, step by step, how to build the Anisu Android app from source.
 It is written for a beginner: if you have never opened a computer before, follow it
 in order. No prior Android knowledge is required.
 
@@ -400,7 +400,7 @@ Expected artifacts:
 
 The built APK reports:
 
-- **App name:** Ansu
+- **App name:** Anisu
 - **Package name:** `com.ansu.anime`
 - **Minimum Android:** 8.0 (API 26)
 - **Target Android:** 15 (API 35)
@@ -449,7 +449,7 @@ Three GitHub Actions workflows are included under `.github/workflows/`.
 ### `apk-nightly.yml` — hourly nightly APK
 
 - **Runs:** every hour (`0 * * * *`) and manually
-  (**Actions → Ansu Nightly APK → Run workflow**).
+  (**Actions → Anisu Nightly APK → Run workflow**).
 - **Does:** builds the signed debug + release APKs with a timestamped version
   (`versionName=YYYY.MM.DD.HHMM`, `versionCode=YYYYMMDDHH`), verifies the
   signatures, then **force-pushes** them to the `apk-nightly` branch. The branch is
@@ -470,7 +470,7 @@ Three GitHub Actions workflows are included under `.github/workflows/`.
 ### `release-apk.yml` — automatic release
 
 - **Runs:** when you push a tag like `v1.0.0`, or manually
-  (**Actions → Ansu Release APK → Run workflow**, with an optional tag).
+  (**Actions → Anisu Release APK → Run workflow**, with an optional tag).
 - **Does:** builds and signs the APKs, verifies signatures, and creates a GitHub
   Release named after the tag with `Ansu-<version>.apk` and
   `Ansu-<version>-debug.apk` attached.

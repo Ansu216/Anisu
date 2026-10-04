@@ -74,7 +74,7 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
         ) {
             Text("Diagnostics", style = MaterialTheme.typography.titleMedium, color = AnsuColors.TextPrimary)
             Text(
-                text = "Ansu keeps a local log of crashes, playback, taps, navigation and network errors. " +
+                text = "Anisu keeps a local log of crashes, playback, taps, navigation and network errors. " +
                     "Nothing is ever uploaded: the report is written on this device and only shared when you ask for it.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = AnsuColors.TextSecondary,
@@ -103,7 +103,7 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
                         com.ansu.anime.core.diagnostics.LogCategory.CLICK,
                         "Export logs requested (${file.length()} bytes)",
                     )
-                    runCatching { context.startActivity(android.content.Intent.createChooser(intent, "Export Ansu logs")) }
+                    runCatching { context.startActivity(android.content.Intent.createChooser(intent, "Export Anisu logs")) }
                     refresh++
                 },
                 shape = RoundedCornerShape(20.dp),

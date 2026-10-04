@@ -113,6 +113,8 @@ fun DetailsScreen(
     var expandSynopsis by remember { mutableStateOf(false) }
     var selectedPerson by remember { mutableStateOf<PersonDetail?>(null) }
     var selectedGroup by remember(anime?.id) { mutableIntStateOf(0) }
+    // Only the first few episodes of a group show until "More episodes" is tapped; reset per show and per group.
+    var episodesExpanded by remember(anime?.id, selectedGroup) { mutableStateOf(false) }
 
     val details = state.aniListDetails
     // Episodes that have not aired yet: shown as compact rows and not playable.
@@ -233,7 +235,9 @@ fun DetailsScreen(
                         )
                     }
                 }
-                val visible = groups[groupIndex]
+                val fullGroup = groups[groupIndex]
+                val collapsed = !episodesExpanded && fullGroup.size > EPISODE_PREVIEW_COUNT
+                val visible = if (collapsed) fullGroup.take(EPISODE_PREVIEW_COUNT) else fullGroup
                 // Upcoming episodes with no announced date carry no information; they collapse into one line.
                 val undated = visible.filter { it.id in upcomingIds && it.airDate.isNullOrBlank() }
                 itemsIndexed(visible.filterNot { it in undated }, key = { index, episode -> "ep:${episode.id}#$index" }) { _, episode ->
@@ -253,6 +257,14 @@ fun DetailsScreen(
                 }
                 if (undated.isNotEmpty()) {
                     item { UndatedUpcomingRow(undated) }
+                }
+                if (collapsed) {
+                    item(key = "more-episodes") {
+                        MoreEpisodesChip(
+                            remaining = fullGroup.size - EPISODE_PREVIEW_COUNT,
+                            onClick = { episodesExpanded = true },
+                        )
+                    }
                 }
             }
 
@@ -536,6 +548,30 @@ private fun DetailsSectionHeader(title: String) {
 
 /** Episodes per chip: shows longer than this are split into 1-50, 51-100, … pages. */
 private const val EPISODE_GROUP_SIZE = 50
+
+/** Episodes shown per group before the "More episodes" chip is tapped. */
+private const val EPISODE_PREVIEW_COUNT = 6
+
+/** Pill at the end of the collapsed episode list; tapping it reveals the rest of the group. */
+@Composable
+private fun MoreEpisodesChip(remaining: Int, onClick: () -> Unit) {
+    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(AnsuColors.Accent)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+        ) {
+            Text(
+                text = "More episodes ($remaining)",
+                color = AnsuColors.Background,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
 
 /** Horizontally scrolling pill row that switches between groups of [EPISODE_GROUP_SIZE] episodes. */
 @Composable

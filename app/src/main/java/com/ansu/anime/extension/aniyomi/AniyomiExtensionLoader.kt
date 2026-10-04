@@ -36,7 +36,7 @@ internal class AniyomiExtensionLoader(private val context: Context) {
             ?: return failed("Unreadable extension version \"$versionName\"")
         if (libVersion < AniyomiRuntime.MIN_LIB_VERSION || libVersion > AniyomiRuntime.MAX_LIB_VERSION) {
             return failed(
-                "Built for extension API ${libVersion.toInt()}; Ansu runs " +
+                "Built for extension API ${libVersion.toInt()}; Anisu runs " +
                     "${AniyomiRuntime.MIN_LIB_VERSION.toInt()}-${AniyomiRuntime.MAX_LIB_VERSION.toInt()}",
             )
         }
