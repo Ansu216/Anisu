@@ -19,6 +19,8 @@ data class AniListMedia(
     /** AniList's raw format enum (TV, MOVIE, OVA, ...); null when a query did not ask for it. */
     val format: String? = null,
     val isAdult: Boolean = false,
+    /** Romaji, English, native and synonym titles, so a source's copy of the show can be recognised in any language. */
+    val altTitles: List<String> = emptyList(),
 )
 
 /**

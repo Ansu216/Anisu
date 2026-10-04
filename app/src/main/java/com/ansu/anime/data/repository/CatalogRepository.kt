@@ -71,44 +71,19 @@ class CatalogRepository(
     }
 
     /**
-     * Searches AniList directly, so results appear even with no extension or
-     * addon installed, and adds whatever installed sources return on top.
+     * Searches AniList only. Installed extensions are not searched: every result is an AniList title, and its
+     * streams are gathered from the installed sources when it is opened.
      * [query] may be empty when [filters] alone drive the search (browse by genre, format, ...).
-     * Installed sources only answer the first page of a plain text search, because they cannot
-     * apply the filters. Source calls run on [Dispatchers.IO] (extensions use blocking HTTP) and a
-     * source result for a show AniList already returned (by id or by title) is dropped.
      * Returns null when nothing could be loaded because the request failed.
      */
     suspend fun search(
         query: String,
         filters: AniListSearchFilters = AniListSearchFilters(),
         page: Int = 1,
-    ): SearchPage? = coroutineScope {
-        val aniListResults = async { aniList.searchPage(query, filters, page) }
-        val useSources = page == 1 && query.isNotBlank() && !filters.isActive
-        val sourceResults = if (useSources) {
-            extensionManager.allSources().map { source ->
-                async(Dispatchers.IO) {
-                    runCatching { source.getSearchAnime(1, query, source.getFilterList()) }.getOrNull()?.animes.orEmpty()
-                }
-            }
-        } else {
-            emptyList()
-        }
-        val aniListPage = aniListResults.await()
-        val fromAniList = aniListPage?.media.orEmpty().map { it.toSAnime(sourceId = defaultSource()?.id ?: 1L) }
-        val seen = fromAniList.mapNotNullTo(mutableSetOf<Int>()) { it.anilistId }
-        // A source result is dropped when AniList already returned the show (same id, or the same title once
-        // punctuation and case are ignored): the AniList entry gathers streams from every installed source,
-        // so listing the source's own copy next to it only shows the same show twice. Two sources returning the
-        // same title are likewise listed once.
-        val aniListTitles = fromAniList.mapNotNullTo(mutableSetOf()) { titleKey(it.title).takeIf { key -> key.isNotEmpty() } }
-        val fromSources = sourceResults.flatMap { it.await() }
-            .filter { it.anilistId == null || seen.add(it.anilistId) }
-            .filter { titleKey(it.title).let { key -> key.isEmpty() || key !in aniListTitles } }
-            .distinctBy { titleKey(it.title).ifEmpty { it.id + it.origin.hashCode() } }
-        val items = fromAniList + fromSources
-        if (aniListPage == null && items.isEmpty()) null else SearchPage(items, aniListPage?.hasNextPage == true)
+    ): SearchPage? {
+        val aniListPage = aniList.searchPage(query, filters, page)
+        val items = aniListPage?.media.orEmpty().map { it.toSAnime(sourceId = defaultSource()?.id ?: 1L) }
+        return if (aniListPage == null) null else SearchPage(items, aniListPage.hasNextPage)
     }
 
     /** The default source to resolve an AniList-only entry against until real per-title source matching exists. */
@@ -154,9 +129,6 @@ fun AniListMedia.toSAnime(sourceId: Long = 1L): SAnime = SAnime(
     ageRating = ageRatingFor(genres, isAdult),
     origin = MediaOrigin.Extension(sourceId = sourceId, urlPath = id.toString()),
 )
-
-/** A title reduced to its letters and digits, lower-cased, so "Solo Leveling -ReAwakening-" equals "Solo Leveling: ReAwakening". */
-private fun titleKey(title: String): String = title.lowercase().filter { it.isLetterOrDigit() }
 
 /** One page of Search results plus whether AniList has more after it. */
 data class SearchPage(val items: List<SAnime>, val hasNextPage: Boolean)

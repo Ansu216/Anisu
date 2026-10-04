@@ -56,7 +56,7 @@ data class Video(
         subtitleTracks: List<Track> = emptyList(),
         audioTracks: List<Track> = emptyList(),
     ) : this(
-        videoUrl = videoUrl.orEmpty(),
+        videoUrl = videoUrl ?: "null",
         videoTitle = quality,
         headers = headers,
         subtitleTracks = subtitleTracks,

@@ -43,7 +43,12 @@ data class PlayableSource(
     val headers: Map<String, String> = emptyMap(),
     val subtitles: List<SubtitleTrack> = emptyList(),
     val audioTracks: List<SubtitleTrack> = emptyList(),
+    /** Set for a source the extension listed without resolving it: [url] is empty until this returns the playable one. */
+    val resolve: (suspend () -> PlayableSource?)? = null,
 )
+
+/** How long a picked source may take to resolve before the next one is tried. */
+private const val RESOLVE_TIMEOUT_MS = 30_000L
 
 /** One selectable audio or subtitle track the player reported. */
 data class TrackOption(
@@ -155,7 +160,7 @@ class PlayerViewModel(
             var first = true
             val collected = mutableListOf<PlayableSource>()
             val onBatch: (List<PlayableSource>) -> Unit = { batch ->
-                val fresh = batch.filter { b -> collected.none { it.url == b.url } }
+                val fresh = batch.filter { b -> b.url.isBlank() || collected.none { it.url == b.url } }
                 if (fresh.isNotEmpty()) {
                     collected += fresh
                     _uiState.value = _uiState.value.copy(isLoadingSources = false, sources = collected.toList(), error = null)
@@ -231,23 +236,21 @@ class PlayerViewModel(
                         async {
                             val source = extensionManager.getSource(candidate.sourceId ?: origin.sourceId)
                                 ?: return@async
+                            val total = java.util.concurrent.atomic.AtomicInteger()
                             try {
-                                val videos = kotlinx.coroutines.withTimeout(45_000L) { source.getVideoList(candidate) }
-                                diagnostics?.log(LogCategory.PLAYBACK, "  ${source.name}: ${videos.size} video(s) for ep ${candidate.episodeNumber} (id='${candidate.id}')")
-                                val mapped = videos.map { video ->
-                                    PlayableSource(
-                                        label = if (video.sourceLabel.isBlank() || video.quality.contains(video.sourceLabel, true)) video.quality
-                                        else "${video.sourceLabel} · ${video.quality}",
-                                        url = video.url,
-                                        headers = video.headers,
-                                        subtitles = video.subtitleTracks,
-                                        audioTracks = video.audioTracks,
-                                    )
+                                // Videos are delivered as each server answers, so a slow server never hides the rest,
+                                // and what arrived before the timeout is kept.
+                                kotlinx.coroutines.withTimeout(60_000L) {
+                                    source.streamVideos(candidate, { line -> diagnostics?.log(LogCategory.PLAYBACK, line) }) { videos ->
+                                        val mapped = videos.map { video -> video.toPlayable() }
+                                        total.addAndGet(mapped.size)
+                                        if (mapped.isNotEmpty()) withContext(Dispatchers.Main) { onBatch(mapped) }
+                                    }
                                 }
-                                if (mapped.isNotEmpty()) withContext(Dispatchers.Main) { onBatch(mapped) }
+                                diagnostics?.log(LogCategory.PLAYBACK, "  ${source.name}: ${total.get()} video(s) for ep ${candidate.episodeNumber} (id='${candidate.id}')")
                             } catch (e: kotlinx.coroutines.CancellationException) {
                                 if (e is kotlinx.coroutines.TimeoutCancellationException) {
-                                    diagnostics?.log(LogCategory.PLAYBACK, "  ${source.name}: timeout")
+                                    diagnostics?.log(LogCategory.PLAYBACK, "  ${source.name}: timeout (kept ${total.get()} video(s))")
                                 } else throw e
                             } catch (e: Throwable) {
                                 diagnostics?.log(LogCategory.PLAYBACK, "  ${source.name}: ${e::class.simpleName}: ${e.message}", e)
@@ -265,6 +268,15 @@ class PlayerViewModel(
         }
     }
 
+    private fun com.ansu.anime.core.model.Video.toPlayable(): PlayableSource = PlayableSource(
+        label = if (sourceLabel.isBlank() || quality.contains(sourceLabel, true)) quality else "$sourceLabel · $quality",
+        url = url,
+        headers = headers,
+        subtitles = subtitleTracks,
+        audioTracks = audioTracks,
+        resolve = resolve?.let { pending -> suspend { pending()?.toPlayable() } },
+    )
+
     private fun StremioStream.toPlayableSource(addonName: String): PlayableSource? {
         // Torrent-only and external-app streams carry no direct URL; ExoPlayer cannot play them.
         val streamUrl = url ?: return null
@@ -274,15 +286,46 @@ class PlayerViewModel(
 
     @androidx.annotation.OptIn(UnstableApi::class)
     fun selectSource(source: PlayableSource) {
-        diagnostics?.log(LogCategory.PLAYBACK, "Source selected: ${source.label} → ${source.url}")
+        diagnostics?.log(LogCategory.PLAYBACK, "Source selected: ${source.label} → ${source.url.ifBlank { "(resolved when played)" }}")
         _uiState.value = _uiState.value.copy(selectedSource = source)
 
         // A URL that does not name its container (most extension streams) is asked what it is, instead of guessed.
         playbackJob?.cancel()
         playbackJob = viewModelScope.launch {
-            val mimeType = detectMimeType(source.url) ?: probeMimeType(source.url, source.headers)
-            startPlayback(source, mimeType)
+            val ready = resolveForPlayback(source) ?: return@launch
+            val mimeType = detectMimeType(ready.url) ?: probeMimeType(ready.url, ready.headers)
+            startPlayback(ready, mimeType)
         }
+    }
+
+    /**
+     * A source the extension listed without resolving it (Aniyomi library 16) is resolved now, the way Aniyomi
+     * resolves the video that is picked. When it cannot be, the next listed source is tried and null is returned.
+     */
+    private suspend fun resolveForPlayback(source: PlayableSource): PlayableSource? {
+        val pending = source.resolve ?: return source
+        val resolved = try {
+            kotlinx.coroutines.withTimeoutOrNull(RESOLVE_TIMEOUT_MS) { pending() }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            diagnostics?.log(LogCategory.PLAYBACK, "Resolving '${source.label}' failed: ${e::class.simpleName}: ${e.message}", e)
+            null
+        }
+        if (resolved == null || resolved.url.isBlank()) {
+            diagnostics?.log(LogCategory.PLAYBACK, "'${source.label}' could not be resolved")
+            val list = _uiState.value.sources
+            val index = list.indexOf(source)
+            if (index in 0 until list.lastIndex) selectSource(list[index + 1])
+            else _uiState.value = _uiState.value.copy(error = "Could not open '${source.label}'")
+            return null
+        }
+        // The resolved video replaces the listed one, so picking it again is instant.
+        _uiState.value = _uiState.value.copy(
+            sources = _uiState.value.sources.map { if (it == source) resolved else it },
+            selectedSource = resolved,
+        )
+        return resolved
     }
 
     private val probeClient: okhttp3.OkHttpClient by lazy {

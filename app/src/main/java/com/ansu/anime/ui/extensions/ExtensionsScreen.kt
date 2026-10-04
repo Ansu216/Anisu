@@ -113,6 +113,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     var availableByRepo by remember { mutableStateOf<Map<String, List<ExtensionRepoEntry>>>(emptyMap()) }
     var showRepos by remember { mutableStateOf(false) }
     var installError by remember { mutableStateOf<String?>(null) }
+    var installingPkgs by remember { mutableStateOf<Set<String>>(emptySet()) }
     var extensionQuery by remember { mutableStateOf("") }
 
     var settingsFor by remember { mutableStateOf<AniyomiSourceAdapter?>(null) }
@@ -146,7 +147,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
             item.entry.lang.contains(query, ignoreCase = true) ||
             item.entry.sources.any { it.name.contains(query, ignoreCase = true) }
     }
-    val installedPackages = extensions.map { it.packageName }.toSet()
+    val installedVersions = extensions.associate { it.packageName to it.versionCode }
 
     val extensionSources = extensions.flatMap { it.sources }
     val builtInSources = manager.allSourcesIncludingDisabled().filter { built -> extensionSources.none { it.id == built.id } }
@@ -154,7 +155,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     val installedRows = buildList {
         builtInSources.forEach { add(sourceRow(it, "Built-in", null, disabledIds, manager::setSourceEnabled, null)) }
         extensions.forEach { ext ->
-            val icon = runCatching { packageManager.getApplicationIcon(ext.packageName) }.getOrNull()
+            val icon = ext.icon ?: runCatching { packageManager.getApplicationIcon(ext.packageName) }.getOrNull()
             addAll(extensionRows(ext, icon, disabledIds, manager::setSourceEnabled, onSettings = { settingsFor = it }) { manager.uninstall(ext.packageName) })
         }
         addons.forEach { addon -> add(addonRow(addon, scope, container)) }
@@ -245,7 +246,10 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                 }
                 filteredAvailable.forEachIndexed { index, item ->
                     if (index > 0) HorizontalDivider(color = AnsuColors.StrokeGlass)
-                    val isInstalled = item.entry.pkg in installedPackages
+                    val installedCode = installedVersions[item.entry.pkg]
+                    val isInstalled = installedCode != null
+                    val hasUpdate = installedCode != null && item.entry.code > installedCode
+                    val isInstalling = item.entry.pkg in installingPkgs
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -261,14 +265,22 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                             )
                         }
                         OutlinedButton(
-                            enabled = !isInstalled,
+                            enabled = (!isInstalled || hasUpdate) && !isInstalling,
                             onClick = {
                                 scope.launch {
                                     installError = null
-                                    repo.downloadAndInstall(item.indexUrl, item.entry).onFailure { installError = it.message ?: "Install failed" }
+                                    installingPkgs = installingPkgs + item.entry.pkg
+                                    // Download, then store inside Ansu: no Android installer, nothing lands on the phone.
+                                    repo.downloadApk(item.indexUrl, item.entry)
+                                        .mapCatching { apk -> withContext(Dispatchers.IO) { manager.installPrivate(apk).getOrThrow() } }
+                                        .onFailure { installError = it.message ?: "Install failed" }
+                                    installingPkgs = installingPkgs - item.entry.pkg
                                 }
                             },
-                        ) { Text(if (isInstalled) "Installed" else "Install") }
+                        ) {
+                            if (isInstalling) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            else Text(if (hasUpdate) "Update" else if (isInstalled) "Installed" else "Install")
+                        }
                     }
                 }
             }
@@ -495,6 +507,7 @@ private fun TestResultBox(result: SourceTestResult?, testing: Boolean) {
                 ResultLine("Latency", result.latencyMs?.let { "$it ms" } ?: "—")
                 ResultLine("Results", result.itemCount?.toString() ?: "—")
                 result.sampleTitle?.let { ResultLine("Sample", it) }
+                result.streamNote?.let { ResultLine("Streams", it) }
                 result.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
         }

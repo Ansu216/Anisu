@@ -60,6 +60,12 @@ class AniyomiSourceAdapter(
     }
 
 
+    /**
+     * The episodes exactly as the source returned them. Aniyomi stores the source's own episode and hands it back
+     * when it asks for hosters, so a source can read the `scanlator`, `memo` or `episode_number` it set itself.
+     */
+    private val episodeCache = java.util.concurrent.ConcurrentHashMap<String, SEpisode>()
+
     /** True when the extension declares settings (Aniyomi's `ConfigurableAnimeSource`). */
     val hasSettings: Boolean get() = source is ConfigurableAnimeSource
 
@@ -113,6 +119,7 @@ class AniyomiSourceAdapter(
         } else {
             source.getEpisodeList(anime.toSource())
         }
+        episodes.forEach { episodeCache[it.url] = it }
         // Sources list newest first. With real episode numbers sort by them; otherwise number from the bottom up.
         val useNumbers = episodes.isNotEmpty() && episodes.all { it.episode_number > 0f }
         val ordered = if (useNumbers) episodes.sortedBy { it.episode_number } else episodes.reversed()
@@ -129,36 +136,89 @@ class AniyomiSourceAdapter(
         }
     }
 
-    override suspend fun getVideoList(episode: AnsuEpisode): List<AnsuVideo> = io {
-        val sourceEpisode = SEpisode.create().apply {
-            url = episode.id
-            name = episode.name
-            episode_number = episode.episodeNumber
+    override suspend fun getVideoList(episode: AnsuEpisode): List<AnsuVideo> {
+        val all = mutableListOf<Pair<Boolean, AnsuVideo>>()
+        streamPairs(episode, log = {}) { batch -> synchronized(all) { all += batch } }
+        // The source's own "preferred" videos go first (Aniyomi plays the first preferred one), then source order.
+        val listed = synchronized(all) { all.toList() }.sortedByDescending { it.first }.map { it.second }
+        // This call promises playable videos, so the ones that were listed for lazy resolution are resolved here.
+        return listed.mapNotNull { video ->
+            val pending = video.resolve ?: return@mapNotNull video
+            withTimeoutOrNull(RESOLVE_TIMEOUT_MS) { pending() }?.takeIf { it.url.isNotBlank() }
         }
-        val hosters = loadHosters(sourceEpisode)
+    }
+
+    override suspend fun streamVideos(
+        episode: AnsuEpisode,
+        log: (String) -> Unit,
+        onVideos: suspend (List<AnsuVideo>) -> Unit,
+    ) {
+        streamPairs(episode, log) { batch ->
+            // Preferred videos first inside each batch; batches arrive in the order the servers answer.
+            onVideos(batch.sortedByDescending { it.first }.map { it.second })
+        }
+    }
+
+    /**
+     * Asks every hoster at once and reports each one's videos the moment they are listed. Like Aniyomi, listing
+     * is cheap and a video the source has not resolved yet is only resolved when it is picked, so one slow or
+     * broken video never costs the hoster (or the other hosters) their videos.
+     */
+    private suspend fun streamPairs(
+        episode: AnsuEpisode,
+        log: (String) -> Unit,
+        onBatch: suspend (List<Pair<Boolean, AnsuVideo>>) -> Unit,
+    ) = io {
+        val hosters = loadHosters(sourceEpisodeFor(episode))
+        log("  $name: ${hosters.size} hoster(s): " + hosters.joinToString { it.hosterName.ifBlank { "?" } }.take(200))
         val gate = Semaphore(HOSTER_PARALLELISM)
         coroutineScope {
-            hosters.map { hoster ->
+            // Aniyomi only loads a lazy hoster once it is picked; here those go last so they never delay the rest.
+            hosters.sortedBy { it.lazy }.map { hoster ->
                 async {
+                    val label = hoster.hosterName.ifBlank { "?" }
                     gate.withPermit {
-                        // One broken hoster must not take the others down with it.
-                        withTimeoutOrNull(HOSTER_TIMEOUT_MS) {
-                            try {
-                                videosOf(hoster).mapNotNull { video -> resolve(video)?.let { video.preferred to it } }
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Throwable) {
-                                android.util.Log.w("AniyomiSource", "$name: hoster '${hoster.hosterName}' failed", e)
-                                emptyList()
+                        try {
+                            val found = withTimeoutOrNull(HOSTER_TIMEOUT_MS) {
+                                listVideos(hoster).mapNotNull { video -> entryFor(hoster, video) }
                             }
-                        }.orEmpty()
+                            when {
+                                found == null -> log("  $name / $label: timed out after ${HOSTER_TIMEOUT_MS / 1000}s")
+                                found.isEmpty() -> log("  $name / $label: no playable video")
+                                else -> {
+                                    val pending = found.count { it.second.resolve != null }
+                                    log("  $name / $label: ${found.size} video(s)" + if (pending > 0) ", $pending resolved when picked" else "")
+                                    onBatch(found)
+                                }
+                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Throwable) {
+                            android.util.Log.w("AniyomiSource", "$name: hoster '$label' failed", e)
+                            log("  $name / $label: ${e::class.java.simpleName}: ${e.message}")
+                        }
                     }
                 }
-            }.awaitAll().flatten()
+            }.awaitAll()
         }
-            // The source's own "preferred" videos go first (Aniyomi plays the first preferred one), then source order.
-            .sortedByDescending { it.first }
-            .map { it.second }
+    }
+
+    /**
+     * The episode as the source itself listed it (Aniyomi hands the source its stored `SEpisode`, with `scanlator`,
+     * `memo`, `date_upload`...). It is rebuilt from Ansu's own fields only when it was never listed in this session.
+     */
+    private fun sourceEpisodeFor(episode: AnsuEpisode): SEpisode {
+        val copy = SEpisode.create()
+        val original = episodeCache[episode.id]
+        if (original != null) {
+            copy.copyFrom(original)
+        } else {
+            copy.url = episode.id
+            copy.name = episode.name
+            copy.episode_number = episode.episodeNumber
+            copy.date_upload = episode.dateUpload
+        }
+        return copy
     }
 
     /**
@@ -219,22 +279,67 @@ class AniyomiSourceAdapter(
         found
     }.getOrDefault(true)
 
-    private suspend fun videosOf(hoster: Hoster): List<Video> {
-        val label = hoster.hosterName.takeUnless { it == Hoster.NO_HOSTER_LIST || it.isBlank() }
-        return source.getVideoList(hoster).map { video ->
-            // Put the hoster name in front of the title so the source sheet can tell servers apart.
-            if (label != null && !video.videoTitle.contains(label, ignoreCase = true)) {
-                video.copy(videoTitle = "$label - ${video.videoTitle}").also { it.url = video.url }
-            } else {
-                video
-            }
+    /**
+     * Lists the videos of a hoster the way Aniyomi's `EpisodeLoader.getVideos` does: the videos the hoster already
+     * carries (or the source's `getVideoList(hoster)`), a legacy video whose URL is still the string "null" asks the
+     * source for it, then `sortVideos`. Nothing is resolved here.
+     */
+    private suspend fun listVideos(hoster: Hoster): List<Video> {
+        val http = source as? AnimeHttpSource
+        val preset = hoster.videoList
+        val videos = when {
+            preset != null && http != null -> parseVideoUrls(http, preset)
+            preset != null -> preset
+            http != null -> parseVideoUrls(http, source.getVideoList(hoster))
+            else -> source.getVideoList(hoster)
         }
+        return if (http != null) with(http) { videos.sortVideos() } else videos
     }
 
-    /** Turns a source video into something the player can open, or null if it cannot be resolved. */
-    private suspend fun resolve(video: Video): AnsuVideo? {
+    /** Library 12-15 sources return videos without a final URL (the string "null"); the source is asked for it. */
+    private suspend fun parseVideoUrls(http: AnimeHttpSource, videos: List<Video>): List<Video> =
+        videos.mapNotNull { video ->
+            if (video.videoUrl != "null") {
+                video
+            } else {
+                try {
+                    video.copy(videoUrl = http.getVideoUrl(video))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    android.util.Log.w("AniyomiSource", "$name: getVideoUrl for '${video.videoTitle}' failed", e)
+                    null
+                }
+            }
+        }
+
+    /**
+     * What the list shows for one video. A source video that is not `initialized` goes through the source's
+     * `resolveVideo` only when it is picked, like Aniyomi (it lists cheaply, then resolves the chosen one); every
+     * other video is already final. The hoster name is added to the title for display only, after resolving,
+     * because a source may read the title it set itself inside `resolveVideo`.
+     */
+    private fun entryFor(hoster: Hoster, video: Video): Pair<Boolean, AnsuVideo>? {
+        val label = hosterLabel(hoster)
+        if (source !is AnimeHttpSource || video.initialized) {
+            return toPlayer(label, video)?.let { video.preferred to it }
+        }
+        val pending = AnsuVideo(
+            url = "",
+            quality = labelled(label, video.videoTitle),
+            sourceLabel = name,
+            resolve = { io { getResolvedVideo(video)?.let { toPlayer(label, it) } } },
+        )
+        return video.preferred to pending
+    }
+
+    /**
+     * Aniyomi's `HosterLoader.getResolvedVideo`: an uninitialized video of an online source goes through the
+     * source's `resolveVideo` (null when that fails, so the video is skipped) and comes back `initialized`.
+     */
+    private suspend fun getResolvedVideo(video: Video): Video? {
         val http = source as? AnimeHttpSource
-        val ready = if (!video.initialized && http != null) {
+        val resolved = if (http != null && !video.initialized) {
             try {
                 http.resolveVideo(video)
             } catch (e: CancellationException) {
@@ -242,29 +347,28 @@ class AniyomiSourceAdapter(
             } catch (e: Throwable) {
                 android.util.Log.w("AniyomiSource", "$name: resolving '${video.videoTitle}' failed", e)
                 null
-            } ?: video
+            }
         } else {
             video
         }
-        val finalUrl = ready.videoUrl.takeIf { it.isNotBlank() && it != "null" }
-            ?: http?.let {
-                try {
-                    it.getVideoUrl(ready)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Throwable) {
-                    android.util.Log.w("AniyomiSource", "$name: getVideoUrl for '${ready.videoTitle}' failed", e)
-                    null
-                }
-            }
-            ?: ready.url.takeIf { it.startsWith("http") }
-            ?: return null
+        return resolved?.copy(initialized = true)
+    }
+
+    private fun hosterLabel(hoster: Hoster): String? =
+        hoster.hosterName.takeUnless { it == Hoster.NO_HOSTER_LIST || it.isBlank() }
+
+    /** Puts the hoster name in front of the title so the source sheet can tell servers apart. */
+    private fun labelled(label: String?, title: String): String =
+        if (label != null && !title.contains(label, ignoreCase = true)) "$label - $title" else title
+
+    /** Turns a final source video into something the player can open, or null if it has no URL. */
+    private fun toPlayer(label: String?, video: Video): AnsuVideo? {
+        if (video.videoUrl.isBlank() || video.videoUrl == "null") return null
         // Streams that need the source's local proxy: start it and point the video at its real port.
-        val withUrl = ready.copy(videoUrl = finalUrl)
-        val playable = if (withUrl.usesHttpServer()) withLocalServer(withUrl) else withUrl
+        val playable = if (video.usesHttpServer()) withLocalServer(video) else video
         return AnsuVideo(
             url = playable.videoUrl,
-            quality = playable.videoTitle,
+            quality = labelled(label, playable.videoTitle),
             sourceLabel = name,
             headers = (
                 playable.headers?.toMultimap()?.mapKeys { it.key.lowercase() }?.mapValues { (_, values) -> values.first() }.orEmpty() +
@@ -342,7 +446,10 @@ class AniyomiSourceAdapter(
         const val LIB_17 = 17.0
         val HOSTER_METHODS = listOf("getHosterList", "hosterListRequest", "hosterListParse")
         const val HOSTER_PARALLELISM = 4
-        const val HOSTER_TIMEOUT_MS = 25_000L
+
+        /** Listing a hoster's videos (the cheap part); resolving a picked video has [RESOLVE_TIMEOUT_MS]. */
+        const val HOSTER_TIMEOUT_MS = 40_000L
+        const val RESOLVE_TIMEOUT_MS = 30_000L
     }
 }
 

@@ -51,6 +51,11 @@ data class Video(
     val subtitleTracks: List<SubtitleTrack> = emptyList(),
     /** Separate audio streams (dubs) the source offers next to the video; [SubtitleTrack] is just a url + language. */
     val audioTracks: List<SubtitleTrack> = emptyList(),
+    /**
+     * Set for a video the source listed without resolving it (Aniyomi library 16 resolves only the video that is
+     * picked): [url] is empty until this is called, and it returns the playable video, or null if it cannot be resolved.
+     */
+    val resolve: (suspend () -> Video?)? = null,
 )
 
 data class SubtitleTrack(val url: String, val lang: String)

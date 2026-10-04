@@ -4,12 +4,17 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.graphics.drawable.Drawable
+import androidx.core.content.pm.PackageInfoCompat
 import com.ansu.anime.extension.aniyomi.AniyomiExtensionLoader
 import com.ansu.anime.extension.api.AnimeCatalogueSource
 import dalvik.system.PathClassLoader
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import android.os.Build
+import java.io.File
+import java.util.zip.ZipFile
 
 /**
  * An extension the app found installed on the device, whether or not it
@@ -24,6 +29,11 @@ data class InstalledExtension(
     val loadError: String? = null,
     /** True for an Aniyomi/Keiyoushi-format APK (declares `tachiyomi.animeextension`) rather than an Ansu one. */
     val isAniyomiFormat: Boolean = false,
+    /** Android version code, used to tell whether a repo offers a newer build. */
+    val versionCode: Long = 0,
+    /** True when the APK was downloaded inside Ansu and lives in its private storage, not installed on the phone. */
+    val isPrivate: Boolean = false,
+    val icon: Drawable? = null,
 ) {
     val isValid: Boolean get() = loadError == null && sources.isNotEmpty()
 }
@@ -54,6 +64,41 @@ class ExtensionManager(private val context: Context) {
         /** Feature + metadata names Aniyomi/Keiyoushi APKs declare, so they can at least be recognised. */
         const val ANIYOMI_FEATURE = "tachiyomi.animeextension"
         const val ANIYOMI_METADATA_CLASS = "tachiyomi.animeextension.class"
+
+        /** Extension files downloaded inside Ansu are kept as `<package>.ext` in this folder of the app's private storage. */
+        private const val PRIVATE_DIR = "exts"
+        private const val PRIVATE_SUFFIX = ".ext"
+    }
+
+    private val privateDir: File get() = File(context.filesDir, PRIVATE_DIR).apply { mkdirs() }
+
+    private fun privateFile(packageName: String) = File(privateDir, packageName + PRIVATE_SUFFIX)
+
+    /** Where the native libraries (`.so`) of a private extension are unpacked. */
+    private fun libsDir(packageName: String) = File(context.filesDir, "exts-libs/$packageName")
+
+    /**
+     * Unpacks the extension's native libraries for this device. An APK loaded from a plain file has no
+     * Android-managed library folder, so without this an extension that bundles a `.so` fails to load.
+     * The first of the device's supported ABIs that the APK actually ships is used.
+     */
+    private fun extractNativeLibs(apk: File, packageName: String) {
+        val dir = libsDir(packageName)
+        dir.deleteRecursively()
+        ZipFile(apk).use { zip ->
+            val libs = zip.entries().asSequence()
+                .filter { !it.isDirectory && it.name.startsWith("lib/") && it.name.endsWith(".so") }
+                .toList()
+            if (libs.isEmpty()) return
+            val abi = Build.SUPPORTED_ABIS.firstOrNull { candidate -> libs.any { it.name.startsWith("lib/$candidate/") } }
+                ?: return
+            dir.mkdirs()
+            libs.filter { it.name.startsWith("lib/$abi/") }.forEach { entry ->
+                val out = File(dir, entry.name.substringAfterLast('/'))
+                zip.getInputStream(entry).use { input -> out.outputStream().use { input.copyTo(it) } }
+                out.setReadOnly()
+            }
+        }
     }
 
     private val prefs = context.getSharedPreferences("extension_sources", Context.MODE_PRIVATE)
@@ -109,9 +154,58 @@ class ExtensionManager(private val context: Context) {
         return (ansuPackages + aniyomiPackages).distinctBy { it.packageName }
     }
 
-    /** Re-scans the device and (re)loads every discoverable extension. Call off the main thread. */
+    /** Reads an extension APK straight from a file, without installing it. Null if it is not a readable extension. */
+    @Suppress("DEPRECATION")
+    private fun readArchive(file: File): PackageInfo? {
+        val flags = PackageManager.GET_META_DATA or PackageManager.GET_CONFIGURATIONS
+        val info = context.packageManager.getPackageArchiveInfo(file.absolutePath, flags) ?: return null
+        info.applicationInfo?.apply {
+            sourceDir = file.absolutePath
+            publicSourceDir = file.absolutePath
+            // Loaders pass this to the class loader so System.loadLibrary finds the unpacked libraries.
+            nativeLibraryDir = libsDir(info.packageName).absolutePath
+        }
+        return info
+    }
+
+    /** Every extension downloaded inside Ansu (see [installPrivate]). */
+    private fun findPrivateExtensions(): List<PackageInfo> =
+        privateDir.listFiles { f -> f.isFile && f.name.endsWith(PRIVATE_SUFFIX) }.orEmpty()
+            .mapNotNull { file -> runCatching { readArchive(file) }.getOrNull() }
+
+    /**
+     * Installs a downloaded extension APK inside Ansu: validates it, moves it into the app's private
+     * storage and loads it. Nothing is installed on the phone, so there is no Android installer prompt.
+     * Android 14+ refuses to load code from a writable file, so the stored copy is made read-only.
+     */
+    fun installPrivate(apk: File): Result<InstalledExtension> = runCatching {
+        val info = readArchive(apk) ?: error("The downloaded file is not a valid extension")
+        val meta = info.applicationInfo?.metaData
+        val isExtension = info.reqFeatures?.any { it.name == ANIYOMI_FEATURE } == true ||
+            !meta?.getString(METADATA_SOURCE_CLASS).isNullOrBlank()
+        if (!isExtension) error("The downloaded file is not an anime extension")
+
+        val target = privateFile(info.packageName)
+        if (target.exists()) {
+            target.setWritable(true)
+            target.delete()
+        }
+        apk.copyTo(target, overwrite = true)
+        apk.delete()
+        target.setReadOnly()
+        extractNativeLibs(target, info.packageName)
+
+        val loaded = reloadAll()
+        loaded.firstOrNull { it.packageName == info.packageName }
+            ?: error("Extension was saved but could not be loaded")
+    }
+
+    /** Re-scans the device and the private folder and (re)loads every discoverable extension. Call off the main thread. */
     fun reloadAll(): List<InstalledExtension> {
-        val loaded = findAvailableExtensions().map { pkgInfo -> loadExtension(pkgInfo) }
+        val privatePackages = findPrivateExtensions()
+        val privateNames = privatePackages.map { it.packageName }.toSet()
+        val loaded = privatePackages.map { loadExtension(it, isPrivate = true) } +
+            findAvailableExtensions().filter { it.packageName !in privateNames }.map { loadExtension(it) }
         val next = LinkedHashMap<Long, AnimeCatalogueSource>()
         builtInSources.forEach { next[it.id] = it }
         loaded.forEach { ext -> ext.sources.forEach { next[it.id] = it } }
@@ -120,7 +214,16 @@ class ExtensionManager(private val context: Context) {
         return loaded
     }
 
-    private fun loadExtension(pkgInfo: PackageInfo): InstalledExtension {
+    private fun loadExtension(pkgInfo: PackageInfo, isPrivate: Boolean = false): InstalledExtension {
+        val icon = runCatching { pkgInfo.applicationInfo?.loadIcon(context.packageManager) }.getOrNull()
+        return loadExtensionInternal(pkgInfo).copy(
+            versionCode = PackageInfoCompat.getLongVersionCode(pkgInfo),
+            isPrivate = isPrivate,
+            icon = icon,
+        )
+    }
+
+    private fun loadExtensionInternal(pkgInfo: PackageInfo): InstalledExtension {
         val pm = context.packageManager
         val appInfo = pkgInfo.applicationInfo
         val label = appInfo?.let { pm.getApplicationLabel(it).toString() } ?: pkgInfo.packageName
@@ -143,7 +246,7 @@ class ExtensionManager(private val context: Context) {
         }
 
         return try {
-            val classLoader = PathClassLoader(appInfo.sourceDir, context.classLoader)
+            val classLoader = PathClassLoader(appInfo.sourceDir, appInfo.nativeLibraryDir, context.classLoader)
             val sources = classNames.mapNotNull { className -> instantiateSource(classLoader, className) }
             InstalledExtension(
                 packageName = pkgInfo.packageName,
@@ -187,7 +290,16 @@ class ExtensionManager(private val context: Context) {
     /** Every source including switched-off ones, for the Extensions screen. */
     fun allSourcesIncludingDisabled(): List<AnimeCatalogueSource> = sourcesById.values.toList()
 
+    /** Removes an extension: a private one is simply deleted, a phone-installed one goes through Android's uninstall prompt. */
     fun uninstall(packageName: String) {
+        val file = privateFile(packageName)
+        if (file.exists()) {
+            file.setWritable(true)
+            file.delete()
+            libsDir(packageName).deleteRecursively()
+            reloadAll()
+            return
+        }
         val uri = android.net.Uri.parse("package:$packageName")
         val intent = Intent(Intent.ACTION_DELETE, uri).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK

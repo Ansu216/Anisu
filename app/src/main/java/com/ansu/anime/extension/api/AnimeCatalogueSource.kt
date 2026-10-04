@@ -31,5 +31,15 @@ interface AnimeCatalogueSource {
     suspend fun getEpisodeList(anime: SAnime): List<SEpisode>
     suspend fun getVideoList(episode: SEpisode): List<Video>
 
+    /**
+     * Same as [getVideoList], but hands over videos as soon as they are ready instead of waiting for every
+     * server of the source (hoster-based sources have several, and one slow server must not hide the rest).
+     * [log] receives one line per server for the diagnostics report.
+     */
+    suspend fun streamVideos(episode: SEpisode, log: (String) -> Unit, onVideos: suspend (List<Video>) -> Unit) {
+        val videos = getVideoList(episode)
+        if (videos.isNotEmpty()) onVideos(videos)
+    }
+
     fun getFilterList(): AnimeFilterList = emptyList()
 }

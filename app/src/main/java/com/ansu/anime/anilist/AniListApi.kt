@@ -548,7 +548,20 @@ class AniListApi(
             year = this["startDate"]?.jsonObject?.get("year")?.jsonPrimitive?.content?.toIntOrNull(),
             format = this["format"]?.jsonPrimitive?.contentOrNull,
             isAdult = this["isAdult"]?.jsonPrimitive?.content == "true",
+            altTitles = allTitles(),
         )
+    }
+
+    /** Every name AniList has for the show (romaji, English, native, synonyms), whichever language is displayed. */
+    private fun JsonObject.allTitles(): List<String> {
+        val titleObj = this["title"] as? JsonObject
+        val names = listOf("romaji", "english", "native").mapNotNull { key ->
+            (titleObj?.get(key) as? JsonPrimitive)?.contentOrNull
+        }
+        val synonyms = (this["synonyms"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull {
+            (it as? JsonPrimitive)?.contentOrNull
+        }
+        return (names + synonyms).filter { it.isNotBlank() }.distinct()
     }
 
     private fun JsonObject.toMediaDetails(): AniListMediaDetails? {
@@ -685,7 +698,8 @@ class AniListApi(
         private const val MEDIA_FIELDS = """
             fragment mediaFields on Media {
               id
-              title { romaji english }
+              title { romaji english native }
+              synonyms
               coverImage { extraLarge }
               bannerImage
               description(asHtml: false)
