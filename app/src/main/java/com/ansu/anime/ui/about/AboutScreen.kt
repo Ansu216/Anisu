@@ -5,6 +5,7 @@ package com.ansu.anime.ui.about
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -157,11 +158,14 @@ private fun IdentityCard() {
                 modifier = Modifier.size(88.dp).clip(CircleShape).background(AnsuColors.BackgroundElevated),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
+                // The launcher logo is a full-colour raster, so it is drawn with Image and
+                // never tinted: `Icon` applies a single-colour tint over the whole bitmap,
+                // which turned the opaque square into a solid block (the "white square").
+                Image(
                     painter = painterResource(R.drawable.ic_launcher_foreground),
-                    contentDescription = null,
-                    tint = AnsuColors.Accent,
-                    modifier = Modifier.size(66.dp),
+                    contentDescription = stringResource(R.string.app_name),
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
             Text(

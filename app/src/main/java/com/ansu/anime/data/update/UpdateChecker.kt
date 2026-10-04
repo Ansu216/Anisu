@@ -24,7 +24,7 @@ class UpdateChecker(private val client: OkHttpClient) {
         runCatching {
             when (channel) {
                 UpdateChannel.RELEASES -> checkReleases(installedVersionName)
-                UpdateChannel.NIGHTLY -> checkNightly(installedVersionCode)
+                UpdateChannel.NIGHTLY -> checkNightly(installedVersionName, installedVersionCode)
             }
         }.getOrElse { error -> UpdateCheckResult.Failed(describe(error, channel)) }
     }
@@ -63,7 +63,7 @@ class UpdateChecker(private val client: OkHttpClient) {
      * The newest published release. `releases/latest` deliberately ignores pre-releases, so a
      * repository that has only ever published pre-releases answers 404 there and the Stable channel
      * used to report "no releases published yet" while the builds were sitting right there. In that
-     * case the full list is read and its newest non-draft entry is taken instead.
+     * case the full list is read and the non-draft entry with the greatest version is taken instead.
      */
     private fun latestRelease(): GitHubRelease {
         runCatching { json.decodeFromString<GitHubRelease>(get(RELEASES_LATEST_URL)) }
@@ -71,8 +71,15 @@ class UpdateChecker(private val client: OkHttpClient) {
             ?.let { return it }
 
         val all = json.decodeFromString<List<GitHubRelease>>(get(RELEASES_LIST_URL))
-        return all.firstOrNull { !it.draft }
-            ?: throw HttpStatusException(404, "No release has been published yet")
+        val published = all.filter { !it.draft }
+        if (published.isEmpty()) throw HttpStatusException(404, "No release has been published yet")
+        // The API returns the list by creation date, which is not the same as the
+        // highest version — a hotfix cut from an older tag, or a re-run that bumps
+        // the run number, would come out on top. Pick the greatest version instead,
+        // so the Stable channel always offers the newest build and never an older one.
+        return published.maxWithOrNull { a, b ->
+            compareVersions(a.tagName.removePrefix("v").trim(), b.tagName.removePrefix("v").trim())
+        } ?: published.first()
     }
 
     /**
@@ -116,10 +123,18 @@ class UpdateChecker(private val client: OkHttpClient) {
             ?.take(120)
             ?.takeIf { it.isNotBlank() }
 
-    private fun checkNightly(installedVersionCode: Int): UpdateCheckResult {
+    private fun checkNightly(installedVersionName: String, installedVersionCode: Int): UpdateCheckResult {
         val manifest = json.decodeFromString<NightlyManifest>(get(NIGHTLY_JSON_URL))
         if (manifest.versionCode <= 0) return UpdateCheckResult.Failed("The nightly manifest is empty")
-        if (manifest.versionCode <= installedVersionCode) return UpdateCheckResult.UpToDate(manifest.versionName)
+        // The published `versionCode` is the build hour (YYYYMMDDHH), so several
+        // builds in the same hour share it. Comparing only the code therefore
+        // reported "up to date" for a newer build that happened later that hour;
+        // the version *name* carries the minute, so either being newer counts.
+        val newerByName = manifest.versionName.isNotBlank() &&
+            !installedVersionName.isBlank() &&
+            isNewerVersion(manifest.versionName, installedVersionName)
+        val newerByCode = manifest.versionCode > installedVersionCode
+        if (!newerByName && !newerByCode) return UpdateCheckResult.UpToDate(manifest.versionName)
 
         val notes = buildString {
             append("Nightly build from ${manifest.builtAt ?: "an unknown date"}.")
@@ -200,19 +215,27 @@ private class HttpStatusException(val code: Int, message: String = "GitHub retur
  * and two pre-releases are ordered by their dot-separated identifiers (numeric ones
  * numerically, and a numeric identifier ranks below an alphanumeric one).
  */
-internal fun isNewerVersion(candidate: String, installed: String): Boolean {
-    val (candidateNumbers, candidatePre) = splitVersion(candidate)
-    val (installedNumbers, installedPre) = splitVersion(installed)
+internal fun isNewerVersion(candidate: String, installed: String): Boolean =
+    compareVersions(candidate, installed) > 0
 
-    val byNumbers = compareComponents(candidateNumbers, installedNumbers)
-    if (byNumbers != 0) return byNumbers > 0
+/**
+ * Full SemVer ordering of two version strings: negative when [a] is older, zero when
+ * they are equal and positive when [a] is newer. Used both to answer "is this an update?"
+ * and to pick the greatest of several published releases.
+ */
+internal fun compareVersions(a: String, b: String): Int {
+    val (aNumbers, aPre) = splitVersion(a)
+    val (bNumbers, bPre) = splitVersion(b)
+
+    val byNumbers = compareComponents(aNumbers, bNumbers)
+    if (byNumbers != 0) return byNumbers
 
     return when {
-        candidatePre == null && installedPre == null -> false
+        aPre == null && bPre == null -> 0
         // 1.0.0 supersedes its own pre-releases (1.0.0-rc.1 and the like).
-        candidatePre == null -> true
-        installedPre == null -> false
-        else -> comparePreRelease(candidatePre, installedPre) > 0
+        aPre == null -> 1
+        bPre == null -> -1
+        else -> comparePreRelease(aPre, bPre)
     }
 }
 

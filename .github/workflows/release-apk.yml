@@ -48,6 +48,7 @@ jobs:
     outputs:
       tag: ${{ steps.rel.outputs.tag }}
       version: ${{ steps.rel.outputs.version }}
+      version_code: ${{ steps.rel.outputs.version_code }}
       prerelease: ${{ steps.rel.outputs.prerelease }}
       channel: ${{ steps.rel.outputs.channel }}
 
@@ -73,6 +74,17 @@ jobs:
           # SemVer pre-release: anything after a "-" in the version (1.2.3-rc.1,
           # 2.0.0-beta, …) is a pre-release; a bare x.y.z is stable. The manual
           # input can override the derivation.
+          # A date-based tag (v2026.09.30.1946) becomes the same YYYYMMDDHH
+          # versionCode the nightly workflow uses, so a release installed over a
+          # nightly is an upgrade (never Android's "app not installed" downgrade
+          # refusal) and the two channels share one comparable number. Any other
+          # semver tag keeps the run number.
+          if [[ "$VERSION" =~ ^([0-9]{4})\.([0-9]{2})\.([0-9]{2})\.([0-9]{4})$ ]]; then
+            VERSION_CODE="${BASH_REMATCH[1]}${BASH_REMATCH[2]}${BASH_REMATCH[3]}${BASH_REMATCH[4]:0:2}"
+          else
+            VERSION_CODE="${{ github.run_number }}"
+          fi
+
           if [[ "$VERSION" == *-* ]]; then DERIVED="prerelease"; else DERIVED="stable"; fi
           case "${CHANNEL_INPUT:-auto}" in
             stable)     CHANNEL="stable";     PRERELEASE=false ;;
@@ -83,9 +95,10 @@ jobs:
 
           echo "tag=$TAG"               >> "$GITHUB_OUTPUT"
           echo "version=$VERSION"       >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "channel=$CHANNEL"       >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
-          echo "Releasing tag=$TAG version=$VERSION channel=$CHANNEL prerelease=$PRERELEASE"
+          echo "Releasing tag=$TAG version=$VERSION versionCode=$VERSION_CODE channel=$CHANNEL prerelease=$PRERELEASE"
 
   # ---------------------------------------------------------------------------
   # 2) The variants build in parallel. `fail-fast: false` keeps the other leg
@@ -139,7 +152,7 @@ jobs:
             *) echo "::error::Unknown variant '${{ matrix.variant }}'"; exit 1 ;;
           esac
           ./gradlew --no-daemon --stacktrace "$TASK" \
-            -PversionCode="${{ github.run_number }}" \
+            -PversionCode="${{ needs.plan.outputs.version_code }}" \
             -PversionName="${{ needs.plan.outputs.version }}"
 
       - name: Verify the APK is signed (an unsigned build is never published)

@@ -35,6 +35,7 @@ import com.ansu.anime.ui.navigation.AnsuNavGraph
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuTheme
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -73,6 +74,15 @@ class MainActivity : ComponentActivity() {
                 // Dismissing the in-app banner only hides this version, so the next build still shows.
                 var dismissedVersion by rememberSaveable { mutableStateOf<String?>(null) }
                 val showUpdateBanner = update != null && update.versionName != dismissedVersion
+
+                // The in-app banner is a heads-up: it hides itself after four seconds so it never
+                // stays pinned over the screen. Dismissing it by hand does the same thing earlier.
+                LaunchedEffect(showUpdateBanner) {
+                    if (showUpdateBanner) {
+                        delay(BANNER_AUTO_DISMISS_MS)
+                        dismissedVersion = update?.versionName
+                    }
+                }
 
                 LaunchedEffect(openUpdatesRequest.value) {
                     if (openUpdatesRequest.value) {
@@ -154,5 +164,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** Intent extra set by [com.ansu.anime.data.update.UpdateNotifier] when its notification is tapped. */
         const val EXTRA_OPEN_UPDATES = "com.ansu.anime.extra.OPEN_UPDATES"
+
+        /** How long the in-app update banner stays before it hides itself (4 seconds). */
+        private const val BANNER_AUTO_DISMISS_MS = 4_000L
     }
 }
