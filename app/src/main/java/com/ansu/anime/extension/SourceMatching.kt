@@ -12,7 +12,16 @@ import kotlinx.coroutines.withTimeoutOrNull
 internal const val BUILT_IN_SOURCE_ID = 1L
 
 private const val MIN_MATCH_SCORE = 0.5
-private const val SOURCE_TIMEOUT_MS = 20_000L
+private const val SOURCE_TIMEOUT_MS = 12_000L
+
+/** Process-wide episode list cache so reopening a title is instant (stale-while-revalidate). */
+object EpisodeListCache {
+    private class Entry(val episodes: List<SEpisode>, val at: Long)
+    private val map = java.util.concurrent.ConcurrentHashMap<String, Entry>()
+    fun get(key: String): List<SEpisode>? = map[key]?.episodes
+    fun ageMs(key: String): Long = map[key]?.let { System.currentTimeMillis() - it.at } ?: Long.MAX_VALUE
+    fun put(key: String, episodes: List<SEpisode>) { if (episodes.isNotEmpty()) map[key] = Entry(episodes, System.currentTimeMillis()) }
+}
 
 private class SourceMatch(val source: AnimeCatalogueSource, val score: Double, val episodes: List<SEpisode>)
 
@@ -24,15 +33,20 @@ private class SourceMatch(val source: AnimeCatalogueSource, val score: Double, v
  * A source that fails, times out or finds nothing is skipped; it never hides the others.
  * Episode numbers are united across sources, so a source with a shorter list does not cut the others off.
  */
-suspend fun ExtensionManager.findEpisodesByTitle(anime: SAnime, extraTitles: List<String> = emptyList()): List<SEpisode> = coroutineScope {
+suspend fun ExtensionManager.findEpisodesByTitle(
+    anime: SAnime,
+    extraTitles: List<String> = emptyList(),
+    onPartial: ((List<SEpisode>) -> Unit)? = null,
+): List<SEpisode> = coroutineScope {
     val candidates = allSources().filter { it.id != BUILT_IN_SOURCE_ID }
     if (candidates.isEmpty()) return@coroutineScope emptyList()
     val allTitles = (listOf(anime.title) + extraTitles).distinct()
-    val queries = allTitles.flatMap { titleQueries(it) }.distinct().take(8)
-    val matches = candidates
+    val queries = allTitles.flatMap { titleQueries(it) }.distinct().take(5)
+    val matches = mutableListOf<SourceMatch>()
+    candidates
         .map { source ->
             async {
-                withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
+                val match = withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
                     try {
                         matchIn(source, allTitles, queries)
                     } catch (e: kotlinx.coroutines.CancellationException) {
@@ -42,12 +56,15 @@ suspend fun ExtensionManager.findEpisodesByTitle(anime: SAnime, extraTitles: Lis
                         null
                     }
                 }
+                // Publish as each source finishes so the fastest one shows episodes straight away.
+                if (match != null) synchronized(matches) {
+                    matches += match
+                    onPartial?.invoke(mergeMatches(matches.sortedByDescending { it.score }))
+                }
             }
         }
         .awaitAll()
-        .filterNotNull()
-        .sortedByDescending { it.score }
-    mergeMatches(matches)
+    synchronized(matches) { mergeMatches(matches.sortedByDescending { it.score }) }
 }
 
 /**

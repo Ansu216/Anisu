@@ -15,6 +15,7 @@ import com.ansu.anime.data.repository.EpisodeMetadataRepository
 import com.ansu.anime.data.repository.LocalListRepository
 import com.ansu.anime.extension.BUILT_IN_SOURCE_ID
 import com.ansu.anime.extension.ExtensionManager
+import com.ansu.anime.extension.EpisodeListCache
 import com.ansu.anime.extension.findEpisodesByTitle
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -97,8 +98,12 @@ class DetailsViewModel(
                 )
             }
             viewModelScope.launch {
+                val cacheKey = "ep-${current.anilistId ?: current.id}"
+                // Show the last known list instantly; only re-fetch when it is older than 5 minutes.
+                EpisodeListCache.get(cacheKey)?.let { rawEpisodes = it; publishEpisodes(current, finished = true) }
+                if (EpisodeListCache.ageMs(cacheKey) < 5 * 60_000L) return@launch
                 runCatching { loadEpisodes(current) { partial -> rawEpisodes = partial; publishEpisodes(current, finished = false) } }
-                    .onSuccess { rawEpisodes = it }
+                    .onSuccess { rawEpisodes = it; EpisodeListCache.put(cacheKey, it) }
                     .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
                 publishEpisodes(current, finished = true)
             }
@@ -170,15 +175,20 @@ class DetailsViewModel(
                         emptyList()
                     }
                 }
+                var ownSoFar: List<SEpisode> = emptyList()
                 val foundDeferred = async {
                     runCatching {
-                        extensionManager.findEpisodesByTitle(
-                            anime,
-                            extraTitles = anime.anilistId?.let { aniListRepository.getAllTitles(it) }.orEmpty(),
-                        )
+                        // Alternate titles only improve matching; never let a slow AniList call hold the search up.
+                        val extra = anime.anilistId?.let { id ->
+                            kotlinx.coroutines.withTimeoutOrNull(2_000) { aniListRepository.getAllTitles(id) }
+                        }.orEmpty()
+                        extensionManager.findEpisodesByTitle(anime, extraTitles = extra) { partial ->
+                            onPartial(com.ansu.anime.extension.foldOriginEpisodes(partial, origin.sourceId, ownSoFar))
+                        }
                     }.getOrDefault(emptyList())
                 }
                 val ownEpisodes = ownDeferred.await()
+                ownSoFar = ownEpisodes
                 if (ownEpisodes.isNotEmpty()) onPartial(ownEpisodes)
                 val episodes = com.ansu.anime.extension.foldOriginEpisodes(foundDeferred.await(), origin.sourceId, ownEpisodes)
                     .ifEmpty { ownEpisodes }

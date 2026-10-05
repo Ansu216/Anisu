@@ -67,6 +67,7 @@ class AppContainer(context: Context) {
 
     val aniListAuthManager: AniListAuthManager = AniListAuthManager(appContext)
     val appearancePrefs: AppearancePrefs = AppearancePrefs(appContext)
+    val playerPrefs: com.ansu.anime.data.prefs.PlayerPrefs = com.ansu.anime.data.prefs.PlayerPrefs(appContext)
 
     val aniListApi: AniListApi = AniListApi(okHttpClient, aniListAuthManager) { appearancePrefs.titleLanguage.value }
     val aniListRepository: AniListRepository = AniListRepository(aniListApi, aniListAuthManager, apiErrorHandler)

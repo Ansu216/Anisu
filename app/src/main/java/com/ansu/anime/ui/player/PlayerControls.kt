@@ -90,6 +90,8 @@ class PlayerActions(
     val onEpisodes: () -> Unit,
     val onSettings: () -> Unit,
     val onSkipOutro: () -> Unit,
+    /** Seconds the back/forward buttons jump (Settings > Player and streaming). */
+    val seekSeconds: Int = 15,
 )
 
 private val SeekTrackColor = Color(0xFF4A4660)
@@ -231,9 +233,9 @@ private fun TransportRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         EpisodeSkipButton(Icons.Rounded.SkipPrevious, "Previous episode", hasPrev, iconScale, actions.onPrevEpisode)
-        SeekGlyph(forward = false, scale = iconScale, onClick = { actions.onSeekBy(-15_000) })
+        SeekGlyph(forward = false, seconds = actions.seekSeconds, scale = iconScale, onClick = { actions.onSeekBy(-actions.seekSeconds * 1000L) })
         PlayPauseGlyph(isPlaying = isPlaying, scale = iconScale, onClick = actions.onPlayPause)
-        SeekGlyph(forward = true, scale = iconScale, onClick = { actions.onSeekBy(15_000) })
+        SeekGlyph(forward = true, seconds = actions.seekSeconds, scale = iconScale, onClick = { actions.onSeekBy(actions.seekSeconds * 1000L) })
         EpisodeSkipButton(Icons.Rounded.SkipNext, "Next episode", hasNext, iconScale, actions.onNextEpisode)
     }
 }
@@ -252,18 +254,18 @@ private fun EpisodeSkipButton(icon: ImageVector, description: String, enabled: B
 
 /** A circular "replay" arrow with the seek step written inside (Material has no 15-second icon). */
 @Composable
-private fun SeekGlyph(forward: Boolean, scale: Float, onClick: () -> Unit) {
+private fun SeekGlyph(forward: Boolean, seconds: Int, scale: Float, onClick: () -> Unit) {
     Box(
         modifier = Modifier.size((48 * scale).dp).clip(CircleShape).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             Icons.Rounded.Replay,
-            contentDescription = if (forward) "Forward 15 seconds" else "Back 15 seconds",
+            contentDescription = if (forward) "Forward $seconds seconds" else "Back $seconds seconds",
             tint = Color.White,
             modifier = Modifier.size((46 * scale).dp).graphicsLayer { scaleX = if (forward) -1f else 1f },
         )
-        Text("15", color = Color.White, fontSize = (11 * scale).sp, fontWeight = FontWeight.Bold)
+        Text("$seconds", color = Color.White, fontSize = (11 * scale).sp, fontWeight = FontWeight.Bold)
     }
 }
 

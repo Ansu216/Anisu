@@ -40,6 +40,7 @@ object Dest {
     const val SCHEDULE = "schedule"
     const val SETTINGS = "settings"
     const val APPEARANCE = "appearance"
+    const val PLAYER_STREAMING = "player_streaming"
     const val ABOUT = "about"
     const val UPDATES = "updates"
     const val CONTRIBUTORS = "contributors"
@@ -129,6 +130,9 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         }
         composable(Dest.APPEARANCE) {
             AppearanceScreen(container = container, navController = navController)
+        }
+        composable(Dest.PLAYER_STREAMING) {
+            com.ansu.anime.ui.playersettings.PlayerStreamingScreen(container = container, navController = navController)
         }
         composable(Dest.ABOUT) {
             AboutScreen(container = container, navController = navController)

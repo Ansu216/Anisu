@@ -94,6 +94,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     container.diagnostics,
                     container.aniListRepository,
                     container.aniSkipRepository,
+                    container.playerPrefs,
                 )
             }
         },
@@ -102,6 +103,11 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     var sheet by remember { mutableStateOf<PlayerSheet?>(null) }
     var locked by remember { mutableStateOf(false) }
     var fitIndex by remember { mutableIntStateOf(0) }
+    val doubleTapSeek by container.playerPrefs.doubleTapSeek.collectAsStateWithLifecycle()
+    val brightnessGesture by container.playerPrefs.brightnessGesture.collectAsStateWithLifecycle()
+    val volumeGesture by container.playerPrefs.volumeGesture.collectAsStateWithLifecycle()
+    val skipSeconds by container.playerPrefs.skipSeconds.collectAsStateWithLifecycle()
+    val gestureConfig = PlayerGestureConfig(doubleTapSeek, brightnessGesture, volumeGesture, skipSeconds, enabled = !locked)
 
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
@@ -190,6 +196,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         onEpisodes = { sheet = PlayerSheet.EPISODES },
         onSettings = { sheet = PlayerSheet.SETTINGS },
         onSkipOutro = viewModel::skipCurrentSegment,
+        seekSeconds = skipSeconds,
     )
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
@@ -204,6 +211,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 onSkip = actions.onSkipOutro,
                 onTap = onScreenTap,
                 onBack = actions.onBack,
+                gestures = gestureConfig,
+                onSeekBy = viewModel::seekBy,
             ) {
                 if (locked) {
                     LockedOverlay(onUnlock = { locked = false })
@@ -233,6 +242,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 onSkip = actions.onSkipOutro,
                     onTap = onScreenTap,
                     onBack = actions.onBack,
+                    gestures = gestureConfig,
+                    onSeekBy = viewModel::seekBy,
                 ) {
                     if (locked) {
                         LockedOverlay(onUnlock = { locked = false })
@@ -305,6 +316,8 @@ private fun PlayerSurface(
     resizeMode: Int,
     onTap: () -> Unit,
     onBack: () -> Unit,
+    gestures: PlayerGestureConfig = PlayerGestureConfig(),
+    onSeekBy: (Long) -> Unit = {},
     skipLabel: String? = null,
     skipProgress: Float = 0f,
     onSkip: () -> Unit = {},
@@ -323,11 +336,7 @@ private fun PlayerSurface(
             modifier = Modifier.fillMaxSize(),
         )
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onTap() },
-        )
+        PlayerGestureLayer(config = gestures, onTap = onTap, onSeekBy = onSeekBy)
 
         when {
             state.isLoadingSources -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))

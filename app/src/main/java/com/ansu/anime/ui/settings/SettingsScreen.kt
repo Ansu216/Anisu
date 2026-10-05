@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -99,6 +100,16 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                     subtitle = "Floating bar roundness, opacity and blur",
                     showDivider = false,
                     onClick = { navController.navigate(Dest.APPEARANCE) },
+                )
+            }
+
+            SettingsGroup(title = "Playback") {
+                SettingsRow(
+                    icon = Icons.Filled.PlayCircle,
+                    title = "Player and streaming",
+                    subtitle = "Double tap skip, brightness and volume gestures",
+                    showDivider = false,
+                    onClick = { navController.navigate(Dest.PLAYER_STREAMING) },
                 )
             }
 

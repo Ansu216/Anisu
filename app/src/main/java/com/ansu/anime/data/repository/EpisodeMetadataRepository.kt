@@ -38,17 +38,27 @@ class EpisodeMetadataRepository(
     private val json = Json { ignoreUnknownKeys = true }
 
     /** Episode number -> details. Empty when nothing could be fetched. */
+    private val metaCache = java.util.concurrent.ConcurrentHashMap<Int, Map<Int, EpisodeMeta>>()
+
     suspend fun getEpisodeMeta(anilistId: Int): Map<Int, EpisodeMeta> {
-        val primary = try {
-            fetchAniZip(anilistId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // Optional extra data: log it, but never interrupt the user over missing thumbnails.
-            errors.report("Loading episode details", e, quiet = true)
-            emptyMap()
+        metaCache[anilistId]?.let { return it }
+        // ani.zip and AniList are independent, so ask both at once instead of one after the other.
+        val (primary, streaming) = kotlinx.coroutines.coroutineScope {
+            val a = kotlinx.coroutines.async {
+                try {
+                    fetchAniZip(anilistId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Optional extra data: log it, but never interrupt the user over missing thumbnails.
+                    errors.report("Loading episode details", e, quiet = true)
+                    emptyMap()
+                }
+            }
+            val b = kotlinx.coroutines.async { aniList.getStreamingEpisodes(anilistId) }
+            a.await() to b.await()
         }
-        val fallback = aniList.getStreamingEpisodes(anilistId).let { list ->
+        val fallback = streaming.let { list ->
             val byNumber = mutableMapOf<Int, EpisodeMeta>()
             list.forEachIndexed { index, entry ->
                 val match = STREAMING_TITLE.matchEntire(entry.title.trim())
@@ -58,7 +68,7 @@ class EpisodeMetadataRepository(
             }
             byNumber
         }
-        return (primary.keys + fallback.keys).associateWith { number ->
+        val merged = (primary.keys + fallback.keys).associateWith { number ->
             val a = primary[number]
             val b = fallback[number]
             EpisodeMeta(
@@ -68,6 +78,8 @@ class EpisodeMetadataRepository(
                 airDate = a?.airDate ?: b?.airDate,
             )
         }
+        if (merged.isNotEmpty()) metaCache[anilistId] = merged
+        return merged
     }
 
     private suspend fun fetchAniZip(anilistId: Int): Map<Int, EpisodeMeta> = withContext(Dispatchers.IO) {

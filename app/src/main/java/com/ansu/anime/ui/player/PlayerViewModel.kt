@@ -45,10 +45,15 @@ data class PlayableSource(
     val audioTracks: List<SubtitleTrack> = emptyList(),
     /** Set for a source the extension listed without resolving it: [url] is empty until this returns the playable one. */
     val resolve: (suspend () -> PlayableSource?)? = null,
+    /** The extension this stream came from; used to order streams by the person's source priority. */
+    val sourceId: Long? = null,
 )
 
 /** How long a picked source may take to resolve before the next one is tried. */
 private const val RESOLVE_TIMEOUT_MS = 30_000L
+
+/** How long the first pick waits for a higher-priority source before playing what it already has. */
+private const val PRIORITY_GRACE_MS = 3_000L
 
 /** One selectable audio or subtitle track the player reported. */
 data class TrackOption(
@@ -89,6 +94,7 @@ class PlayerViewModel(
     private val diagnostics: Diagnostics? = null,
     private val aniListRepository: com.ansu.anime.anilist.AniListRepository? = null,
     private val aniSkipRepository: com.ansu.anime.data.repository.AniSkipRepository? = null,
+    private val playerPrefs: com.ansu.anime.data.prefs.PlayerPrefs? = null,
 ) : ViewModel() {
 
     // Large buffers + a small start threshold: playback starts after a few seconds of data and the
@@ -105,6 +111,13 @@ class PlayerViewModel(
 
     // Declared before init{}: loadSources() runs from init and assigns these.
     private var loadJob: kotlinx.coroutines.Job? = null
+    private var graceJob: kotlinx.coroutines.Job? = null
+
+    /** Sources asked for the current episode; lets the first pick wait briefly for a higher-priority one. */
+    @Volatile
+    private var expectedSourceIds: List<Long> = emptyList()
+
+    private fun rankOf(sourceId: Long?): Int = playerPrefs?.rankOf(sourceId) ?: 0
     private var playbackJob: kotlinx.coroutines.Job? = null
     private var skipJob: kotlinx.coroutines.Job? = null
 
@@ -162,13 +175,23 @@ class PlayerViewModel(
         diagnostics?.log(LogCategory.PLAYBACK, "Resolving sources for ${anime.title} E${episode.episodeNumber} (ep id='${episode.id}')")
         loadSkipTimes(anime, episode)
         loadJob?.cancel()
+        graceJob?.cancel()
+        expectedSourceIds = emptyList()
         loadJob = viewModelScope.launch {
             var first = true
             val collected = mutableListOf<PlayableSource>()
+            fun startNow() {
+                graceJob?.cancel()
+                first = false
+                selectSource(collected.first())
+                resumeIfSaved(anime, episode)
+            }
             val onBatch: (List<PlayableSource>) -> Unit = { batch ->
                 val fresh = batch.filter { b -> b.url.isBlank() || collected.none { it.url == b.url } }
                 if (fresh.isNotEmpty()) {
                     collected += fresh
+                    // The list follows the person's source priority; within one source, arrival order is kept.
+                    collected.sortWith(compareBy { rankOf(it.sourceId) })
                     _uiState.value = _uiState.value.copy(isLoadingSources = false, sources = collected.toList(), error = null)
                     if (!first && _uiState.value.error != null) {
                         // Earlier streams all failed; a later source just answered, so try it.
@@ -176,9 +199,19 @@ class PlayerViewModel(
                         selectSource(fresh.first())
                     }
                     if (first) {
-                        first = false
-                        selectSource(collected.first())
-                        resumeIfSaved(anime, episode)
+                        // Start at once when the best-ranked source being asked has answered. Otherwise give
+                        // it a few seconds to catch up, so a fast low-priority source does not win by speed alone.
+                        val bestWanted = expectedSourceIds.minOfOrNull { rankOf(it) }
+                        val haveBest = bestWanted == null || rankOf(collected.first().sourceId) <= bestWanted
+                        if (haveBest) {
+                            startNow()
+                        } else {
+                            graceJob?.cancel()
+                            graceJob = viewModelScope.launch {
+                                delay(PRIORITY_GRACE_MS)
+                                if (first && collected.isNotEmpty()) startNow()
+                            }
+                        }
                     }
                 }
             }
@@ -272,6 +305,7 @@ class PlayerViewModel(
                 // list as soon as that source answers, so a slow or broken source never blocks the rest.
                 val candidates = (listOf(enrichedEpisode.copy(alternates = emptyList())) + enrichedEpisode.alternates)
                     .distinctBy { it.sourceId ?: origin.sourceId }
+                expectedSourceIds = candidates.map { it.sourceId ?: origin.sourceId }
                 kotlinx.coroutines.coroutineScope {
                     candidates.map { candidate ->
                         async {
@@ -283,7 +317,7 @@ class PlayerViewModel(
                                 // and what arrived before the timeout is kept.
                                 kotlinx.coroutines.withTimeout(60_000L) {
                                     source.streamVideos(candidate, { line -> diagnostics?.log(LogCategory.PLAYBACK, line) }) { videos ->
-                                        val mapped = videos.map { video -> video.toPlayable() }
+                                        val mapped = videos.map { video -> video.toPlayable().copy(sourceId = source.id) }
                                         total.addAndGet(mapped.size)
                                         if (mapped.isNotEmpty()) withContext(Dispatchers.Main) { onBatch(mapped) }
                                     }
