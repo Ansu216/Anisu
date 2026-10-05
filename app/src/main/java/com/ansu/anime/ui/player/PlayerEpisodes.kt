@@ -74,7 +74,7 @@ fun EpisodeRow(episode: SEpisode, current: Boolean, onClick: () -> Unit, modifie
                 .aspectRatio(16f / 9f)
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color.White.copy(alpha = 0.08f))
-                .then(if (current) Modifier.border(1.5.dp, Color.White, RoundedCornerShape(8.dp)) else Modifier),
+                .then(if (current) Modifier.border(1.5.dp, com.ansu.anime.ui.theme.AnsuColors.Accent, RoundedCornerShape(8.dp)) else Modifier),
         ) {
             if (!episode.thumbnailUrl.isNullOrBlank()) {
                 AsyncImage(

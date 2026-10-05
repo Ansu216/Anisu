@@ -342,19 +342,19 @@ fun StreamCard(
             Text(
                 text = resolution,
                 style = MaterialTheme.typography.labelMedium,
-                color = if (isSelected) Color.Black else Color.White,
+                color = if (isSelected) AnsuColors.OnAccent else Color.White,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
             )
             Text(
                 text = source,
                 style = MaterialTheme.typography.labelSmall,
-                color = if (isSelected) Color.Black.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.7f),
+                color = if (isSelected) AnsuColors.OnAccent.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.7f),
                 fontSize = 10.sp,
             )
             Text(
                 text = "${delay}ms",
                 style = MaterialTheme.typography.labelSmall,
-                color = if (isSelected) Color.Black.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.7f),
+                color = if (isSelected) AnsuColors.OnAccent.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.7f),
                 fontSize = 10.sp,
             )
         }
@@ -380,7 +380,7 @@ fun SubtitleLanguageChip(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = if (isSelected) Color.Black else Color.White,
+            color = if (isSelected) AnsuColors.OnAccent else Color.White,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -407,7 +407,7 @@ fun SubtitleSizeButton(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = if (isSelected) Color.Black else Color.White,
+            color = if (isSelected) AnsuColors.OnAccent else Color.White,
         )
     }
 }
@@ -432,7 +432,7 @@ fun BackgroundOption(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = if (isSelected) Color.Black else Color.White,
+            color = if (isSelected) AnsuColors.OnAccent else Color.White,
         )
     }
 }
@@ -457,7 +457,7 @@ fun SubtitlePositionButton(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = if (isSelected) Color.Black else Color.White,
+            color = if (isSelected) AnsuColors.OnAccent else Color.White,
         )
     }
 }
@@ -482,7 +482,7 @@ fun LanguageToggleButton(
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            color = if (isSelected) Color.Black else Color.White,
+            color = if (isSelected) AnsuColors.OnAccent else Color.White,
         )
     }
 }

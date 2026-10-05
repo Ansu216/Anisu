@@ -68,6 +68,9 @@ private enum class ListTab(val label: String) {
     Watching("Watching"),
     Planning("Planning"),
     Completed("Completed"),
+    Paused("Paused"),
+    Dropped("Dropped"),
+    Repeating("Repeating"),
 }
 
 @Composable
@@ -80,11 +83,15 @@ fun MySpaceScreen(
     val isLoggedIn by container.aniListRepository.isLoggedIn.collectAsStateWithLifecycle()
     val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
 
-    var selected by remember { mutableStateOf(ListTab.Watching) }
+    val savedTab by container.appearancePrefs.mySpaceTab.collectAsStateWithLifecycle()
+    val selected = ListTab.entries.firstOrNull { it.name == savedTab } ?: ListTab.Watching
     var liked by remember { mutableStateOf<List<AniListMedia>>(emptyList()) }
     var watching by remember { mutableStateOf<List<AniListMedia>>(emptyList()) }
     var planning by remember { mutableStateOf<List<AniListMedia>>(emptyList()) }
     var completed by remember { mutableStateOf<List<AniListMedia>>(emptyList()) }
+    var paused by remember { mutableStateOf<List<AniListMedia>>(emptyList()) }
+    var dropped by remember { mutableStateOf<List<AniListMedia>>(emptyList()) }
+    var repeating by remember { mutableStateOf<List<AniListMedia>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var isSyncing by remember { mutableStateOf(false) }
     var reloadKey by remember { mutableIntStateOf(0) }
@@ -96,6 +103,9 @@ fun MySpaceScreen(
     val localWatching by remember { container.localListRepository.withStatus(ListStatus.CURRENT) }.collectAsStateWithLifecycle(initialValue = emptyList())
     val localPlanning by remember { container.localListRepository.withStatus(ListStatus.PLANNING) }.collectAsStateWithLifecycle(initialValue = emptyList())
     val localCompleted by remember { container.localListRepository.withStatus(ListStatus.COMPLETED) }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val localPaused by remember { container.localListRepository.withStatus(ListStatus.PAUSED) }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val localDropped by remember { container.localListRepository.withStatus(ListStatus.DROPPED) }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val localRepeating by remember { container.localListRepository.withStatus(ListStatus.REPEATING) }.collectAsStateWithLifecycle(initialValue = emptyList())
 
     // viewer is loaded asynchronously by the repository, so key on it as well as login state.
     LaunchedEffect(isLoggedIn, viewer?.id, reloadKey, titleLanguage) {
@@ -105,9 +115,13 @@ fun MySpaceScreen(
             watching = container.aniListRepository.getCurrentlyWatching().map { it.media }
             planning = container.aniListRepository.getPlanning().map { it.media }
             completed = container.aniListRepository.getCompleted().map { it.media }
+            paused = container.aniListRepository.getPaused().map { it.media }
+            dropped = container.aniListRepository.getDropped().map { it.media }
+            repeating = container.aniListRepository.getRepeating().map { it.media }
             isLoading = false
         } else {
             liked = emptyList(); watching = emptyList(); planning = emptyList(); completed = emptyList()
+            paused = emptyList(); dropped = emptyList(); repeating = emptyList()
             isLoading = false
         }
     }
@@ -117,6 +131,9 @@ fun MySpaceScreen(
         ListTab.Watching -> if (isLoggedIn) watching else localWatching
         ListTab.Planning -> if (isLoggedIn) planning else localPlanning
         ListTab.Completed -> if (isLoggedIn) completed else localCompleted
+        ListTab.Paused -> if (isLoggedIn) paused else localPaused
+        ListTab.Dropped -> if (isLoggedIn) dropped else localDropped
+        ListTab.Repeating -> if (isLoggedIn) repeating else localRepeating
     }
 
     Scaffold(
@@ -184,7 +201,7 @@ fun MySpaceScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 ListTab.entries.forEach { tab ->
-                    ListChip(text = tab.label, selected = tab == selected, onClick = { selected = tab })
+                    ListChip(text = tab.label, selected = tab == selected, onClick = { container.appearancePrefs.setMySpaceTab(tab.name) })
                 }
             }
 
@@ -249,7 +266,7 @@ private fun ProfileHeader(name: String?, avatarUrl: String?, isLoggedIn: Boolean
         if (!isLoggedIn) {
             Button(
                 onClick = onConnect,
-                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.Background),
+                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
                 shape = RoundedCornerShape(20.dp),
             ) { Text("Connect", fontWeight = FontWeight.Bold) }
         }
@@ -283,7 +300,7 @@ private fun ListChip(text: String, selected: Boolean, onClick: () -> Unit) {
         Box(
             modifier = Modifier.clip(shape).background(AnsuColors.Accent).clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 9.dp),
             contentAlignment = Alignment.Center,
-        ) { Text(text, color = AnsuColors.Background, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
+        ) { Text(text, color = AnsuColors.OnAccent, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
     } else {
         FrostedGlassCard(modifier = Modifier.clickable(onClick = onClick), shape = shape, tintAlpha = 0.45f) {
             Text(

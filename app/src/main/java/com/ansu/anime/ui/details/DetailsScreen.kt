@@ -118,11 +118,25 @@ fun DetailsScreen(
 
     val details = state.aniListDetails
     // Episodes that have not aired yet: shown as compact rows and not playable.
-    val upcomingIds = remember(state.episodes) { upcomingEpisodeIds(state.episodes) }
+    // The source/extension list can run past what the show really has (a movie returned with 12 "episodes",
+    // a 13-episode cour followed by stray numbers), so AniList's own episode count and format trim it.
+    val episodes = remember(state.episodes, details?.episodes, details?.format) {
+        trimToAniListCount(state.episodes, details?.episodes, details?.format)
+    }
+    val upcomingIds = remember(episodes, details?.status, details?.nextAiringEpisode) {
+        upcomingEpisodeIds(episodes, details?.status, details?.nextAiringEpisode)
+    }
+
+    // Where the viewer left off in this title, so the main button continues instead of restarting at Ep. 1.
+    val resumeEntries by container.continueWatchingRepository.entries.collectAsStateWithLifecycle(initialValue = emptyList())
+    val playTarget = remember(resumeEntries, anime?.anilistId, episodes, upcomingIds) {
+        val resume = anime?.anilistId?.let { id -> resumeEntries.firstOrNull { it.anilistId == id } }
+        resolvePlayTarget(episodes.filter { it.id !in upcomingIds }, resume)
+    }
 
     // Hand the playable episodes to the player (previous/next and its "more episodes" list).
-    LaunchedEffect(state.episodes, upcomingIds) {
-        container.selectionHolder.selectEpisodes(state.episodes.filter { it.id !in upcomingIds })
+    LaunchedEffect(episodes, upcomingIds) {
+        container.selectionHolder.selectEpisodes(episodes.filter { it.id !in upcomingIds })
     }
 
     // One line per opened title, so an exported report shows what the user was looking at.
@@ -158,12 +172,11 @@ fun DetailsScreen(
             }
 
             item {
-                val firstEpisode = state.episodes.firstOrNull { it.id !in upcomingIds }
                 PlayLikeRow(
-                    playLabel = firstEpisode?.let { "Play Ep. ${it.episodeNumber.formatEpisodeNumber()}" } ?: "No episodes yet",
-                    playEnabled = firstEpisode != null,
+                    playLabel = playTarget?.label ?: "No episodes yet",
+                    playEnabled = playTarget != null,
                     onPlay = {
-                        firstEpisode?.let { episode ->
+                        playTarget?.episode?.let { episode ->
                             container.diagnostics.log(LogCategory.CLICK, "Play pressed: ${anime?.title} E${episode.episodeNumber}")
                             onEpisodeSelected(episode)
                         }
@@ -186,7 +199,7 @@ fun DetailsScreen(
             item {
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     StatItem(Icons.Filled.Star, details?.averageScore?.let { "$it%" } ?: "—", "SCORE", tint = AnsuColors.ScoreGreen)
-                    StatItem(Icons.AutoMirrored.Filled.ViewList, (details?.episodes ?: state.episodes.size.takeIf { it > 0 })?.toString() ?: "—", "EPISODES")
+                    StatItem(Icons.AutoMirrored.Filled.ViewList, (details?.episodes ?: episodes.size.takeIf { it > 0 })?.toString() ?: "—", "EPISODES")
                     StatItem(Icons.Filled.CalendarToday, details?.year?.toString() ?: anime?.releaseYear?.toString() ?: "—", "YEAR")
                     StatItem(Icons.Filled.Tv, details?.format ?: "TV", "FORMAT")
                 }
@@ -215,7 +228,7 @@ fun DetailsScreen(
             item { DetailsSectionHeader("Episodes") }
             if (state.isLoading) {
                 item { CircularProgressIndicator(color = AnsuColors.Accent, modifier = Modifier.padding(20.dp)) }
-            } else if (state.episodes.isEmpty()) {
+            } else if (episodes.isEmpty()) {
                 item {
                     Text(
                         state.error ?: "No episodes found yet.",
@@ -224,9 +237,10 @@ fun DetailsScreen(
                     )
                 }
             } else {
-                val groups = state.episodes.chunked(EPISODE_GROUP_SIZE)
+                val groups = episodes.chunked(EPISODE_GROUP_SIZE)
                 val groupIndex = selectedGroup.coerceIn(0, groups.lastIndex)
-                if (groups.size > 1) {
+                // Nothing to switch between when none of the episodes can be played yet.
+                if (groups.size > 1 && upcomingIds.size < episodes.size) {
                     item {
                         EpisodeGroupChips(
                             groups = groups,
@@ -484,11 +498,11 @@ private fun PlayLikeRow(
             onClick = onPlay,
             enabled = playEnabled,
             modifier = Modifier.weight(1f).height(50.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.Background),
+            colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
             shape = RoundedCornerShape(14.dp),
         ) {
-            Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = AnsuColors.Background)
-            Text(playLabel, color = AnsuColors.Background, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
+            Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = AnsuColors.OnAccent)
+            Text(playLabel, color = AnsuColors.OnAccent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
         }
         FrostedGlassCard(modifier = Modifier.size(50.dp), shape = CircleShape, tintAlpha = 0.5f) {
             IconButton(onClick = onToggleLike, modifier = Modifier.fillMaxSize()) {
@@ -512,7 +526,7 @@ private fun PlayLikeRow(
                     }
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    listOf(ListStatus.CURRENT, ListStatus.PLANNING, ListStatus.COMPLETED).forEach { status ->
+                    ListStatus.ALL.forEach { status ->
                         DropdownMenuItem(
                             text = {
                                 Text(
@@ -565,7 +579,7 @@ private fun MoreEpisodesChip(remaining: Int, onClick: () -> Unit) {
         ) {
             Text(
                 text = "More episodes ($remaining)",
-                color = AnsuColors.Background,
+                color = AnsuColors.OnAccent,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
             )
@@ -596,7 +610,7 @@ private fun EpisodeGroupChips(groups: List<List<SEpisode>>, selected: Int, onSel
             ) {
                 Text(
                     text = "$start-${start + group.size - 1}",
-                    color = if (isSelected) AnsuColors.Background else AnsuColors.TextPrimary,
+                    color = if (isSelected) AnsuColors.OnAccent else AnsuColors.TextPrimary,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                 )
@@ -657,13 +671,69 @@ private fun EpisodeRow(episode: SEpisode, synopsis: String?, onClick: () -> Unit
     }
 }
 
+/** The episode the main button plays and the text on it. */
+private class PlayTarget(val episode: SEpisode, val label: String)
+
+/**
+ * Picks what the main button does: continue the episode that was left unfinished, move on to the next one
+ * after a finished episode, or start at the first episode when nothing was watched yet.
+ */
+private fun resolvePlayTarget(playable: List<SEpisode>, resume: com.ansu.anime.data.db.ContinueWatchingEntity?): PlayTarget? {
+    val sorted = playable.sortedBy { it.episodeNumber }
+    val first = sorted.firstOrNull() ?: return null
+    fun start(episode: SEpisode) = PlayTarget(episode, "Play Ep. ${episode.episodeNumber.formatEpisodeNumber()}")
+    if (resume == null) return start(first)
+    val last = sorted.firstOrNull { it.id == resume.episodeId } ?: sorted.firstOrNull { it.episodeNumber == resume.episodeNumber }
+        ?: return start(first)
+    val finished = resume.durationSeconds > 0 && resume.positionSeconds >= resume.durationSeconds * 0.9
+    if (!finished) {
+        val number = last.episodeNumber.formatEpisodeNumber()
+        val time = if (resume.positionSeconds > 5) " · ${formatClock(resume.positionSeconds)}" else ""
+        return PlayTarget(last, "Continue Ep. $number$time")
+    }
+    val next = sorted.firstOrNull { it.episodeNumber > last.episodeNumber }
+    return if (next != null) {
+        PlayTarget(next, "Continue Ep. ${next.episodeNumber.formatEpisodeNumber()}")
+    } else {
+        PlayTarget(first, "Rewatch from Ep. ${first.episodeNumber.formatEpisodeNumber()}")
+    }
+}
+
+private fun formatClock(totalSeconds: Long): String {
+    val h = totalSeconds / 3600
+    val m = (totalSeconds % 3600) / 60
+    val s = totalSeconds % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
+}
+
+/**
+ * Drops source episodes beyond what AniList says the show has. A movie keeps one entry. If trimming would
+ * leave nothing (the source numbers episodes differently, e.g. absolute numbering), the list is left alone.
+ */
+private fun trimToAniListCount(episodes: List<SEpisode>, total: Int?, format: String?): List<SEpisode> {
+    val limit = when {
+        total != null && total > 0 -> total
+        format == "MOVIE" -> 1
+        else -> return episodes
+    }
+    val trimmed = episodes.filter { it.episodeNumber <= limit }
+    return if (trimmed.isEmpty()) episodes else trimmed
+}
+
 /**
  * Ids of the episodes that have not aired yet. An episode is upcoming when its air date is after
  * today, and so is every later episode with no date at all (a show airs in order, so once one
  * episode is in the future the rest are too). A show whose episodes simply have no metadata, with
  * no future date anywhere, is left fully playable.
  */
-private fun upcomingEpisodeIds(episodes: List<SEpisode>): Set<String> {
+private fun upcomingEpisodeIds(episodes: List<SEpisode>, status: String?, nextAiringEpisode: Int?): Set<String> {
+    // AniList knows the release status even when the source or metadata has no air dates:
+    // an unreleased show has no playable episodes, and an airing show's episodes from the next one on are not out yet.
+    if (status == "NOT_YET_RELEASED") return episodes.map { it.id }.toSet()
+    if (status == "RELEASING" && nextAiringEpisode != null) {
+        val fromAniList = episodes.filter { it.episodeNumber >= nextAiringEpisode }.map { it.id }.toSet()
+        if (fromAniList.isNotEmpty()) return fromAniList
+    }
     val today = java.time.LocalDate.now()
     val result = mutableSetOf<String>()
     var seenUpcoming = false

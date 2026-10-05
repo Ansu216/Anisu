@@ -96,7 +96,7 @@ fun SearchScreen(
 ) {
     var query by remember { mutableStateOf("") }
     var filters by remember { mutableStateOf(AniListSearchFilters()) }
-    var isGrid by rememberSaveable { mutableStateOf(true) }
+    val isGrid by container.appearancePrefs.searchGrid.collectAsStateWithLifecycle()
     var showFilters by remember { mutableStateOf(false) }
 
     var results by remember { mutableStateOf<List<SAnime>>(emptyList()) }
@@ -189,7 +189,7 @@ fun SearchScreen(
                 GlassIconButton(
                     icon = if (isGrid) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
                     contentDescription = if (isGrid) "Switch to list view" else "Switch to grid view",
-                    onClick = { isGrid = !isGrid },
+                    onClick = { container.appearancePrefs.setSearchGrid(!isGrid) },
                 )
                 GlassIconButton(
                     icon = Icons.Filled.Tune,
@@ -399,7 +399,7 @@ private fun GlassIconButton(
             ) {
                 Text(
                     text = badgeCount.toString(),
-                    color = AnsuColors.Background,
+                    color = AnsuColors.OnAccent,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                 )
@@ -599,7 +599,7 @@ private fun MessageState(
             Button(
                 onClick = onAction,
                 modifier = Modifier.padding(top = 16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.Background),
+                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
             ) {
                 Text(actionLabel, fontWeight = FontWeight.Bold)
             }

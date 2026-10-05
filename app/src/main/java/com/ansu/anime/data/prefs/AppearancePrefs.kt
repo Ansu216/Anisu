@@ -1,6 +1,8 @@
 package com.ansu.anime.data.prefs
 
 import android.content.Context
+import androidx.compose.ui.graphics.Color
+import com.ansu.anime.ui.theme.AnsuColors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -67,7 +69,45 @@ class AppearancePrefs(context: Context) {
         prefs.edit().putString(KEY_TITLE_LANGUAGE, value.key).apply()
     }
 
+    private val _accent = MutableStateFlow(AccentPalette.fromKey(prefs.getString(KEY_ACCENT, null)))
+
+    /** Colour used for the white pills, play buttons and the player's progress bar. */
+    val accent: StateFlow<AccentPalette> = _accent
+
+    init {
+        AnsuColors.setAccent(_accent.value.color)
+    }
+
+    fun setAccent(value: AccentPalette) {
+        _accent.value = value
+        AnsuColors.setAccent(value.color)
+        prefs.edit().putString(KEY_ACCENT, value.key).apply()
+    }
+
+    private val _searchGrid = MutableStateFlow(prefs.getBoolean(KEY_SEARCH_GRID, true))
+
+    /** Search results as a poster grid (true) or a list (false); remembered across screens and restarts. */
+    val searchGrid: StateFlow<Boolean> = _searchGrid
+
+    fun setSearchGrid(value: Boolean) {
+        _searchGrid.value = value
+        prefs.edit().putBoolean(KEY_SEARCH_GRID, value).apply()
+    }
+
+    private val _mySpaceTab = MutableStateFlow(prefs.getString(KEY_MY_SPACE_TAB, null) ?: "Watching")
+
+    /** Name of the My Space list chip that was last open. */
+    val mySpaceTab: StateFlow<String> = _mySpaceTab
+
+    fun setMySpaceTab(name: String) {
+        _mySpaceTab.value = name
+        prefs.edit().putString(KEY_MY_SPACE_TAB, name).apply()
+    }
+
     companion object {
+        private const val KEY_ACCENT = "accent_palette"
+        private const val KEY_SEARCH_GRID = "search_grid_layout"
+        private const val KEY_MY_SPACE_TAB = "my_space_tab"
         private const val KEY_TITLE_LANGUAGE = "title_language"
 
         private const val KEY_NAV_ROUNDNESS = "nav_bar_roundness"
@@ -88,5 +128,21 @@ enum class TitleLanguage(val key: String, val label: String) {
 
     companion object {
         fun fromKey(key: String?): TitleLanguage = entries.firstOrNull { it.key == key } ?: ROMAJI
+    }
+}
+
+/** Accent colour choices; White is the original look. */
+enum class AccentPalette(val key: String, val label: String, val color: Color) {
+    WHITE("white", "White", Color(0xFFFFFFFF)),
+    SKY("sky", "Sky", Color(0xFF2D9CDB)),
+    MINT("mint", "Mint", Color(0xFF1FAF7A)),
+    LIME("green", "Green", Color(0xFF3BA935)),
+    GOLD("amber", "Amber", Color(0xFFD98E00)),
+    ORANGE("orange", "Orange", Color(0xFFF2792B)),
+    ROSE("rose", "Rose", Color(0xFFE8456B)),
+    VIOLET("violet", "Violet", Color(0xFF7C5CE6));
+
+    companion object {
+        fun fromKey(key: String?): AccentPalette = entries.firstOrNull { it.key == key } ?: WHITE
     }
 }

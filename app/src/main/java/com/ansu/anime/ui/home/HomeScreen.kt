@@ -174,11 +174,6 @@ fun HomeScreen(
                 )
             }
 
-            if (state.topPicks.isNotEmpty()) {
-                item { ShelfHeader("Top Picks For You") }
-                item { TopPicksGrid(items = state.topPicks.take(9), onClick = selectAnime) }
-            }
-
             // Every other endless row loads its first page when it scrolls into view.
             items(
                 items = state.feeds.filter { it.feed != AniListFeed.TRENDING_NOW },

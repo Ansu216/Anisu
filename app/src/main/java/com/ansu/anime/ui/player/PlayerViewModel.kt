@@ -76,6 +76,8 @@ data class PlayerUiState(
     val audioOptions: List<TrackOption> = emptyList(),
     val textOptions: List<TrackOption> = emptyList(),
     val textEnabled: Boolean = false,
+    /** Intro / outro / recap stretches AniSkip knows for this episode; empty when it has none. */
+    val skipSegments: List<com.ansu.anime.data.repository.SkipSegment> = emptyList(),
 )
 
 class PlayerViewModel(
@@ -85,6 +87,8 @@ class PlayerViewModel(
     private val continueWatchingRepository: ContinueWatchingRepository,
     private val selectionHolder: SelectionHolder,
     private val diagnostics: Diagnostics? = null,
+    private val aniListRepository: com.ansu.anime.anilist.AniListRepository? = null,
+    private val aniSkipRepository: com.ansu.anime.data.repository.AniSkipRepository? = null,
 ) : ViewModel() {
 
     // Large buffers + a small start threshold: playback starts after a few seconds of data and the
@@ -102,6 +106,7 @@ class PlayerViewModel(
     // Declared before init{}: loadSources() runs from init and assigns these.
     private var loadJob: kotlinx.coroutines.Job? = null
     private var playbackJob: kotlinx.coroutines.Job? = null
+    private var skipJob: kotlinx.coroutines.Job? = null
 
     private val _uiState = MutableStateFlow(
         PlayerUiState(
@@ -155,6 +160,7 @@ class PlayerViewModel(
         }
 
         diagnostics?.log(LogCategory.PLAYBACK, "Resolving sources for ${anime.title} E${episode.episodeNumber} (ep id='${episode.id}')")
+        loadSkipTimes(anime, episode)
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             var first = true
@@ -200,10 +206,45 @@ class PlayerViewModel(
         }
     }
 
+    /** Looks up AniSkip's intro/outro times for the episode; the skip button simply stays away if there are none. */
+    private fun loadSkipTimes(anime: SAnime, episode: SEpisode) {
+        skipJob?.cancel()
+        if (_uiState.value.skipSegments.isNotEmpty()) _uiState.value = _uiState.value.copy(skipSegments = emptyList())
+        val anilistId = anime.anilistId ?: return
+        val aniList = aniListRepository ?: return
+        val aniSkip = aniSkipRepository ?: return
+        skipJob = viewModelScope.launch {
+            val malId = aniList.getMalId(anilistId) ?: return@launch
+            val segments = aniSkip.getSkipTimes(malId, episode.episodeNumber.toInt())
+            diagnostics?.log(LogCategory.PLAYBACK, "AniSkip: ${segments.size} segment(s) for ${anime.title} E${episode.episodeNumber}")
+            if (_uiState.value.episode?.id == episode.id) {
+                _uiState.value = _uiState.value.copy(skipSegments = segments)
+            }
+        }
+    }
+
+    /** Jumps past the intro/outro/recap segment being played. */
+    fun skipCurrentSegment() {
+        val state = _uiState.value
+        val segment = state.skipSegments.firstOrNull { player.currentPosition in it.startMs until it.endMs } ?: return
+        val duration = player.duration
+        val reachesEnd = duration > 0 && segment.endMs >= duration - 2_000
+        val next = nextEpisode()
+        if (segment.type == com.ansu.anime.data.repository.SkipType.OUTRO && reachesEnd && next != null) {
+            playEpisode(next)
+        } else {
+            player.seekTo(segment.endMs)
+        }
+    }
+
     private fun resumeIfSaved(anime: SAnime, episode: SEpisode) {
         viewModelScope.launch {
             val resumePoint = anime.anilistId?.let { continueWatchingRepository.resumePointFor(it) }
-            if (resumePoint != null && resumePoint.episodeId == episode.id && resumePoint.positionSeconds > 5) {
+            val sameEpisode = resumePoint != null &&
+                (resumePoint.episodeId == episode.id || resumePoint.episodeNumber == episode.episodeNumber)
+            val finished = resumePoint != null && resumePoint.durationSeconds > 0 &&
+                resumePoint.positionSeconds >= resumePoint.durationSeconds * 0.9
+            if (resumePoint != null && sameEpisode && !finished && resumePoint.positionSeconds > 5) {
                 player.seekTo(resumePoint.positionSeconds * 1000)
             }
         }
@@ -574,6 +615,7 @@ class PlayerViewModel(
             durationMs = 0L,
             audioOptions = emptyList(),
             textOptions = emptyList(),
+            skipSegments = emptyList(),
         )
         loadSources()
     }

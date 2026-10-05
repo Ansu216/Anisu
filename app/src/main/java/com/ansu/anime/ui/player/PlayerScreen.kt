@@ -9,6 +9,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
@@ -59,6 +62,9 @@ private val FitModes = listOf(
     "Fill" to AspectRatioFrameLayout.RESIZE_MODE_FILL,
     "Zoom" to AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
 )
+/** How long the skip button stays on screen before it hides itself. */
+private const val SKIP_BUTTON_SECONDS = 10
+
 private val Speeds = listOf(0.5f, 1f, 1.25f, 1.5f, 2f)
 
 private fun Float.speedLabel(): String = if (this % 1f == 0f) "${toInt()}x" else "${this}x"
@@ -86,6 +92,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     container.continueWatchingRepository,
                     container.selectionHolder,
                     container.diagnostics,
+                    container.aniListRepository,
+                    container.aniSkipRepository,
                 )
             }
         },
@@ -130,9 +138,28 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
 
     val hasPrev = remember(state.episode, state.episodes) { viewModel.previousEpisode() != null }
     val hasNext = remember(state.episode, state.episodes) { viewModel.nextEpisode() != null }
-    // No chapter data from the sources, so "Skip outro" appears for the last two minutes of an episode.
-    val remainingMs = state.durationMs - state.positionMs
-    val showSkipOutro = hasNext && state.durationMs > 0 && remainingMs in 3_000L..120_000L
+    // The skip button only appears inside an intro/outro/recap segment that AniSkip has timed. It shows for
+    // 10 seconds (the bar in the button fills up over that time), then hides; tapping the screen brings it back.
+    val activeSegment = state.skipSegments.firstOrNull { state.positionMs in it.startMs until it.endMs - 500 }
+    var skipShown by remember { mutableStateOf(false) }
+    var skipTapTick by remember { mutableIntStateOf(0) }
+    val skipProgress = remember { Animatable(0f) }
+    LaunchedEffect(activeSegment, skipTapTick) {
+        if (activeSegment == null) {
+            skipShown = false
+            return@LaunchedEffect
+        }
+        skipShown = true
+        skipProgress.snapTo(0f)
+        skipProgress.animateTo(1f, tween(durationMillis = SKIP_BUTTON_SECONDS * 1000, easing = LinearEasing))
+        skipShown = false
+    }
+    val showSkipOutro = activeSegment != null && skipShown
+    val skipLabel = activeSegment?.type?.buttonLabel ?: "Skip"
+    val onScreenTap = {
+        viewModel.toggleControls()
+        if (activeSegment != null) skipTapTick++
+    }
 
     val fitLabel = FitModes[fitIndex].first
     val speedLabel = state.speed.speedLabel()
@@ -162,7 +189,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         onSources = { sheet = PlayerSheet.SOURCES },
         onEpisodes = { sheet = PlayerSheet.EPISODES },
         onSettings = { sheet = PlayerSheet.SETTINGS },
-        onSkipOutro = viewModel::skipOutro,
+        onSkipOutro = viewModel::skipCurrentSegment,
     )
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
@@ -172,7 +199,10 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 viewModel = viewModel,
                 state = state,
                 resizeMode = FitModes[fitIndex].second,
-                onTap = viewModel::toggleControls,
+                skipLabel = if (showSkipOutro) skipLabel else null,
+                skipProgress = skipProgress.value,
+                onSkip = actions.onSkipOutro,
+                onTap = onScreenTap,
                 onBack = actions.onBack,
             ) {
                 if (locked) {
@@ -186,6 +216,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                         hasPrev = hasPrev,
                         hasNext = hasNext,
                         showSkipOutro = showSkipOutro,
+                        skipLabel = skipLabel,
+                        skipProgress = skipProgress.value,
                     )
                 }
             }
@@ -196,7 +228,10 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     viewModel = viewModel,
                     state = state,
                     resizeMode = FitModes[fitIndex].second,
-                    onTap = viewModel::toggleControls,
+                skipLabel = if (showSkipOutro) skipLabel else null,
+                skipProgress = skipProgress.value,
+                onSkip = actions.onSkipOutro,
+                    onTap = onScreenTap,
                     onBack = actions.onBack,
                 ) {
                     if (locked) {
@@ -208,6 +243,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                             hasPrev = hasPrev,
                             hasNext = hasNext,
                             showSkipOutro = showSkipOutro,
+                        skipLabel = skipLabel,
+                        skipProgress = skipProgress.value,
                         )
                     }
                 }
@@ -268,6 +305,9 @@ private fun PlayerSurface(
     resizeMode: Int,
     onTap: () -> Unit,
     onBack: () -> Unit,
+    skipLabel: String? = null,
+    skipProgress: Float = 0f,
+    onSkip: () -> Unit = {},
     overlay: @Composable BoxScope.() -> Unit,
 ) {
     Box(modifier = modifier.background(Color.Black)) {
@@ -297,6 +337,13 @@ private fun PlayerSurface(
                 modifier = Modifier.align(Alignment.Center).padding(24.dp),
             )
             state.showControls -> overlay()
+        }
+
+        // The controls carry their own skip button; with them hidden the intro/outro button still has to show.
+        if (skipLabel != null && !state.showControls && !state.isLoadingSources && state.error == null) {
+            Box(modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 28.dp)) {
+                SkipOutroButton(label = skipLabel, progress = skipProgress, onClick = onSkip)
+            }
         }
 
         // While loading or failed there are no controls, so keep a way out.

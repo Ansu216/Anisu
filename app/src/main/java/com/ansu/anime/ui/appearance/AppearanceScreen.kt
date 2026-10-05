@@ -14,8 +14,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -39,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import com.ansu.anime.data.prefs.AccentPalette
 import com.ansu.anime.data.prefs.AppearancePrefs
 import com.ansu.anime.data.prefs.TitleLanguage
 import com.ansu.anime.di.AppContainer
@@ -66,6 +71,7 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
     val frostiness by container.appearancePrefs.navBarFrostiness.collectAsStateWithLifecycle()
     val blur by container.appearancePrefs.navBarBlur.collectAsStateWithLifecycle()
     val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
+    val accent by container.appearancePrefs.accent.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -96,6 +102,39 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
             Text(
                 text = "Show anime titles as Romaji (Shingeki no Kyojin) or English (Attack on Titan). " +
                     "Titles and posters across the app follow this choice.",
+                style = MaterialTheme.typography.labelSmall,
+                color = AnsuColors.TextTertiary,
+            )
+
+            Text("Colour palette", style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                AccentPalette.entries.forEach { palette ->
+                    val selected = palette == accent
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(palette.color)
+                            .border(if (selected) 3.dp else 1.dp, if (selected) AnsuColors.TextPrimary else AnsuColors.StrokeGlass, CircleShape)
+                            .clickable { container.appearancePrefs.setAccent(palette) },
+                    )
+                }
+            }
+            // Sample of what the colour is used for.
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(AnsuColors.Accent).padding(horizontal = 20.dp, vertical = 10.dp),
+                ) { Text("Play Ep. 1", color = AnsuColors.OnAccent, style = MaterialTheme.typography.titleSmall) }
+                Box(
+                    modifier = Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(AnsuColors.AccentSoft),
+                ) { Box(modifier = Modifier.fillMaxWidth(0.6f).fillMaxHeight().background(AnsuColors.Accent)) }
+            }
+            Text(
+                text = "Colours the white pills, play buttons, selected chips and the player's progress bar. " +
+                    "Pick White to go back to the original look.",
                 style = MaterialTheme.typography.labelSmall,
                 color = AnsuColors.TextTertiary,
             )
@@ -186,6 +225,7 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                     container.appearancePrefs.setNavBarRoundness(AppearancePrefs.DEFAULT_NAV_ROUNDNESS)
                     container.appearancePrefs.setNavBarFrostiness(AppearancePrefs.DEFAULT_NAV_FROSTINESS)
                     container.appearancePrefs.setNavBarBlur(AppearancePrefs.DEFAULT_NAV_BLUR)
+                    container.appearancePrefs.setAccent(AccentPalette.WHITE)
                 },
                 modifier = Modifier.align(Alignment.End),
             ) { Text("Reset to default") }

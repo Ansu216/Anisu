@@ -247,7 +247,7 @@ private fun ActionRow(icon: ImageVector, title: String, subtitle: String, badge:
                         .background(AnsuColors.ScoreGreen)
                         .padding(horizontal = 8.dp, vertical = 3.dp),
                 ) {
-                    Text("NEW", color = AnsuColors.Background, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("NEW", color = AnsuColors.OnAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
             Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = AnsuColors.TextTertiary)

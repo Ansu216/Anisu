@@ -71,6 +71,9 @@ class AppContainer(context: Context) {
     val aniListApi: AniListApi = AniListApi(okHttpClient, aniListAuthManager) { appearancePrefs.titleLanguage.value }
     val aniListRepository: AniListRepository = AniListRepository(aniListApi, aniListAuthManager, apiErrorHandler)
 
+    val aniSkipRepository: com.ansu.anime.data.repository.AniSkipRepository =
+        com.ansu.anime.data.repository.AniSkipRepository(okHttpClient)
+
     val localListRepository: LocalListRepository = LocalListRepository(database.localListDao())
 
     val librarySyncRepository: LibrarySyncRepository = LibrarySyncRepository(localListRepository, aniListRepository)

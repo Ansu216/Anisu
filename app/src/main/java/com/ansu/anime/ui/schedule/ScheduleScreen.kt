@@ -170,7 +170,7 @@ private fun ToggleSegment(
     ) {
         Text(
             text = text,
-            color = if (isSelected) AnsuColors.Background else AnsuColors.TextSecondary,
+            color = if (isSelected) AnsuColors.OnAccent else AnsuColors.TextSecondary,
             fontSize = 13.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
         )
@@ -308,14 +308,14 @@ private fun DayPillBar(selectedDate: LocalDate, onSelectDate: (LocalDate) -> Uni
                 ) {
                     Text(
                         text = date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()).uppercase(),
-                        color = if (isSelected) AnsuColors.Background else AnsuColors.TextTertiary,
+                        color = if (isSelected) AnsuColors.OnAccent else AnsuColors.TextTertiary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
                         text = date.dayOfMonth.toString(),
-                        color = if (isSelected) AnsuColors.Background else AnsuColors.TextPrimary,
+                        color = if (isSelected) AnsuColors.OnAccent else AnsuColors.TextPrimary,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.ExtraBold,
                     )

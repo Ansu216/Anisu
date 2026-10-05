@@ -6,6 +6,10 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -25,8 +29,17 @@ object AnsuColors {
     val SurfaceGlassBase = Color(0xFF1B1D27)
     val StrokeGlass = Color(0xFFFFFFFF).copy(alpha = 0.08f)
 
-    val Accent = Color(0xFFFFFFFF)
-    val AccentSoft = Color(0xFFFFFFFF).copy(alpha = 0.16f)
+    // The accent is state, so every screen reading it redraws the moment a new palette is picked.
+    private var accentState by mutableStateOf(Color(0xFFFFFFFF))
+    val Accent: Color get() = accentState
+    val AccentSoft: Color get() = accentState.copy(alpha = 0.16f)
+
+    /** Text and icons drawn on top of the accent: dark on the original white, white on every other colour. */
+    val OnAccent: Color get() = if (accentState == Color.White) Background else Color.White
+
+    fun setAccent(color: Color) {
+        accentState = color
+    }
 
     val TextPrimary = Color(0xFFF3F4F6)
     val TextSecondary = Color(0xFFA0A3B1)
@@ -36,9 +49,9 @@ object AnsuColors {
     val Error = Color(0xFFE0605A)
 }
 
-private val AnsuColorScheme = darkColorScheme(
-    primary = AnsuColors.Accent,
-    onPrimary = AnsuColors.Background,
+private fun ansuColorScheme(accent: Color) = darkColorScheme(
+    primary = accent,
+    onPrimary = AnsuColors.OnAccent,
     secondary = AnsuColors.TextSecondary,
     background = AnsuColors.Background,
     onBackground = AnsuColors.TextPrimary,
@@ -70,8 +83,9 @@ val AnsuShapes = Shapes(
 
 @Composable
 fun AnsuTheme(content: @Composable () -> Unit) {
+    val accent = AnsuColors.Accent
     MaterialTheme(
-        colorScheme = AnsuColorScheme,
+        colorScheme = remember(accent) { ansuColorScheme(accent) },
         typography = AnsuTypography,
         shapes = AnsuShapes,
         content = content,

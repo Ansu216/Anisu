@@ -79,6 +79,10 @@ data class AniListMediaDetails(
     val listStatus: String? = null,
     /** True when AniList lists an earlier anime entry before this one (this is a later season or a follow-up). */
     val hasPrequel: Boolean = false,
+    /** AniList release status: FINISHED, RELEASING, NOT_YET_RELEASED, CANCELLED or HIATUS. */
+    val status: String? = null,
+    /** Number of the next episode that has not aired yet while the show is RELEASING, else null. */
+    val nextAiringEpisode: Int? = null,
 )
 
 /** A show connected to another one on AniList, with how it connects (e.g. "Sequel", "Movie"). */

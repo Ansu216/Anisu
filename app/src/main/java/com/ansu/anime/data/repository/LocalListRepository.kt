@@ -13,11 +13,20 @@ object ListStatus {
     const val CURRENT = "CURRENT"
     const val PLANNING = "PLANNING"
     const val COMPLETED = "COMPLETED"
+    const val PAUSED = "PAUSED"
+    const val DROPPED = "DROPPED"
+    const val REPEATING = "REPEATING"
+
+    /** Every list a show can sit in, in the order they are offered. */
+    val ALL = listOf(CURRENT, PLANNING, COMPLETED, PAUSED, DROPPED, REPEATING)
 
     fun label(status: String?): String = when (status) {
         CURRENT -> "Watching"
         PLANNING -> "Planning"
         COMPLETED -> "Completed"
+        PAUSED -> "Paused"
+        DROPPED -> "Dropped"
+        REPEATING -> "Repeating"
         else -> "Add to list"
     }
 }
@@ -84,7 +93,7 @@ class LocalListRepository(private val dao: LocalListDao) {
         val existing = dao.get(id)
         if (existing?.status == ListStatus.COMPLETED) return
         val base = existing ?: anime.toEntity(null)
-        var next = if (base.status != ListStatus.CURRENT) base.copy(status = ListStatus.CURRENT) else base
+        var next = if (base.status != ListStatus.CURRENT && base.status != ListStatus.REPEATING) base.copy(status = ListStatus.CURRENT) else base
         if (watched && episodeNumber > next.progress) {
             next = next.copy(progress = episodeNumber)
             val total = next.episodes

@@ -260,6 +260,13 @@ class AniListApi(
      * card: format, characters with their voice actors, staff, and related
      * shows for the "More like this" row.
      */
+    /** The MyAnimeList id AniList has for this entry (AniSkip is keyed by it), or null when it has none. */
+    suspend fun getMalId(mediaId: Int): Int? {
+        val gql = "query (${'$'}id: Int) { Media(id: ${'$'}id, type: ANIME) { idMal } }"
+        val data = execute(gql, mapOf("id" to mediaId)) ?: return null
+        return data["Media"]?.jsonObject?.get("idMal")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+    }
+
     suspend fun getMediaDetails(mediaId: Int): AniListMediaDetails? {
         val gql = """
             query (${'$'}id: Int) {
@@ -275,6 +282,8 @@ class AniListApi(
                 format
                 isFavourite
                 mediaListEntry { status }
+                status
+                nextAiringEpisode { episode }
                 startDate { year }
                 characters(sort: [ROLE, RELEVANCE], perPage: 10) {
                   edges {
@@ -618,6 +627,8 @@ class AniListApi(
             hasPrequel = hasPrequel,
             franchise = franchise,
             listStatus = (this["mediaListEntry"] as? JsonObject)?.get("status")?.jsonPrimitive?.contentOrNull,
+            status = this["status"]?.jsonPrimitive?.contentOrNull,
+            nextAiringEpisode = (this["nextAiringEpisode"] as? JsonObject)?.get("episode")?.jsonPrimitive?.content?.toIntOrNull(),
         )
     }
 

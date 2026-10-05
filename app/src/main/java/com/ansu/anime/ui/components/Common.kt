@@ -420,11 +420,11 @@ fun HeroCarousel(
                 ) {
                     Button(
                         onClick = { onClick(current) },
-                        colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.Background),
+                        colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
                         shape = RoundedCornerShape(24.dp),
                         contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
                     ) {
-                        Text("View Details", color = AnsuColors.Background, fontWeight = FontWeight.Bold)
+                        Text("View Details", color = AnsuColors.OnAccent, fontWeight = FontWeight.Bold)
                     }
                     FrostedGlassCard(modifier = Modifier.size(48.dp), shape = CircleShape, tintAlpha = 0.5f) {
                         IconButton(

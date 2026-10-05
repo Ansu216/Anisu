@@ -135,7 +135,7 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                     checked = autoCheck,
                     onCheckedChange = { container.updateManager.setAutoCheck(it) },
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = AnsuColors.Background,
+                        checkedThumbColor = AnsuColors.OnAccent,
                         checkedTrackColor = AnsuColors.Accent,
                     ),
                 )
@@ -306,7 +306,7 @@ private fun ChannelSegment(text: String, isSelected: Boolean, onClick: () -> Uni
     ) {
         Text(
             text = text,
-            color = if (isSelected) AnsuColors.Background else AnsuColors.TextSecondary,
+            color = if (isSelected) AnsuColors.OnAccent else AnsuColors.TextSecondary,
             fontSize = 13.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
         )
@@ -355,7 +355,7 @@ private fun StatusSection(state: UpdateState, onCheck: () -> Unit, onInstall: ()
                 onClick = onCheck,
                 enabled = !state.isChecking && !state.isDownloading,
                 shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.Background),
+                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Check for updates", fontWeight = FontWeight.Bold)
@@ -416,7 +416,7 @@ private fun AvailableUpdateCard(
                 Button(
                     onClick = onInstall,
                     shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.Background),
+                    colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))

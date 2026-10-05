@@ -68,6 +68,31 @@ class AniListRepository(
         return guarded("Loading your Completed list", emptyList()) { api.getMediaListCollection(userId, "COMPLETED") }
     }
 
+    private val malIds = java.util.concurrent.ConcurrentHashMap<Int, Int>()
+
+    /** MyAnimeList id for an AniList entry (cached), or null when AniList has none or the lookup failed. */
+    suspend fun getMalId(anilistId: Int): Int? {
+        malIds[anilistId]?.let { return it }
+        val id = guarded<Int?>("Looking up MyAnimeList id", null, quiet = true) { api.getMalId(anilistId) }
+        if (id != null) malIds[anilistId] = id
+        return id
+    }
+
+    suspend fun getPaused(): List<AniListMediaListEntry> {
+        val userId = _viewer.value?.id ?: return emptyList()
+        return guarded("Loading your Paused list", emptyList()) { api.getMediaListCollection(userId, "PAUSED") }
+    }
+
+    suspend fun getDropped(): List<AniListMediaListEntry> {
+        val userId = _viewer.value?.id ?: return emptyList()
+        return guarded("Loading your Dropped list", emptyList()) { api.getMediaListCollection(userId, "DROPPED") }
+    }
+
+    suspend fun getRepeating(): List<AniListMediaListEntry> {
+        val userId = _viewer.value?.id ?: return emptyList()
+        return guarded("Loading your Repeating list", emptyList()) { api.getMediaListCollection(userId, "REPEATING") }
+    }
+
     suspend fun getLiked(): List<AniListMedia> {
         val userId = _viewer.value?.id ?: return emptyList()
         return guarded("Loading your favourites", emptyList()) { api.getFavouriteAnime(userId) }

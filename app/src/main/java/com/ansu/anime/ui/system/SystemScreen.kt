@@ -107,7 +107,7 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
                     refresh++
                 },
                 shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.Background),
+                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))

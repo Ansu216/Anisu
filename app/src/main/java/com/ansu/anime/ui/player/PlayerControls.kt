@@ -52,6 +52,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -116,6 +118,8 @@ fun PlayerControlsOverlay(
     hasPrev: Boolean,
     hasNext: Boolean,
     showSkipOutro: Boolean,
+    skipLabel: String = "Skip outro",
+    skipProgress: Float = 0f,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxSize().background(ScrimBrush)) {
@@ -175,7 +179,7 @@ fun PlayerControlsOverlay(
         ) {
             if (showSkipOutro) {
                 Row(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.End) {
-                    SkipOutroButton(onClick = actions.onSkipOutro)
+                    SkipOutroButton(label = skipLabel, progress = skipProgress, onClick = actions.onSkipOutro)
                 }
             }
             PlayerSeekBar(positionMs = state.positionMs, durationMs = state.durationMs, onSeek = actions.onSeekTo)
@@ -277,12 +281,12 @@ private fun PlayPauseGlyph(isPlaying: Boolean, scale: Float, onClick: () -> Unit
                         modifier = Modifier
                             .size((13 * scale).dp, (40 * scale).dp)
                             .clip(RoundedCornerShape(4.dp))
-                            .background(Color.White),
+                            .background(AnsuColors.Accent),
                     )
                 }
             }
         } else {
-            Icon(Icons.Rounded.PlayArrow, contentDescription = "Play", tint = Color.White, modifier = Modifier.size((64 * scale).dp))
+            Icon(Icons.Rounded.PlayArrow, contentDescription = "Play", tint = AnsuColors.Accent, modifier = Modifier.size((64 * scale).dp))
         }
     }
 }
@@ -299,17 +303,21 @@ private fun TimeChip(text: String) {
 }
 
 @Composable
-private fun SkipOutroButton(onClick: () -> Unit) {
+internal fun SkipOutroButton(label: String, progress: Float = 0f, onClick: () -> Unit) {
     val shape = RoundedCornerShape(6.dp)
     Box(
         modifier = Modifier
             .clip(shape)
             .background(Color.Black.copy(alpha = 0.55f))
-            .border(1.dp, Color.White.copy(alpha = 0.85f), shape)
+            // The bar fills left to right over the 10 seconds the button stays on screen.
+            .drawBehind {
+                drawRect(AnsuColors.Accent.copy(alpha = 0.35f), size = Size(size.width * progress.coerceIn(0f, 1f), size.height))
+            }
+            .border(1.dp, AnsuColors.Accent.copy(alpha = 0.85f), shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 6.dp),
     ) {
-        Text("Skip outro", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -357,6 +365,8 @@ fun PlayerControlsCompact(
     hasPrev: Boolean,
     hasNext: Boolean,
     showSkipOutro: Boolean,
+    skipLabel: String = "Skip outro",
+    skipProgress: Float = 0f,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxSize().background(ScrimBrush)) {
@@ -388,7 +398,7 @@ fun PlayerControlsCompact(
         Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 12.dp)) {
             if (showSkipOutro) {
                 Row(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.End) {
-                    SkipOutroButton(onClick = actions.onSkipOutro)
+                    SkipOutroButton(label = skipLabel, progress = skipProgress, onClick = actions.onSkipOutro)
                 }
             }
             PlayerSeekBar(
@@ -468,7 +478,7 @@ fun PlayerSeekBar(
                 .clip(RoundedCornerShape(trackHeight / 2))
                 .background(SeekTrackColor),
         ) {
-            Box(modifier = Modifier.fillMaxWidth(fraction).fillMaxHeight().background(Color.White.copy(alpha = 0.85f)))
+            Box(modifier = Modifier.fillMaxWidth(fraction).fillMaxHeight().background(AnsuColors.Accent.copy(alpha = 0.85f)))
             if (showEndDot) {
                 Box(
                     modifier = Modifier
@@ -476,7 +486,7 @@ fun PlayerSeekBar(
                         .padding(end = 8.dp)
                         .size(5.dp)
                         .clip(CircleShape)
-                        .background(Color.White),
+                        .background(AnsuColors.Accent),
                 )
             }
         }
@@ -488,7 +498,7 @@ fun PlayerSeekBar(
                 }
                 .size(thumbWidth, thumbHeight)
                 .clip(RoundedCornerShape(thumbWidth / 2))
-                .background(Color.White),
+                .background(AnsuColors.Accent),
         )
     }
 }
@@ -561,7 +571,7 @@ fun SourceChip(
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            color = if (isSelected) Color.Black else Color.White,
+            color = if (isSelected) AnsuColors.OnAccent else Color.White,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

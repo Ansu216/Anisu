@@ -84,20 +84,14 @@ class HomeViewModel(
             // rows load lazily, when they first scroll into view.
             val shelves = async { runCatching { catalogRepository.buildHomeShelves() } }
             val trending = loadMore(AniListFeed.TRENDING_NOW)
-            val topPicks = async {
-                val (season, seasonYear) = currentSeason()
-                aniListRepository.getTopThisSeason(season, seasonYear)
-            }
 
             val shelfResult = shelves.await()
             trending?.join()
-            val picks = topPicks.await().map { it.toSAnime() }
             _uiState.update {
                 it.copy(
                     isLoading = false,
                     shelves = shelfResult.getOrDefault(emptyList()),
                     error = shelfResult.exceptionOrNull()?.message,
-                    topPicks = picks,
                 )
             }
         }

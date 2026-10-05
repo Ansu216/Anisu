@@ -279,7 +279,7 @@ fun SearchFilterSheet(
                             checked = draft.showAdult,
                             onCheckedChange = { draft = draft.copy(showAdult = it) },
                             colors = SwitchDefaults.colors(
-                                checkedThumbColor = AnsuColors.Background,
+                                checkedThumbColor = AnsuColors.OnAccent,
                                 checkedTrackColor = AnsuColors.Accent,
                                 uncheckedThumbColor = AnsuColors.TextSecondary,
                                 uncheckedTrackColor = AnsuColors.SurfaceGlassBase,
@@ -295,7 +295,7 @@ fun SearchFilterSheet(
                 Button(
                     onClick = { scope.launch { sheetState.hide(); onApply(draft) } },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.Background),
+                    colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
                     shape = RoundedCornerShape(25.dp),
                 ) {
                     Text("Show results", fontWeight = FontWeight.Bold)
@@ -354,7 +354,7 @@ private fun OptionChip(label: String, selected: Boolean, onClick: () -> Unit) {
     ) {
         Text(
             text = label,
-            color = if (selected) AnsuColors.Background else AnsuColors.TextPrimary,
+            color = if (selected) AnsuColors.OnAccent else AnsuColors.TextPrimary,
             fontSize = 13.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,

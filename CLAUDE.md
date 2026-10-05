@@ -388,7 +388,7 @@ is worse for every user, so add the section **before** pushing the tag.
 |---|---|---|
 | `.github/workflows/apk-nightly.yml` | hourly `cron`, **every push to `main`**, manual | force-publishes to `apk-nightly`: `Ansu-nightly.apk`, `Ansu-nightly-debug.apk`, `nightly.json`, generated `README.md` |
 | `.github/workflows/release-apk.yml` | tag `v*`, manual | GitHub Release with `Ansu-<version>.apk` and `-debug.apk`, notes extracted from `CHANGELOG.md` |
-| `.github/workflows/extract-fix-zip.yml` | push of `fix.zip` to `main` by **Maygodblastyou**, manual | extracts the archive into the working tree (its own relative paths), commits it to `main` as `extract fix.zip and updated the app`, then dispatches the nightly APK build. The job is guarded on `github.actor == 'Maygodblastyou'`, so any other actor is skipped |
+| `.github/workflows/extract-fix-zip.yml` | push of `fix.zip` to `main` whose commit message contains **Maygodblastyou**, manual | extracts the archive into the working tree (its own relative paths), commits it to `main` as `extract fix.zip and updated the app`, then dispatches the nightly APK build. The job is guarded on the commit message (`contains(github.event.head_commit.message, 'Maygodblastyou')`), not on the actor: any author may deliver a `fix.zip`, but only the magic word — or a manual run — lets it extract |
 
 The two APK workflows are built the same way, and **both compile their APKs in
 parallel**:
@@ -428,10 +428,15 @@ plan  ──▶  build (matrix: release, debug — one runner each, fail-fast: f
   run can override that with the `channel` input.
 
 `extract-fix-zip.yml` extracts `fix.zip`, commits the result to `main` and then
-starts the nightly APK build. It runs **only when the actor is
-`Maygodblastyou`** (`if: ${{ github.actor == 'Maygodblastyou' }}`): a `fix.zip`
-pushed by anyone else — a collaborator, a fork, the Actions bot — is left alone,
-which also means the run can never loop by triggering itself. Three details are
+starts the nightly APK build. It runs **only when it is started manually from the
+Actions tab, or when the commit that pushed the `fix.zip` carries `Maygodblastyou`
+in its message** (`if: ${{ github.event_name == 'workflow_dispatch' ||
+contains(github.event.head_commit.message, 'Maygodblastyou') }}`): the author of
+the push is irrelevant — anyone may deliver a `fix.zip`, but only the magic word
+(or a manual run) lets it rewrite the project. A `fix.zip` pushed with any other
+commit message is left alone, and the bot's own commit message
+("extract fix.zip and updated the app") does not carry the word, which also means
+the run can never loop by triggering itself. Three details are
 load-bearing:
 
 - The extraction **only ever writes**. It updates existing files, creates missing
