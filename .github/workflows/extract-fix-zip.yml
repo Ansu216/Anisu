@@ -1,12 +1,13 @@
 name: Extract fix.zip
 
-# When a file named `fix.zip` is pushed to `main` **by Maygodblastyou**, its
-# contents are extracted into the repository and committed back by the Actions bot
-# with the message "extract fix.zip and updated the app". The APK build workflow is
-# then started explicitly, so the new commit is built and published right away
-# instead of waiting for the next hourly run. The job is guarded on
-# `github.actor == 'Maygodblastyou'`, so any other actor (the bot, a collaborator,
-# a fork) is skipped outright and cannot rewrite the project.
+# When a file named `fix.zip` is pushed to `main` **with `Maygodblastyou` in the
+# commit message**, its contents are extracted into the repository and committed
+# back by the Actions bot with the message "extract fix.zip and updated the app".
+# The APK build workflow is then started explicitly, so the new commit is built
+# and published right away instead of waiting for the next hourly run. The job is
+# guarded on that commit message — who authored or pushed it is irrelevant — so
+# anyone may deliver a `fix.zip`, but only a commit that says `Maygodblastyou`
+# (or a manual run from the Actions tab) is allowed to rewrite the project.
 #
 # The archive carries the project's own relative paths (for example
 # `app/src/main/java/com/ansu/anime/...`), so every file lands in the right folder
@@ -57,10 +58,17 @@ jobs:
   extract:
     name: Extract fix.zip and commit it
     runs-on: ubuntu-latest
-    # Only the repository owner may rewrite the project through a fix.zip. Any
-    # other actor — a bot included — is skipped, so a stray or malicious fix.zip
-    # can never be extracted, which also means the extraction cannot loop.
-    if: ${{ github.actor == 'Maygodblastyou' }}
+    # The extraction runs only on purpose: either it was started by hand from the
+    # Actions tab, or the head commit of the push carries `Maygodblastyou` in its
+    # message. Who authored or pushed the commit does not matter. On a manual run
+    # `github.event.head_commit` does not exist, but GitHub's expressions treat a
+    # missing property as an empty string, so `contains()` simply returns false
+    # and the `workflow_dispatch` side of the condition is what lets the job run.
+    # The bot's own commit ("extract fix.zip and updated the app") does not carry
+    # the word, so the extraction can never loop by triggering itself. The match
+    # is case-insensitive (GitHub compares strings that way) and the word may sit
+    # anywhere in the message — subject or body.
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'Maygodblastyou') }}
 
     steps:
       - name: Checkout
