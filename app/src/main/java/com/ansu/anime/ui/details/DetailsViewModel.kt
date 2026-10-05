@@ -99,11 +99,27 @@ class DetailsViewModel(
             }
             viewModelScope.launch {
                 val cacheKey = "ep-${current.anilistId ?: current.id}"
-                // Show the last known list instantly; only re-fetch when it is older than 5 minutes.
-                EpisodeListCache.get(cacheKey)?.let { rawEpisodes = it; publishEpisodes(current, finished = true) }
-                if (EpisodeListCache.ageMs(cacheKey) < 5 * 60_000L) return@launch
-                runCatching { loadEpisodes(current) { partial -> rawEpisodes = partial; publishEpisodes(current, finished = false) } }
-                    .onSuccess { rawEpisodes = it; EpisodeListCache.put(cacheKey, it) }
+                // Show the last known list instantly (memory, then disk); re-fetch when it is older than 5 minutes.
+                val cached = EpisodeListCache.get(cacheKey)
+                if (cached != null) {
+                    rawEpisodes = cached
+                    publishEpisodes(current, finished = true)
+                    if (EpisodeListCache.ageMs(cacheKey) < 5 * 60_000L) return@launch
+                }
+                runCatching {
+                    loadEpisodes(current) { partial ->
+                        // With a cached list on screen, wait for the full result so the list never shrinks mid-refresh.
+                        if (cached == null) {
+                            rawEpisodes = partial
+                            publishEpisodes(current, finished = false)
+                        }
+                    }
+                }
+                    .onSuccess {
+                        rawEpisodes = it
+                        // A placeholder "episode 1" (nothing found) is not worth remembering.
+                        if (it.any { episode -> episode.sourceId != null }) EpisodeListCache.save(cacheKey, it)
+                    }
                     .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
                 publishEpisodes(current, finished = true)
             }
@@ -180,7 +196,7 @@ class DetailsViewModel(
                     runCatching {
                         // Alternate titles only improve matching; never let a slow AniList call hold the search up.
                         val extra = anime.anilistId?.let { id ->
-                            kotlinx.coroutines.withTimeoutOrNull(2_000) { aniListRepository.getAllTitles(id) }
+                            kotlinx.coroutines.withTimeoutOrNull(1_500) { aniListRepository.getAllTitles(id) }
                         }.orEmpty()
                         extensionManager.findEpisodesByTitle(anime, extraTitles = extra) { partial ->
                             onPartial(com.ansu.anime.extension.foldOriginEpisodes(partial, origin.sourceId, ownSoFar))

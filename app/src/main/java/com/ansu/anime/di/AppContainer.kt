@@ -41,6 +41,10 @@ class AppContainer(context: Context) {
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    init {
+        com.ansu.anime.extension.EpisodeListCache.attach(appContext.cacheDir)
+    }
+
     /** Ansu's black box: every crash, navigation, tap, playback and network event. */
     val diagnostics: Diagnostics = Diagnostics(appContext)
 
