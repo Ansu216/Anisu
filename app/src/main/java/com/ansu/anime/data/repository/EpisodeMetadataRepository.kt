@@ -4,6 +4,8 @@ import com.ansu.anime.anilist.AniListRepository
 import com.ansu.anime.core.net.ApiErrorHandler
 import com.ansu.anime.core.net.httpApiException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -43,8 +45,8 @@ class EpisodeMetadataRepository(
     suspend fun getEpisodeMeta(anilistId: Int): Map<Int, EpisodeMeta> {
         metaCache[anilistId]?.let { return it }
         // ani.zip and AniList are independent, so ask both at once instead of one after the other.
-        val (primary, streaming) = kotlinx.coroutines.coroutineScope {
-            val a = kotlinx.coroutines.async {
+        val (primary, streaming) = coroutineScope {
+            val a = async {
                 try {
                     fetchAniZip(anilistId)
                 } catch (e: CancellationException) {
@@ -55,7 +57,7 @@ class EpisodeMetadataRepository(
                     emptyMap()
                 }
             }
-            val b = kotlinx.coroutines.async { aniList.getStreamingEpisodes(anilistId) }
+            val b = async { aniList.getStreamingEpisodes(anilistId) }
             a.await() to b.await()
         }
         val fallback = streaming.let { list ->

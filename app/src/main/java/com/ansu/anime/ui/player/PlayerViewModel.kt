@@ -191,7 +191,7 @@ class PlayerViewModel(
                 if (fresh.isNotEmpty()) {
                     collected += fresh
                     // The list follows the person's source priority; within one source, arrival order is kept.
-                    collected.sortWith(compareBy { rankOf(it.sourceId) })
+                    collected.sortWith(compareBy<PlayableSource> { rankOf(it.sourceId) })
                     _uiState.value = _uiState.value.copy(isLoadingSources = false, sources = collected.toList(), error = null)
                     if (!first && _uiState.value.error != null) {
                         // Earlier streams all failed; a later source just answered, so try it.

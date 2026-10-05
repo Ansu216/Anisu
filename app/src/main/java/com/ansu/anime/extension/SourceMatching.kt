@@ -61,6 +61,7 @@ suspend fun ExtensionManager.findEpisodesByTitle(
                     matches += match
                     onPartial?.invoke(mergeMatches(matches.sortedByDescending { it.score }))
                 }
+                Unit
             }
         }
         .awaitAll()
