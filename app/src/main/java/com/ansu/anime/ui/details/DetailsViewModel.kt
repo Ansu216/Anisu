@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancelChildren
 
 data class DetailsUiState(
     val isLoading: Boolean = true,
@@ -277,5 +278,30 @@ class DetailsViewModel(
                 _uiState.value = _uiState.value.copy(remoteListStatus = previous)
             }
         }
+    }
+
+    /**
+     * CRITICAL: Clean up resources when ViewModel is destroyed
+     * This prevents crashes from accessing stale caches when re-entering the same details screen
+     */
+    override fun onCleared() {
+        super.onCleared()
+        
+        try {
+            // Clear all cached data
+            rawEpisodes = emptyList()
+            episodeMeta = emptyMap()
+            
+            // Reset state
+            _uiState.value = DetailsUiState(
+                isLoading = false,
+                error = null
+            )
+        } catch (e: Exception) {
+            // Ignore if fields don't exist or cause issues
+        }
+        
+        // Cancel all coroutines in this scope to prevent memory leaks
+        viewModelScope.coroutineContext.cancelChildren()
     }
 }

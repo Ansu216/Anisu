@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.ClosedCaption
+import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Replay
@@ -52,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
@@ -59,6 +61,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -71,6 +74,7 @@ import com.ansu.anime.core.model.SEpisode
 import com.ansu.anime.core.util.formatDuration
 import com.ansu.anime.core.util.formatEpisodeNumber
 import com.ansu.anime.ui.theme.AnsuColors
+import kotlin.math.roundToInt
 
 /** Everything the player UI can ask for; the screen wires these to the view model. */
 class PlayerActions(
@@ -122,6 +126,8 @@ fun PlayerControlsOverlay(
     showSkipOutro: Boolean,
     skipLabel: String = "Skip outro",
     skipProgress: Float = 0f,
+    /** 0 = no side panel, 1 = a panel is fully open: the pill has dropped off the bottom and the seek bar followed it. */
+    panelProgress: () -> Float = { 0f },
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxSize().background(ScrimBrush)) {
@@ -184,6 +190,15 @@ fun PlayerControlsOverlay(
                     SkipOutroButton(label = skipLabel, progress = skipProgress, onClick = actions.onSkipOutro)
                 }
             }
+            // While a side panel is open the rotate button sits above the end of the seek bar (as in the sketch).
+            Row(
+                modifier = Modifier.fillMaxWidth().clipToBounds().growVertically(panelProgress),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                IconButton(onClick = actions.onRotate, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Rounded.FullscreenExit, contentDescription = "Exit fullscreen", tint = Color.White, modifier = Modifier.size(22.dp))
+                }
+            }
             PlayerSeekBar(positionMs = state.positionMs, durationMs = state.durationMs, onSeek = actions.onSeekTo)
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
@@ -193,7 +208,9 @@ fun PlayerControlsOverlay(
                 TimeChip(formatDuration(state.positionMs / 1000))
                 TimeChip(formatDuration(state.durationMs / 1000))
             }
-            Box(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+            // The pill gives up its height as the panel opens, so the seek bar and time chips drop to the bottom edge
+            // with it; closing the panel reverses this and the pill pushes them back up.
+            Box(modifier = Modifier.fillMaxWidth().dropAway(panelProgress).padding(top = 8.dp)) {
                 ControlPill(
                     fitLabel = fitLabel,
                     speedLabel = speedLabel,
@@ -205,6 +222,28 @@ fun PlayerControlsOverlay(
                 }
             }
         }
+    }
+}
+
+/** Shrinks to nothing as [progress] goes 0 -> 1 while sliding down and fading out; the layout below moves down into the freed space. */
+private fun Modifier.dropAway(progress: () -> Float): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    // Read inside the layout block, so every animation frame only re-runs layout, not composition.
+    val p = progress().coerceIn(0f, 1f)
+    layout(placeable.width, (placeable.height * (1f - p)).roundToInt()) {
+        placeable.placeRelativeWithLayer(0, 0) {
+            translationY = 24.dp.toPx() * p
+            alpha = 1f - p
+        }
+    }
+}
+
+/** Grows from nothing to its full height as [progress] goes 0 -> 1 while fading in. */
+private fun Modifier.growVertically(progress: () -> Float): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val p = progress().coerceIn(0f, 1f)
+    layout(placeable.width, (placeable.height * p).roundToInt()) {
+        placeable.placeRelativeWithLayer(0, 0) { alpha = p }
     }
 }
 

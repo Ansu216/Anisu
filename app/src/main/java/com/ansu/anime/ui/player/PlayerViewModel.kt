@@ -23,6 +23,8 @@ import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.SEpisode
 import com.ansu.anime.core.model.SubtitleTrack
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import com.ansu.anime.core.util.SelectionHolder
 import com.ansu.anime.data.repository.ContinueWatchingRepository
 import com.ansu.anime.extension.ExtensionManager
@@ -47,6 +49,8 @@ data class PlayableSource(
     val resolve: (suspend () -> PlayableSource?)? = null,
     /** The extension this stream came from; used to order streams by the person's source priority. */
     val sourceId: Long? = null,
+    /** Name of the extension or addon that listed this stream (shown as a chip in the Sources panel). */
+    val extensionName: String? = null,
 )
 
 /** How long a picked source may take to resolve before the next one is tried. */
@@ -55,12 +59,17 @@ private const val RESOLVE_TIMEOUT_MS = 30_000L
 /** How long the first pick waits for a higher-priority source before playing what it already has. */
 private const val PRIORITY_GRACE_MS = 3_000L
 
+/** Longest subtitle delay the Subtitles panel offers. */
+private const val MAX_SUBTITLE_OFFSET_MS = 10_000L
+
 /** One selectable audio or subtitle track the player reported. */
 data class TrackOption(
     val groupIndex: Int,
     val trackIndex: Int,
     val label: String,
     val selected: Boolean,
+    /** Channels and bitrate when the player reports them, e.g. "Stereo · 128 kbps"; shown under the name in the Audio panel. */
+    val detail: String = "",
 )
 
 data class PlayerUiState(
@@ -83,6 +92,11 @@ data class PlayerUiState(
     val textEnabled: Boolean = false,
     /** Intro / outro / recap stretches AniSkip knows for this episode; empty when it has none. */
     val skipSegments: List<com.ansu.anime.data.repository.SkipSegment> = emptyList(),
+    /** Subtitle delay in milliseconds (Subtitles panel); 0 = in sync. */
+    val subtitleOffsetMs: Long = 0L,
+    /** Measured response time per stream url in ms; -1 = unreachable, missing = not measured yet. */
+    val pings: Map<String, Long> = emptyMap(),
+    val isMeasuringPings: Boolean = false,
 )
 
 class PlayerViewModel(
@@ -120,6 +134,7 @@ class PlayerViewModel(
     private fun rankOf(sourceId: Long?): Int = playerPrefs?.rankOf(sourceId) ?: 0
     private var playbackJob: kotlinx.coroutines.Job? = null
     private var skipJob: kotlinx.coroutines.Job? = null
+    private var pingRuns = 0
 
     private val _uiState = MutableStateFlow(
         PlayerUiState(
@@ -129,6 +144,11 @@ class PlayerViewModel(
         ),
     )
     val uiState: StateFlow<PlayerUiState> = _uiState
+
+    private val _cues = MutableStateFlow<List<Cue>>(emptyList())
+
+    /** Subtitle cues to draw, already delayed by the subtitle offset. The video view's own subtitle layer is hidden. */
+    val cues: StateFlow<List<Cue>> = _cues
 
     init {
         player.addListener(object : Player.Listener {
@@ -144,6 +164,19 @@ class PlayerViewModel(
                     textEnabled = !player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) &&
                         tracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected },
                 )
+            }
+
+            override fun onCues(cueGroup: CueGroup) {
+                val offset = _uiState.value.subtitleOffsetMs
+                if (offset <= 0L) {
+                    _cues.value = cueGroup.cues
+                } else {
+                    // Every cue change is held back by the same delay, so their order is kept.
+                    viewModelScope.launch {
+                        delay(offset)
+                        _cues.value = cueGroup.cues
+                    }
+                }
             }
 
             override fun onPlaybackStateChanged(state: Int) {
@@ -317,7 +350,7 @@ class PlayerViewModel(
                                 // and what arrived before the timeout is kept.
                                 kotlinx.coroutines.withTimeout(60_000L) {
                                     source.streamVideos(candidate, { line -> diagnostics?.log(LogCategory.PLAYBACK, line) }) { videos ->
-                                        val mapped = videos.map { video -> video.toPlayable().copy(sourceId = source.id) }
+                                        val mapped = videos.map { video -> video.toPlayable().copy(sourceId = source.id, extensionName = source.name) }
                                         total.addAndGet(mapped.size)
                                         if (mapped.isNotEmpty()) withContext(Dispatchers.Main) { onBatch(mapped) }
                                     }
@@ -356,7 +389,7 @@ class PlayerViewModel(
         // Torrent-only and external-app streams carry no direct URL; ExoPlayer cannot play them.
         val streamUrl = url ?: return null
         val label = listOfNotNull(addonName, name ?: title?.lineSequence()?.firstOrNull()).joinToString(" · ")
-        return PlayableSource(label = label, url = streamUrl, headers = behaviorHints?.proxyHeaders?.request.orEmpty())
+        return PlayableSource(label = label, url = streamUrl, headers = behaviorHints?.proxyHeaders?.request.orEmpty(), extensionName = addonName)
     }
 
     @androidx.annotation.OptIn(UnstableApi::class)
@@ -581,7 +614,16 @@ class PlayerViewModel(
                     ?.let { code -> java.util.Locale.forLanguageTag(code).displayLanguage.ifBlank { code } }
                 val label = listOfNotNull(format.label, language).distinct().joinToString(" · ")
                     .ifBlank { "Track ${out.size + 1}" }
-                out += TrackOption(groupIndex, trackIndex, label, group.isTrackSelected(trackIndex))
+                val channels = when (format.channelCount) {
+                    1 -> "Mono"
+                    2 -> "Stereo"
+                    6 -> "5.1"
+                    8 -> "7.1"
+                    else -> null
+                }
+                val bitrate = format.bitrate.takeIf { it > 0 }?.let { "${it / 1000} kbps" }
+                val detail = if (type == C.TRACK_TYPE_AUDIO) listOfNotNull(channels, bitrate).joinToString(" \u00B7 ") else ""
+                out += TrackOption(groupIndex, trackIndex, label, group.isTrackSelected(trackIndex), detail)
             }
         }
         return out
@@ -610,6 +652,64 @@ class PlayerViewModel(
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, option.trackIndex))
             .build()
+    }
+
+    /** Moves the subtitles later by [offsetMs] (never earlier: the player hands over cues only when they are due). */
+    fun setSubtitleOffset(offsetMs: Long) {
+        _uiState.value = _uiState.value.copy(subtitleOffsetMs = offsetMs.coerceIn(0L, MAX_SUBTITLE_OFFSET_MS))
+    }
+
+    /** Times a tiny request to every listed stream that has not been timed yet, for the latency shown in the Sources panel. */
+    fun measurePings() {
+        val known = _uiState.value.pings
+        val targets = _uiState.value.sources.filter { it.url.isNotBlank() && it.url !in known }
+        if (targets.isEmpty()) return
+        pingRuns++
+        _uiState.value = _uiState.value.copy(isMeasuringPings = true)
+        viewModelScope.launch {
+            try {
+                kotlinx.coroutines.coroutineScope {
+                    targets.map { source ->
+                        async {
+                            val ms = pingOf(source)
+                            _uiState.value = _uiState.value.copy(pings = _uiState.value.pings + (source.url to ms))
+                        }
+                    }.awaitAll()
+                }
+            } finally {
+                pingRuns--
+                _uiState.value = _uiState.value.copy(isMeasuringPings = pingRuns > 0)
+            }
+        }
+    }
+
+    /** Retry in the Sources panel: asks for the latencies again; when no stream was found at all, resolves the sources again. */
+    fun retrySources() {
+        if (_uiState.value.sources.isEmpty() && !_uiState.value.isLoadingSources) {
+            _uiState.value = _uiState.value.copy(isLoadingSources = true, error = null)
+            loadSources()
+        } else {
+            _uiState.value = _uiState.value.copy(pings = emptyMap())
+            measurePings()
+        }
+    }
+
+    private suspend fun pingOf(source: PlayableSource): Long = withContext(Dispatchers.IO) {
+        try {
+            val request = okhttp3.Request.Builder()
+                .url(source.url)
+                .apply { source.headers.forEach { (name, value) -> header(name, value) } }
+                .header("Range", "bytes=0-0")
+                .build()
+            val started = System.nanoTime()
+            probeClient.newCall(request).execute().use { response ->
+                if (response.code >= 500) -1L else (System.nanoTime() - started) / 1_000_000L
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            -1L
+        }
     }
 
     fun setSpeed(speed: Float) {

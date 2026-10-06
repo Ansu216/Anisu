@@ -324,9 +324,9 @@ fun ContinueWatchingRow(entries: List<ContinueWatchingEntity>, onClick: (Continu
 }
 
 /**
- * Swipeable hero carousel: the poster fills a 2:3 frame, bottom scrim, centered title/genres,
+ * Swipeable hero carousel: the poster fills the screen top to bottom, bottom scrim, centered title/genres,
  * and a centered "View Details" (white) + "Like" (frosted glass) button pair, with
- * page dots below. [onToggleFavourite] calls straight through to the real AniList
+ * page dots below. Auto-rotates every 3 seconds. [onToggleFavourite] calls straight through to the real AniList
  * favourite mutation; since [SAnime] doesn't carry a persisted favourite flag at the
  * shelf level, the heart's fill state is a local, optimistic per-session toggle rather
  * than a synced one (the Details page's heart is the source of truth for that).
@@ -347,6 +347,16 @@ fun HeroCarousel(
     val likedIds = remember { mutableStateMapOf<String, Boolean>() }
     // AniList id -> logo URL. A key with a null value means "looked up, no logo", so it is not asked twice.
     val logos = remember { mutableStateMapOf<Int, String?>() }
+    
+    // Auto-rotate every 3 seconds
+    LaunchedEffect(shown) {
+        while (true) {
+            kotlinx.coroutines.delay(3000) // 3 seconds
+            val nextPage = (pagerState.currentPage + 1) % shown.size
+            pagerState.animateScrollToPage(nextPage)
+        }
+    }
+    
     LaunchedEffect(shown) {
         shown.forEach { anime ->
             val id = anime.anilistId ?: return@forEach
@@ -355,10 +365,9 @@ fun HeroCarousel(
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        // The frame is exactly poster-shaped (2:3), so the portrait poster fills it edge to
-        // edge with nothing cropped; the banner is only a fallback for titles without a poster.
-        // The hero starts at the very top of the window (behind the status bar).
-        Box(modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)) {
+        // The frame now fills the entire screen top-to-bottom, making the hero banner expand fully
+        // Remove the aspectRatio constraint to allow full expansion
+        Box(modifier = Modifier.fillMaxWidth().fillMaxSize()) {
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                 val anime = shown[page]
                 Box(modifier = Modifier.fillMaxSize()) {

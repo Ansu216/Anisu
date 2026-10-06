@@ -53,6 +53,28 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putInt(KEY_SKIP_SECONDS, value).apply()
     }
 
+    private val _subtitleSize = MutableStateFlow(prefs.getInt(KEY_SUBTITLE_SIZE, DEFAULT_SUBTITLE_SIZE).coerceIn(SUBTITLE_SIZE_RANGE))
+
+    /** Subtitle text size in sp (player side panel > Subtitles). */
+    val subtitleSize: StateFlow<Int> = _subtitleSize
+
+    fun setSubtitleSize(value: Int) {
+        val clean = value.coerceIn(SUBTITLE_SIZE_RANGE)
+        _subtitleSize.value = clean
+        prefs.edit().putInt(KEY_SUBTITLE_SIZE, clean).apply()
+    }
+
+    private val _subtitleHeight = MutableStateFlow(prefs.getInt(KEY_SUBTITLE_HEIGHT, DEFAULT_SUBTITLE_HEIGHT).coerceIn(SUBTITLE_HEIGHT_RANGE))
+
+    /** How far the subtitles sit above the bottom edge of the video, in percent of the video height. */
+    val subtitleHeight: StateFlow<Int> = _subtitleHeight
+
+    fun setSubtitleHeight(value: Int) {
+        val clean = value.coerceIn(SUBTITLE_HEIGHT_RANGE)
+        _subtitleHeight.value = clean
+        prefs.edit().putInt(KEY_SUBTITLE_HEIGHT, clean).apply()
+    }
+
     private val _sourcePriority = MutableStateFlow(
         prefs.getString(KEY_SOURCE_PRIORITY, "").orEmpty().split(',').mapNotNull { it.toLongOrNull() },
     )
@@ -75,6 +97,10 @@ class PlayerPrefs(context: Context) {
 
     companion object {
         val SKIP_OPTIONS = listOf(5, 10, 15)
+        val SUBTITLE_SIZE_RANGE = 10..40
+        val SUBTITLE_HEIGHT_RANGE = 0..40
+        const val DEFAULT_SUBTITLE_SIZE = 18
+        const val DEFAULT_SUBTITLE_HEIGHT = 8
         const val DEFAULT_SKIP_SECONDS = 15 // the buttons were fixed at 15s before this was a setting
 
         private const val KEY_DOUBLE_TAP = "double_tap_seek"
@@ -82,5 +108,7 @@ class PlayerPrefs(context: Context) {
         private const val KEY_VOLUME = "volume_gesture"
         private const val KEY_SKIP_SECONDS = "skip_seconds"
         private const val KEY_SOURCE_PRIORITY = "source_priority"
+        private const val KEY_SUBTITLE_SIZE = "subtitle_size"
+        private const val KEY_SUBTITLE_HEIGHT = "subtitle_height"
     }
 }

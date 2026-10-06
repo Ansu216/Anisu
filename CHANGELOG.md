@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Sources, Audio and Subtitles open as a small tab on the right of the fullscreen player.** Tapping one in the pill now slides a panel in from the right (380 ms) instead of a bottom sheet. The video shrinks and slides left into the remaining space like YouTube does for its comments, the pill drops off the bottom edge and the seek bar with its time chips follows it down; closing the panel (X, back button, or a tap on the video) reverses all of it, with the pill pushing the seek bar back up. A rotate/exit-fullscreen button appears above the end of the seek bar while a panel is open. **Constraint:** the portrait layout keeps its bottom sheets.
+- **Subtitles panel with separate boxes.** One box holds the on/off toggle, the stream's source and the language (tap to pick another track); offset, size and height each get their own box with a minus/plus stepper. Size (10-40 sp) and height (0-40 % above the bottom edge) are remembered; the video's subtitles are now drawn by our own subtitle view so both apply live. **Constraint:** the offset only delays subtitles (0 to 10 s in 100 ms steps), because the player hands over a cue only when it is due, so it cannot show one earlier.
+- **Sources panel with chips, quality/sub-dub tags and latency.** Chips are built from the extensions that answered ("All" plus one per source), each stream is a card with its resolution and Sub/Dub tag when the label has them, and a latency measured with a tiny ranged request when the panel opens. Retry measures again (or looks for sources again when none were found). **Constraint:** a stream that the extension lists without resolving it yet has no URL to time, so it shows a dash.
+- **Audio panel with language cards.** Every audio track is a card with its name and, when the player reports them, channels and bitrate; the playing one is outlined.
+
 ### Changed
 
 - **Posters and thumbnails load from a shared, longer-lived cache.** The app now configures one image loader with a 200 MB disk cache and a 20% memory cache, and reuses a cached image without asking the server whether it changed. This removes a network round trip per image while scrolling, so lists stay smooth and posters still appear on a weak connection. **Constraint:** a poster that a site replaces under the same address keeps showing the old image until the cache is cleared or it is evicted. The build could not be run in this environment, so compile it once before release.

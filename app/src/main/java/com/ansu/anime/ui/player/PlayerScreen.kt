@@ -5,20 +5,26 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.util.TypedValue
+import android.view.View
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -37,8 +44,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
@@ -48,12 +59,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.media3.common.text.Cue
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
 import androidx.navigation.NavHostController
 import com.ansu.anime.di.AppContainer
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 private enum class PlayerSheet { SOURCES, SUBS, AUDIO, EPISODES, SETTINGS }
 
@@ -62,6 +76,9 @@ private val FitModes = listOf(
     "Fill" to AspectRatioFrameLayout.RESIZE_MODE_FILL,
     "Zoom" to AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
 )
+/** How long the side panel takes to slide in and out; the video, the pill and the seek bar move in step with it. */
+private const val PANEL_ANIMATION_MS = 380
+
 /** How long the skip button stays on screen before it hides itself. */
 private const val SKIP_BUTTON_SECONDS = 10
 
@@ -101,6 +118,14 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var sheet by remember { mutableStateOf<PlayerSheet?>(null) }
+    // Landscape: Sources / Audio / Subtitles open as a small tab on the right instead of a bottom sheet.
+    var panel by remember { mutableStateOf<PlayerPanel?>(null) }
+    var lastPanel by remember { mutableStateOf(PlayerPanel.SOURCES) }
+    val panelProgress = remember { Animatable(0f) }
+    val panelVisible by remember { derivedStateOf { panelProgress.value > 0f } }
+    val cues by viewModel.cues.collectAsStateWithLifecycle()
+    val subtitleSize by container.playerPrefs.subtitleSize.collectAsStateWithLifecycle()
+    val subtitleHeight by container.playerPrefs.subtitleHeight.collectAsStateWithLifecycle()
     var locked by remember { mutableStateOf(false) }
     var fitIndex by remember { mutableIntStateOf(0) }
     val doubleTapSeek by container.playerPrefs.doubleTapSeek.collectAsStateWithLifecycle()
@@ -109,7 +134,22 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     val skipSeconds by container.playerPrefs.skipSeconds.collectAsStateWithLifecycle()
     val gestureConfig = PlayerGestureConfig(doubleTapSeek, brightnessGesture, volumeGesture, skipSeconds, enabled = !locked)
 
-    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val panelWidth = panelWidthDp(configuration.screenWidthDp)
+
+    LaunchedEffect(panel) {
+        panel?.let { lastPanel = it }
+        panelProgress.animateTo(
+            targetValue = if (panel != null) 1f else 0f,
+            animationSpec = tween(durationMillis = PANEL_ANIMATION_MS, easing = FastOutSlowInEasing),
+        )
+    }
+    // Rotating to portrait has no side panel: close it (the portrait layout keeps its bottom sheets).
+    LaunchedEffect(isLandscape) { if (!isLandscape) panel = null }
+    // Latencies are measured when the Sources panel opens and as new streams arrive while it is open.
+    LaunchedEffect(panel, state.sources.size) { if (panel == PlayerPanel.SOURCES) viewModel.measurePings() }
+    BackHandler(enabled = panel != null) { panel = null }
 
     // The fullscreen layout is the main one, so the player opens in landscape; the rotate button
     // switches to the portrait layout (player on top, episode info and list below).
@@ -135,8 +175,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     }
 
     // Auto-hide controls after a few seconds of inactivity (not while a sheet is open).
-    LaunchedEffect(state.showControls, state.isPlaying, sheet) {
-        if (state.showControls && state.isPlaying && sheet == null) {
+    LaunchedEffect(state.showControls, state.isPlaying, sheet, panel) {
+        if (state.showControls && state.isPlaying && sheet == null && panel == null) {
             delay(3500)
             viewModel.toggleControls()
         }
@@ -163,8 +203,13 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     val showSkipOutro = activeSegment != null && skipShown
     val skipLabel = activeSegment?.type?.buttonLabel ?: "Skip"
     val onScreenTap = {
-        viewModel.toggleControls()
-        if (activeSegment != null) skipTapTick++
+        if (panel != null) {
+            // A tap on the shrunken video closes the open panel, like tapping outside a menu.
+            panel = null
+        } else {
+            viewModel.toggleControls()
+            if (activeSegment != null) skipTapTick++
+        }
     }
 
     val fitLabel = FitModes[fitIndex].first
@@ -190,9 +235,9 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
             val next = Speeds[(Speeds.indexOf(state.speed).takeIf { it >= 0 } ?: 1).plus(1) % Speeds.size]
             viewModel.setSpeed(next)
         },
-        onSubs = { sheet = PlayerSheet.SUBS },
-        onAudio = { sheet = PlayerSheet.AUDIO },
-        onSources = { sheet = PlayerSheet.SOURCES },
+        onSubs = { if (isLandscape) panel = PlayerPanel.SUBS else sheet = PlayerSheet.SUBS },
+        onAudio = { if (isLandscape) panel = PlayerPanel.AUDIO else sheet = PlayerSheet.AUDIO },
+        onSources = { if (isLandscape) panel = PlayerPanel.SOURCES else sheet = PlayerSheet.SOURCES },
         onEpisodes = { sheet = PlayerSheet.EPISODES },
         onSettings = { sheet = PlayerSheet.SETTINGS },
         onSkipOutro = viewModel::skipCurrentSegment,
@@ -213,6 +258,11 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 onBack = actions.onBack,
                 gestures = gestureConfig,
                 onSeekBy = viewModel::seekBy,
+                cues = cues,
+                subtitleSize = subtitleSize,
+                subtitleHeight = subtitleHeight,
+                panelWidth = panelWidth,
+                panelProgress = { panelProgress.value },
             ) {
                 if (locked) {
                     LockedOverlay(onUnlock = { locked = false })
@@ -227,6 +277,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                         showSkipOutro = showSkipOutro,
                         skipLabel = skipLabel,
                         skipProgress = skipProgress.value,
+                        panelProgress = { panelProgress.value },
                     )
                 }
             }
@@ -244,6 +295,9 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     onBack = actions.onBack,
                     gestures = gestureConfig,
                     onSeekBy = viewModel::seekBy,
+                    cues = cues,
+                    subtitleSize = subtitleSize,
+                    subtitleHeight = subtitleHeight,
                 ) {
                     if (locked) {
                         LockedOverlay(onUnlock = { locked = false })
@@ -263,6 +317,45 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     state = state,
                     onPlayEpisode = viewModel::playEpisode,
                     modifier = Modifier.weight(1f),
+                )
+            }
+        }
+
+        if (isLandscape && panelVisible) {
+            val panelModifier = Modifier.align(Alignment.CenterEnd).width(panelWidth)
+            val progress = { panelProgress.value }
+            val close = { panel = null }
+            when (panel ?: lastPanel) {
+                PlayerPanel.SOURCES -> SourcesPanel(
+                    state = state,
+                    progress = progress,
+                    onSelect = viewModel::selectSource,
+                    onRetry = viewModel::retrySources,
+                    onClose = close,
+                    modifier = panelModifier,
+                )
+                PlayerPanel.SUBS -> SubtitlesPanel(
+                    state = state,
+                    subtitleSize = subtitleSize,
+                    subtitleHeight = subtitleHeight,
+                    progress = progress,
+                    onToggle = { on ->
+                        if (on) viewModel.selectTextTrack(state.textOptions.firstOrNull { it.selected } ?: state.textOptions.firstOrNull())
+                        else viewModel.selectTextTrack(null)
+                    },
+                    onSelectTrack = viewModel::selectTextTrack,
+                    onOffsetChange = viewModel::setSubtitleOffset,
+                    onSizeChange = container.playerPrefs::setSubtitleSize,
+                    onHeightChange = container.playerPrefs::setSubtitleHeight,
+                    onClose = close,
+                    modifier = panelModifier,
+                )
+                PlayerPanel.AUDIO -> AudioPanel(
+                    options = state.audioOptions,
+                    progress = progress,
+                    onSelect = viewModel::selectAudioTrack,
+                    onClose = close,
+                    modifier = panelModifier,
                 )
             }
         }
@@ -321,49 +414,107 @@ private fun PlayerSurface(
     skipLabel: String? = null,
     skipProgress: Float = 0f,
     onSkip: () -> Unit = {},
+    cues: List<Cue> = emptyList(),
+    subtitleSize: Int = 18,
+    subtitleHeight: Int = 8,
+    /** Width of the side panel that slides in from the right; 0 for layouts that have none. */
+    panelWidth: Dp = 0.dp,
+    /** 0 = panel closed, 1 = open. Read inside layout/graphics blocks only, so animating it never recomposes. */
+    panelProgress: () -> Float = { 0f },
     overlay: @Composable BoxScope.() -> Unit,
 ) {
     Box(modifier = modifier.background(Color.Black)) {
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    useController = false
-                    player = viewModel.player
-                    this.resizeMode = resizeMode
+        // The video (and its subtitles) shrink and slide left into the space the panel leaves, like YouTube does
+        // when its comments open. It is a scale + translate of one layer, so the video surface is never re-laid out.
+        Box(
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                val p = panelProgress()
+                if (p > 0f) {
+                    val width = size.width
+                    val height = size.height
+                    val videoSize = viewModel.player.videoSize
+                    val aspect = if (videoSize.width > 0 && videoSize.height > 0) {
+                        videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
+                    } else {
+                        16f / 9f
+                    }
+                    // Fit leaves bars beside a 16:9 video; Fill and Zoom cover the whole box.
+                    val shownWidth = if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT) minOf(width, height * aspect) else width
+                    val panelPx = panelWidth.toPx()
+                    val target = minOf((width - panelPx) / shownWidth, 1f)
+                    val scale = 1f + (target - 1f) * p
+                    scaleX = scale
+                    scaleY = scale
+                    // The scaled box stays centred; move its centre to the middle of what the panel leaves free.
+                    translationX = -panelPx * p / 2f
                 }
             },
-            update = { it.resizeMode = resizeMode },
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        PlayerGestureLayer(config = gestures, onTap = onTap, onSeekBy = onSeekBy)
-
-        when {
-            state.isLoadingSources -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            state.error != null -> Text(
-                text = state.error.orEmpty(),
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.align(Alignment.Center).padding(24.dp),
+        ) {
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        useController = false
+                        player = viewModel.player
+                        this.resizeMode = resizeMode
+                        // Subtitles are drawn by the SubtitleView below, so they can be delayed, resized and raised.
+                        subtitleView?.visibility = View.GONE
+                    }
+                },
+                update = { it.resizeMode = resizeMode },
+                modifier = Modifier.fillMaxSize(),
             )
-            state.showControls -> overlay()
+            AndroidView(
+                factory = { ctx -> SubtitleView(ctx) },
+                update = { view ->
+                    view.setCues(cues)
+                    view.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSize.toFloat())
+                    view.setBottomPaddingFraction(subtitleHeight / 100f)
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
 
-        // The controls carry their own skip button; with them hidden the intro/outro button still has to show.
-        if (skipLabel != null && !state.showControls && !state.isLoadingSources && state.error == null) {
-            Box(modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 28.dp)) {
-                SkipOutroButton(label = skipLabel, progress = skipProgress, onClick = onSkip)
+        // Everything else lives in the part of the screen the panel leaves free, so the title, the transport buttons
+        // and the seek bar re-centre in the shrunken video area.
+        Box(modifier = Modifier.fillMaxHeight().freeWidth(panelWidth, panelProgress)) {
+            PlayerGestureLayer(config = gestures, onTap = onTap, onSeekBy = onSeekBy)
+
+            when {
+                state.isLoadingSources -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                state.error != null -> Text(
+                    text = state.error.orEmpty(),
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                )
+                state.showControls -> overlay()
             }
-        }
 
-        // While loading or failed there are no controls, so keep a way out.
-        if (state.isLoadingSources || state.error != null) {
-            IconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White)
+            // The controls carry their own skip button; with them hidden the intro/outro button still has to show.
+            if (skipLabel != null && !state.showControls && !state.isLoadingSources && state.error == null) {
+                Box(modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 28.dp)) {
+                    SkipOutroButton(label = skipLabel, progress = skipProgress, onClick = onSkip)
+                }
             }
-        }
 
-        if (state.isBuffering && state.error == null && !state.isLoadingSources) {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            // While loading or failed there are no controls, so keep a way out.
+            if (state.isLoadingSources || state.error != null) {
+                IconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White)
+                }
+            }
+
+            if (state.isBuffering && state.error == null && !state.isLoadingSources) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            }
         }
     }
+}
+
+/** Takes the full width minus [panelWidth] * [progress]; the child is laid out at exactly that size every frame. */
+private fun Modifier.freeWidth(panelWidth: Dp, progress: () -> Float): Modifier = layout { measurable, constraints ->
+    val full = if (constraints.hasBoundedWidth) constraints.maxWidth else constraints.minWidth
+    val width = (full - panelWidth.toPx() * progress().coerceIn(0f, 1f)).roundToInt().coerceAtLeast(0)
+    val height = if (constraints.hasBoundedHeight) constraints.maxHeight else constraints.minHeight
+    val placeable = measurable.measure(Constraints.fixed(width, height))
+    layout(width, height) { placeable.placeRelative(0, 0) }
 }

@@ -89,137 +89,165 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
             modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Titles", style = MaterialTheme.typography.titleMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                TitleLanguage.entries.forEach { language ->
-                    FilterChip(
-                        selected = titleLanguage == language,
-                        onClick = { container.appearancePrefs.setTitleLanguage(language) },
-                        label = { Text(language.label) },
+            // ===== TITLE SETTINGS BOX =====
+            SettingsBox(title = "Title Settings") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Language", style = MaterialTheme.typography.titleSmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        TitleLanguage.entries.forEach { language ->
+                            FilterChip(
+                                selected = titleLanguage == language,
+                                onClick = { container.appearancePrefs.setTitleLanguage(language) },
+                                label = { Text(language.label) },
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Show anime titles as Romaji (Shingeki no Kyojin) or English (Attack on Titan). " +
+                            "Titles and posters across the app follow this choice.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = AnsuColors.TextTertiary,
                     )
                 }
             }
-            Text(
-                text = "Show anime titles as Romaji (Shingeki no Kyojin) or English (Attack on Titan). " +
-                    "Titles and posters across the app follow this choice.",
-                style = MaterialTheme.typography.labelSmall,
-                color = AnsuColors.TextTertiary,
-            )
 
-            Text("Colour palette", style = MaterialTheme.typography.titleMedium)
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                AccentPalette.entries.forEach { palette ->
-                    val selected = palette == accent
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(palette.color)
-                            .border(if (selected) 3.dp else 1.dp, if (selected) AnsuColors.TextPrimary else AnsuColors.StrokeGlass, CircleShape)
-                            .clickable { container.appearancePrefs.setAccent(palette) },
+            // ===== COLOR PALETTE BOX =====
+            SettingsBox(title = "Color Palette") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Select Color", style = MaterialTheme.typography.titleSmall)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        AccentPalette.entries.forEach { palette ->
+                            val selected = palette == accent
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(palette.color)
+                                    .border(if (selected) 3.dp else 1.dp, if (selected) AnsuColors.TextPrimary else AnsuColors.StrokeGlass, CircleShape)
+                                    .clickable { container.appearancePrefs.setAccent(palette) },
+                            )
+                        }
+                    }
+                    
+                    // Sample of what the colour is used for.
+                    Text("Preview", style = MaterialTheme.typography.titleSmall, modifier = Modifier.paddingTop(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(AnsuColors.Accent).padding(horizontal = 20.dp, vertical = 10.dp),
+                        ) { Text("Play Ep. 1", color = AnsuColors.OnAccent, style = MaterialTheme.typography.titleSmall) }
+                        Box(
+                            modifier = Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(AnsuColors.AccentSoft),
+                        ) { Box(modifier = Modifier.fillMaxWidth(0.6f).fillMaxHeight().background(AnsuColors.Accent)) }
+                    }
+                    
+                    Text(
+                        text = "Colours the white pills, play buttons, selected chips and the player's progress bar. " +
+                            "Pick White to go back to the original look.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = AnsuColors.TextTertiary,
                     )
                 }
             }
-            // Sample of what the colour is used for.
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(AnsuColors.Accent).padding(horizontal = 20.dp, vertical = 10.dp),
-                ) { Text("Play Ep. 1", color = AnsuColors.OnAccent, style = MaterialTheme.typography.titleSmall) }
-                Box(
-                    modifier = Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(AnsuColors.AccentSoft),
-                ) { Box(modifier = Modifier.fillMaxWidth(0.6f).fillMaxHeight().background(AnsuColors.Accent)) }
-            }
-            Text(
-                text = "Colours the white pills, play buttons, selected chips and the player's progress bar. " +
-                    "Pick White to go back to the original look.",
-                style = MaterialTheme.typography.labelSmall,
-                color = AnsuColors.TextTertiary,
-            )
 
-            Text("Navigation bar", style = MaterialTheme.typography.titleMedium)
-
-            // ---- Live preview: the exact same bar composable the app uses ----
-            Text("Live preview", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextSecondary)
-            // A flat backdrop would hide the effect of the frostiness setting (a
-            // translucent bar over a solid colour looks the same at any opacity),
-            // so the preview sits on colourful bands like real page content.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(96.dp)
-                    .clip(MaterialTheme.shapes.large)
-                    .background(AnsuColors.BackgroundElevated)
-                    .border(1.dp, AnsuColors.StrokeGlass, MaterialTheme.shapes.large),
-                contentAlignment = Alignment.Center,
-            ) {
-                Row(modifier = Modifier.fillMaxSize()) {
-                    previewBackdropColors.forEach { color ->
+            // ===== NAVIGATION BAR BOX =====
+            SettingsBox(title = "Navigation Bar") {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    
+                    // ---- Live preview ----
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Live Preview", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextSecondary)
+                        // A flat backdrop would hide the effect of the frostiness setting (a
+                        // translucent bar over a solid colour looks the same at any opacity),
+                        // so the preview sits on colourful bands like real page content.
                         Box(
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .background(Brush.verticalGradient(listOf(color, color.copy(alpha = 0.35f)))),
+                                .fillMaxWidth()
+                                .height(96.dp)
+                                .clip(MaterialTheme.shapes.large)
+                                .background(AnsuColors.BackgroundElevated)
+                                .border(1.dp, AnsuColors.StrokeGlass, MaterialTheme.shapes.large),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                previewBackdropColors.forEach { color ->
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .background(Brush.verticalGradient(listOf(color, color.copy(alpha = 0.35f)))),
+                                    )
+                                }
+                            }
+                            NavBarSurface(currentRoute = Dest.HOME, roundness = roundness, frostiness = frostiness, blur = blur)
+                        }
+                    }
+
+                    // ---- Style Presets ----
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Style Presets", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextSecondary)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            presets.forEach { value ->
+                                val selected = (roundness * 100).roundToInt() == (value * 100).roundToInt()
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(28.dp)
+                                        .clip(navBarShape(value))
+                                        .background(if (selected) AnsuColors.Accent else AnsuColors.AccentSoft)
+                                        .border(1.dp, AnsuColors.StrokeGlass, navBarShape(value))
+                                        .clickable { container.appearancePrefs.setNavBarRoundness(value) },
+                                )
+                            }
+                        }
+                    }
+
+                    // ---- Roundness Slider ----
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SettingSlider(
+                            title = "Roundness",
+                            value = roundness,
+                            onValueChange = { container.appearancePrefs.setNavBarRoundness(it) },
+                        )
+                    }
+
+                    // ---- Frostiness Slider ----
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SettingSlider(
+                            title = "Frostiness (Opacity)",
+                            value = frostiness,
+                            onValueChange = { container.appearancePrefs.setNavBarFrostiness(it) },
+                        )
+                        Text(
+                            text = "0% is nearly clear glass; 100% is a fully opaque bar.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AnsuColors.TextTertiary,
+                        )
+                    }
+
+                    // ---- Blur Slider ----
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SettingSlider(
+                            title = "Blur",
+                            value = blur,
+                            onValueChange = { container.appearancePrefs.setNavBarBlur(it) },
+                        )
+                        Text(
+                            text = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                "Softens the glass behind the bar."
+                            } else {
+                                "Real blur needs Android 12 or newer; this device keeps the frosted look."
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AnsuColors.TextTertiary,
                         )
                     }
                 }
-                NavBarSurface(currentRoute = Dest.HOME, roundness = roundness, frostiness = frostiness, blur = blur)
             }
 
-            // ---- Preset bars with increasing roundness ----
-            Text("Style", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextSecondary)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                presets.forEach { value ->
-                    val selected = (roundness * 100).roundToInt() == (value * 100).roundToInt()
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(28.dp)
-                            .clip(navBarShape(value))
-                            .background(if (selected) AnsuColors.Accent else AnsuColors.AccentSoft)
-                            .border(1.dp, AnsuColors.StrokeGlass, navBarShape(value))
-                            .clickable { container.appearancePrefs.setNavBarRoundness(value) },
-                    )
-                }
-            }
-
-            // ---- Fine control ----
-            SettingSlider(
-                title = "Roundness",
-                value = roundness,
-                onValueChange = { container.appearancePrefs.setNavBarRoundness(it) },
-            )
-
-            // ---- Frostiness (Opacity): how opaque/frosted the bar background is ----
-            SettingSlider(
-                title = "Frostiness (Opacity)",
-                value = frostiness,
-                onValueChange = { container.appearancePrefs.setNavBarFrostiness(it) },
-            )
-            Text(
-                text = "0% is nearly clear glass; 100% is a fully opaque bar.",
-                style = MaterialTheme.typography.labelSmall,
-                color = AnsuColors.TextTertiary,
-            )
-
-            // ---- Blur: a real platform blur on Android 12+, frost only below ----
-            SettingSlider(
-                title = "Blur",
-                value = blur,
-                onValueChange = { container.appearancePrefs.setNavBarBlur(it) },
-            )
-            Text(
-                text = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    "Softens the glass behind the bar."
-                } else {
-                    "Real blur needs Android 12 or newer; this device keeps the frosted look."
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = AnsuColors.TextTertiary,
-            )
-
+            // ===== RESET BUTTON =====
             TextButton(
                 onClick = {
                     container.appearancePrefs.setNavBarRoundness(AppearancePrefs.DEFAULT_NAV_ROUNDNESS)
@@ -230,6 +258,30 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                 modifier = Modifier.align(Alignment.End),
             ) { Text("Reset to default") }
         }
+    }
+}
+
+/**
+ * Reusable settings box with rounded borders and padding.
+ * Keeps all related settings organized in a clear, visually separated container.
+ */
+@Composable
+private fun SettingsBox(
+    title: String,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(AnsuColors.BackgroundElevated)
+            .border(1.dp, AnsuColors.StrokeGlass, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, color = AnsuColors.TextPrimary)
+        content()
     }
 }
 
