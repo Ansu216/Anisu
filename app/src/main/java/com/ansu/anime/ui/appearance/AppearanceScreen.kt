@@ -133,7 +133,7 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                     }
                     
                     // Sample of what the colour is used for.
-                    Text("Preview", style = MaterialTheme.typography.titleSmall, modifier = Modifier.paddingTop(8.dp))
+                    Text("Preview", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(AnsuColors.Accent).padding(horizontal = 20.dp, vertical = 10.dp),
