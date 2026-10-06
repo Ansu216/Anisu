@@ -218,6 +218,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The black strip around the floating navigation bar is gone.** Each screen's `Scaffold` padded its content by the bar height, leaving an empty black band behind the transparent slot. Screens now pad only the top and let content scroll behind the bar, adding the bar height as bottom content padding so the last item and the Schedule sub-tab toggle still clear it.
 
+### Fixed
+
+- **Opening the same title a second time no longer crashes the app.** The details screen's `rawEpisodes` and `episodeMeta` were declared below the `init` block, so the episode list coming from the cache was published before those fields existed (a null `map` crash), and they were then reset to empty once the constructor finished. They are now declared above `init`, so the cached list is shown straight away on the second visit.
+
 ## [0.1.0] - 2026-09-28
 
 First versioned release. Ansu is an Android client for AniList that browses the

@@ -64,6 +64,11 @@ class DetailsViewModel(
     private val _uiState = MutableStateFlow(DetailsUiState())
     val uiState: StateFlow<DetailsUiState> = _uiState
 
+    // Declared before init{}: init launches coroutines that run right away (Main.immediate) and use these. Declared
+    // below it they are still null at that point, and a cached episode list crashed the page on the second open.
+    private var rawEpisodes: List<SEpisode> = emptyList()
+    private var episodeMeta: Map<Int, com.ansu.anime.data.repository.EpisodeMeta> = emptyMap()
+
     init {
         val current = anime.value
         if (current == null) {
@@ -126,9 +131,6 @@ class DetailsViewModel(
             }
         }
     }
-
-    private var rawEpisodes: List<SEpisode> = emptyList()
-    private var episodeMeta: Map<Int, com.ansu.anime.data.repository.EpisodeMeta> = emptyMap()
 
     /** Applies AniList episode info to the source episodes and shows the result. */
     private fun publishEpisodes(current: SAnime, finished: Boolean? = null) {
