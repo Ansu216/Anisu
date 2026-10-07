@@ -2,7 +2,6 @@ package com.ansu.anime.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -27,6 +26,28 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineStart
+import kotlin.math.abs
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
 import com.ansu.anime.data.prefs.AppearancePrefs
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
@@ -102,9 +123,23 @@ fun AppBottomBar(navController: NavHostController, currentRoute: String?) {
 }
 
 /**
+ * Where the selection pill was (in px, left edge) when the previous bar left the screen. Every screen
+ * owns its own [AppBottomBar], so a new bar starts its pill here and slides it to the new tab, which is
+ * what makes the pill appear to travel between tabs across a navigation.
+ */
+private var lastPillPx = Float.NaN
+
+private val NavSlotWidth = 70.dp
+private val NavSlotHeight = 40.dp
+
+/**
  * The bar itself, decoupled from navigation so Settings can render an
  * identical, non-navigating copy as a live preview. It wraps its content
  * (four 70dp x 40dp slots) instead of spanning the screen.
+ *
+ * The selection pill slides to the tapped tab with a soft spring. Pressing and holding makes the pill
+ * grow and brighten, and while it is held the pill can be dragged across the bar; releasing it selects
+ * the tab it is over.
  */
 @Composable
 fun NavBarSurface(
@@ -116,38 +151,99 @@ fun NavBarSurface(
     onItemClick: ((String) -> Unit)? = null,
 ) {
     val shape = navBarShape(roundness)
+    val slotPx = with(LocalDensity.current) { NavSlotWidth.toPx() }
+    val maxLeft = slotPx * (barItems.size - 1)
+    val targetIndex = barItems.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
+    val scope = rememberCoroutineScope()
+    val pillSpring = spring<Float>(dampingRatio = 0.78f, stiffness = 380f)
+
+    val pill = remember { Animatable(if (lastPillPx.isNaN()) targetIndex * slotPx else lastPillPx) }
+    var held by remember { mutableStateOf(false) }
+    // Left edge of the pill while a finger drags it; null whenever [pill] is in charge.
+    var dragLeft by remember { mutableStateOf<Float?>(null) }
+    val pillLeft = dragLeft ?: pill.value
+    val holdAmount by animateFloatAsState(
+        targetValue = if (held) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
+        label = "navPillHold",
+    )
+
+    LaunchedEffect(targetIndex) { pill.animateTo(targetIndex * slotPx, pillSpring) }
+    if (onItemClick != null) SideEffect { lastPillPx = pillLeft }
+    val activeIndex = (pillLeft / slotPx).roundToInt().coerceIn(0, barItems.size - 1)
+
     FrostedGlassCard(
         modifier = modifier,
         shape = shape,
         tintAlpha = navBarTintAlpha(frostiness),
         blurRadius = navBarBlurRadius(blur),
     ) {
-        Row(modifier = Modifier.padding(5.dp)) {
-            barItems.forEach { item ->
-                val selected = currentRoute == item.route
-                Box(
-                    modifier = Modifier
-                        .size(width = 70.dp, height = 40.dp)
-                        .clip(shape)
-                        // Translucent "glass" pill marking the current tab.
-                        .then(
-                            if (selected) {
-                                Modifier
-                                    .background(AnsuColors.Accent.copy(alpha = 0.16f))
-                                    .border(1.dp, AnsuColors.Accent.copy(alpha = 0.14f), shape)
-                            } else {
-                                Modifier
+        Box(
+            modifier = Modifier
+                .padding(5.dp)
+                .pointerInput(onItemClick, currentRoute) {
+                    if (onItemClick == null) return@pointerInput
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        held = true
+                        var moved = false
+                        var lastX = down.position.x
+                        while (true) {
+                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                            lastX = change.position.x
+                            if (!change.pressed) break
+                            if (!moved && abs(lastX - down.position.x) > viewConfiguration.touchSlop) moved = true
+                            // A plain press keeps the pill where it is (it just grows); only a drag moves it.
+                            if (moved) {
+                                dragLeft = (lastX - slotPx / 2).coerceIn(0f, maxLeft)
+                                change.consume()
+                            }
+                        }
+                        held = false
+                        val index = (lastX / slotPx).toInt().coerceIn(0, barItems.size - 1)
+                        val from = dragLeft
+                        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                            if (from != null) pill.snapTo(from)
+                            dragLeft = null
+                            pill.animateTo(index * slotPx, pillSpring)
+                        }
+                        if (barItems[index].route != currentRoute) onItemClick(barItems[index].route)
+                    }
+                },
+        ) {
+            // Translucent "glass" pill marking the current tab; it slides between tabs and swells while held.
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(pillLeft.roundToInt(), 0) }
+                    .size(width = NavSlotWidth, height = NavSlotHeight)
+                    .graphicsLayer {
+                        scaleX = 1f + 0.2f * holdAmount
+                        scaleY = 1f + 0.22f * holdAmount
+                    }
+                    .clip(shape)
+                    .background(AnsuColors.Accent.copy(alpha = 0.16f + 0.14f * holdAmount))
+                    .border(1.dp, AnsuColors.Accent.copy(alpha = 0.14f + 0.1f * holdAmount), shape),
+            )
+            Row {
+                barItems.forEachIndexed { index, item ->
+                    Box(
+                        modifier = Modifier
+                            .size(width = NavSlotWidth, height = NavSlotHeight)
+                            .semantics(mergeDescendants = true) {
+                                onClick {
+                                    onItemClick?.invoke(item.route)
+                                    onItemClick != null
+                                }
                             },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = item.icon,
+                            contentDescription = item.label,
+                            tint = if (index == activeIndex) AnsuColors.Accent else AnsuColors.TextTertiary,
+                            modifier = Modifier.size(24.dp),
                         )
-                        .then(if (onItemClick != null) Modifier.clickable { onItemClick(item.route) } else Modifier),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = item.icon,
-                        contentDescription = item.label,
-                        tint = if (selected) AnsuColors.Accent else AnsuColors.TextTertiary,
-                        modifier = Modifier.size(24.dp),
-                    )
+                    }
                 }
             }
         }

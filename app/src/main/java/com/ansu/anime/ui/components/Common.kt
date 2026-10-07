@@ -382,7 +382,6 @@ fun HeroCarousel(
         Box(modifier = Modifier.fillMaxWidth().height(heroHeight)) {
             HorizontalPager(
                 state = pagerState,
-                pageSpacing = 16.dp,
                 modifier = Modifier.fillMaxSize(),
             ) { page ->
                 val anime = shown[page]
