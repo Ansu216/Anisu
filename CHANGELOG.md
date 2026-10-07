@@ -20,9 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Published sections are never rewritten. A mistake is corrected in a new
   release.
 
+### Fixed
+
+- **Subtitle height now works in the landscape player.** Subtitle formats with their own line positions made the player ignore the height setting; it is now applied to every text cue.
+- **Opening a side panel in the landscape player no longer keeps the controls up or closes on a tap.** The controls hide after 3 seconds as usual, and tapping the shrunken video no longer closes the panel (the close button and Back still do).
+
+- **Sources list shows the extension and server name (e.g. "Anikoto · HD-1") instead of the stream label.** The card title used to repeat the quality and Sub/Dub text that the chips below already show, and the picked stream lost its extension name when it was resolved, so it showed the full label while the others showed only "Anikoto". The server (hoster) name now travels with each stream, is kept when a stream is resolved, and the title is built from extension name plus server name.
+
 ## [Unreleased]
 
 ### Added
+
+- **Subtitle colours and background, with a live preview in Settings > Player and streaming.** A new Subtitles box has a preview, text colour and background colour swatches, a background density slider, and size and height sliders. The player's Subtitles tab has the same colour and background options, and a Reset button in Settings restores the defaults.
+
+- **Portrait player: Sources, Subtitles and Audio open as bottom sheets with the same design as the landscape panels.** The portrait player used plain Material sheets with a different look and extra controls the landscape panels do not have. It now shows the same cards, chips, steppers and latency dots in a bottom sheet. **Constraint:** only controls that exist in landscape are shown (no Sub/Dub toggle, subtitle style/background/position chips or "Add subtitle file").
 
 - **Sources, Audio and Subtitles open as a small tab on the right of the fullscreen player.** Tapping one in the pill now slides a panel in from the right (380 ms) instead of a bottom sheet. The video shrinks and slides left into the remaining space like YouTube does for its comments, the pill drops off the bottom edge and the seek bar with its time chips follows it down; closing the panel (X, back button, or a tap on the video) reverses all of it, with the pill pushing the seek bar back up. A rotate/exit-fullscreen button appears above the end of the seek bar while a panel is open. **Constraint:** the portrait layout keeps its bottom sheets.
 - **Subtitles panel with separate boxes.** One box holds the on/off toggle, the stream's source and the language (tap to pick another track); offset, size and height each get their own box with a minus/plus stepper. Size (10-40 sp) and height (0-40 % above the bottom edge) are remembered; the video's subtitles are now drawn by our own subtitle view so both apply live. **Constraint:** the offset only delays subtitles (0 to 10 s in 100 ms steps), because the player hands over a cue only when it is due, so it cannot show one earlier.

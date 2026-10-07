@@ -37,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -49,6 +50,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.ansu.anime.data.prefs.PlayerPrefs
 import com.ansu.anime.di.AppContainer
+import com.ansu.anime.ui.player.ColorSwatchRow
+import com.ansu.anime.ui.player.SubtitleBgColors
+import com.ansu.anime.ui.player.SubtitlePreview
+import com.ansu.anime.ui.player.SubtitleTextColors
 import com.ansu.anime.ui.theme.AnsuColors
 import com.ansu.anime.extension.BUILT_IN_SOURCE_ID
 
@@ -59,6 +64,11 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val brightness by prefs.brightnessGesture.collectAsStateWithLifecycle()
     val volume by prefs.volumeGesture.collectAsStateWithLifecycle()
     val skipSeconds by prefs.skipSeconds.collectAsStateWithLifecycle()
+    val subSize by prefs.subtitleSize.collectAsStateWithLifecycle()
+    val subHeight by prefs.subtitleHeight.collectAsStateWithLifecycle()
+    val subColor by prefs.subtitleColor.collectAsStateWithLifecycle()
+    val subBgColor by prefs.subtitleBgColor.collectAsStateWithLifecycle()
+    val subBgOpacity by prefs.subtitleBgOpacity.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -108,6 +118,22 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                 onChange = prefs::setVolumeGesture,
             )
 
+            Text("Subtitles", style = MaterialTheme.typography.titleMedium)
+            SubtitlePreview(size = subSize, height = subHeight, textColor = subColor, bgColor = subBgColor, bgOpacity = subBgOpacity)
+            Text("Text colour", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
+            ColorSwatchRow(SubtitleTextColors, subColor, prefs::setSubtitleColor)
+            Text("Background colour", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
+            ColorSwatchRow(SubtitleBgColors, subBgColor, prefs::setSubtitleBgColor)
+            SliderRow("Background density", "$subBgOpacity %", subBgOpacity.toFloat(), 0f..100f) { prefs.setSubtitleBgOpacity(it.roundToInt()) }
+            SliderRow("Size", "$subSize sp", subSize.toFloat(), PlayerPrefs.SUBTITLE_SIZE_RANGE.first.toFloat()..PlayerPrefs.SUBTITLE_SIZE_RANGE.last.toFloat()) {
+                prefs.setSubtitleSize(it.roundToInt())
+            }
+            SliderRow("Height", "$subHeight %", subHeight.toFloat(), PlayerPrefs.SUBTITLE_HEIGHT_RANGE.first.toFloat()..PlayerPrefs.SUBTITLE_HEIGHT_RANGE.last.toFloat()) {
+                prefs.setSubtitleHeight(it.roundToInt())
+            }
+            Hint("Height is how far the subtitles sit above the bottom edge of the video. The player's Subtitles tab has the same options.")
+            TextButton(onClick = prefs::resetSubtitleStyle) { Text("Reset subtitle style") }
+
             Text("Streaming priority", style = MaterialTheme.typography.titleMedium)
             Hint(
                 "Drag the handle to rank your sources. The player lists streams in this order and starts with " +
@@ -115,6 +141,17 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
             )
             SourcePriorityList(container)
         }
+    }
+}
+
+@Composable
+private fun SliderRow(title: String, valueText: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary, modifier = Modifier.weight(1f))
+            Text(valueText, style = MaterialTheme.typography.labelMedium, color = AnsuColors.TextSecondary)
+        }
+        Slider(value = value, onValueChange = onChange, valueRange = range)
     }
 }
 

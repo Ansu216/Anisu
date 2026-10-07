@@ -75,6 +75,46 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putInt(KEY_SUBTITLE_HEIGHT, clean).apply()
     }
 
+    private val _subtitleColor = MutableStateFlow(prefs.getInt(KEY_SUBTITLE_COLOR, DEFAULT_SUBTITLE_COLOR))
+
+    /** Subtitle text colour (ARGB). */
+    val subtitleColor: StateFlow<Int> = _subtitleColor
+
+    fun setSubtitleColor(value: Int) {
+        _subtitleColor.value = value
+        prefs.edit().putInt(KEY_SUBTITLE_COLOR, value).apply()
+    }
+
+    private val _subtitleBgColor = MutableStateFlow(prefs.getInt(KEY_SUBTITLE_BG_COLOR, DEFAULT_SUBTITLE_BG_COLOR))
+
+    /** Colour behind the subtitle text (ARGB; how see-through it is comes from [subtitleBgOpacity]). */
+    val subtitleBgColor: StateFlow<Int> = _subtitleBgColor
+
+    fun setSubtitleBgColor(value: Int) {
+        _subtitleBgColor.value = value
+        prefs.edit().putInt(KEY_SUBTITLE_BG_COLOR, value).apply()
+    }
+
+    private val _subtitleBgOpacity = MutableStateFlow(prefs.getInt(KEY_SUBTITLE_BG_OPACITY, DEFAULT_SUBTITLE_BG_OPACITY).coerceIn(0, 100))
+
+    /** Density of the subtitle background in percent: 0 = none, 100 = solid. */
+    val subtitleBgOpacity: StateFlow<Int> = _subtitleBgOpacity
+
+    fun setSubtitleBgOpacity(value: Int) {
+        val clean = value.coerceIn(0, 100)
+        _subtitleBgOpacity.value = clean
+        prefs.edit().putInt(KEY_SUBTITLE_BG_OPACITY, clean).apply()
+    }
+
+    /** Puts size, height, colours and background back to their defaults. */
+    fun resetSubtitleStyle() {
+        setSubtitleSize(DEFAULT_SUBTITLE_SIZE)
+        setSubtitleHeight(DEFAULT_SUBTITLE_HEIGHT)
+        setSubtitleColor(DEFAULT_SUBTITLE_COLOR)
+        setSubtitleBgColor(DEFAULT_SUBTITLE_BG_COLOR)
+        setSubtitleBgOpacity(DEFAULT_SUBTITLE_BG_OPACITY)
+    }
+
     private val _sourcePriority = MutableStateFlow(
         prefs.getString(KEY_SOURCE_PRIORITY, "").orEmpty().split(',').mapNotNull { it.toLongOrNull() },
     )
@@ -101,6 +141,9 @@ class PlayerPrefs(context: Context) {
         val SUBTITLE_HEIGHT_RANGE = 0..40
         const val DEFAULT_SUBTITLE_SIZE = 18
         const val DEFAULT_SUBTITLE_HEIGHT = 8
+        const val DEFAULT_SUBTITLE_COLOR = 0xFFFFFFFF.toInt()
+        const val DEFAULT_SUBTITLE_BG_COLOR = 0xFF000000.toInt()
+        const val DEFAULT_SUBTITLE_BG_OPACITY = 50
         const val DEFAULT_SKIP_SECONDS = 15 // the buttons were fixed at 15s before this was a setting
 
         private const val KEY_DOUBLE_TAP = "double_tap_seek"
@@ -110,5 +153,8 @@ class PlayerPrefs(context: Context) {
         private const val KEY_SOURCE_PRIORITY = "source_priority"
         private const val KEY_SUBTITLE_SIZE = "subtitle_size"
         private const val KEY_SUBTITLE_HEIGHT = "subtitle_height"
+        private const val KEY_SUBTITLE_COLOR = "subtitle_color"
+        private const val KEY_SUBTITLE_BG_COLOR = "subtitle_bg_color"
+        private const val KEY_SUBTITLE_BG_OPACITY = "subtitle_bg_opacity"
     }
 }

@@ -62,6 +62,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.media3.common.text.Cue
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import androidx.navigation.NavHostController
@@ -126,6 +127,9 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     val cues by viewModel.cues.collectAsStateWithLifecycle()
     val subtitleSize by container.playerPrefs.subtitleSize.collectAsStateWithLifecycle()
     val subtitleHeight by container.playerPrefs.subtitleHeight.collectAsStateWithLifecycle()
+    val subtitleColor by container.playerPrefs.subtitleColor.collectAsStateWithLifecycle()
+    val subtitleBgColor by container.playerPrefs.subtitleBgColor.collectAsStateWithLifecycle()
+    val subtitleBgOpacity by container.playerPrefs.subtitleBgOpacity.collectAsStateWithLifecycle()
     var locked by remember { mutableStateOf(false) }
     var fitIndex by remember { mutableIntStateOf(0) }
     val doubleTapSeek by container.playerPrefs.doubleTapSeek.collectAsStateWithLifecycle()
@@ -148,7 +152,9 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     // Rotating to portrait has no side panel: close it (the portrait layout keeps its bottom sheets).
     LaunchedEffect(isLandscape) { if (!isLandscape) panel = null }
     // Latencies are measured when the Sources panel opens and as new streams arrive while it is open.
-    LaunchedEffect(panel, state.sources.size) { if (panel == PlayerPanel.SOURCES) viewModel.measurePings() }
+    LaunchedEffect(panel, sheet, state.sources.size) {
+        if (panel == PlayerPanel.SOURCES || sheet == PlayerSheet.SOURCES) viewModel.measurePings()
+    }
     BackHandler(enabled = panel != null) { panel = null }
 
     // The fullscreen layout is the main one, so the player opens in landscape; the rotate button
@@ -174,9 +180,10 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         }
     }
 
-    // Auto-hide controls after a few seconds of inactivity (not while a sheet is open).
+    // Auto-hide controls after a few seconds of inactivity (not while a bottom sheet is open). A side panel does not
+    // keep them up: the video shrinks beside it and its controls leave after 3 seconds like normal.
     LaunchedEffect(state.showControls, state.isPlaying, sheet, panel) {
-        if (state.showControls && state.isPlaying && sheet == null && panel == null) {
+        if (state.showControls && state.isPlaying && sheet == null) {
             delay(3500)
             viewModel.toggleControls()
         }
@@ -202,14 +209,10 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     }
     val showSkipOutro = activeSegment != null && skipShown
     val skipLabel = activeSegment?.type?.buttonLabel ?: "Skip"
+    // A tap on the video never closes an open panel (only its close button and Back do); it just shows or hides controls.
     val onScreenTap = {
-        if (panel != null) {
-            // A tap on the shrunken video closes the open panel, like tapping outside a menu.
-            panel = null
-        } else {
-            viewModel.toggleControls()
-            if (activeSegment != null) skipTapTick++
-        }
+        viewModel.toggleControls()
+        if (activeSegment != null) skipTapTick++
     }
 
     val fitLabel = FitModes[fitIndex].first
@@ -261,6 +264,9 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 cues = cues,
                 subtitleSize = subtitleSize,
                 subtitleHeight = subtitleHeight,
+                subtitleTextColor = subtitleColor,
+                subtitleBgColor = subtitleBgColor,
+                subtitleBgOpacity = subtitleBgOpacity,
                 panelWidth = panelWidth,
                 panelProgress = { panelProgress.value },
             ) {
@@ -298,6 +304,9 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     cues = cues,
                     subtitleSize = subtitleSize,
                     subtitleHeight = subtitleHeight,
+                    subtitleTextColor = subtitleColor,
+                    subtitleBgColor = subtitleBgColor,
+                    subtitleBgOpacity = subtitleBgOpacity,
                 ) {
                     if (locked) {
                         LockedOverlay(onUnlock = { locked = false })
@@ -347,6 +356,12 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     onOffsetChange = viewModel::setSubtitleOffset,
                     onSizeChange = container.playerPrefs::setSubtitleSize,
                     onHeightChange = container.playerPrefs::setSubtitleHeight,
+                    textColor = subtitleColor,
+                    bgColor = subtitleBgColor,
+                    bgOpacity = subtitleBgOpacity,
+                    onTextColor = container.playerPrefs::setSubtitleColor,
+                    onBgColor = container.playerPrefs::setSubtitleBgColor,
+                    onBgOpacity = container.playerPrefs::setSubtitleBgOpacity,
                     onClose = close,
                     modifier = panelModifier,
                 )
@@ -361,27 +376,43 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         }
 
         when (sheet) {
-            PlayerSheet.SOURCES -> SourceSelectSheet(
-                sources = state.sources,
-                selected = state.selectedSource,
-                onSelect = viewModel::selectSource,
-                onDismiss = { sheet = null },
+            // Portrait: the same Sources / Subtitles / Audio content as the landscape panels, in a bottom sheet.
+            PlayerSheet.SOURCES -> SourcesPanel(
+                state = state,
+                progress = { 1f },
+                onSelect = { viewModel.selectSource(it); sheet = null },
+                onRetry = viewModel::retrySources,
+                onClose = { sheet = null },
+                sheet = true,
             )
-            PlayerSheet.SUBS -> TrackSheet(
-                title = "Subtitles",
-                options = state.textOptions,
-                offSelected = !state.textEnabled,
-                onSelect = viewModel::selectTextTrack,
-                onOff = { viewModel.selectTextTrack(null) },
-                onDismiss = { sheet = null },
+            PlayerSheet.SUBS -> SubtitlesPanel(
+                state = state,
+                subtitleSize = subtitleSize,
+                subtitleHeight = subtitleHeight,
+                progress = { 1f },
+                onToggle = { on ->
+                    if (on) viewModel.selectTextTrack(state.textOptions.firstOrNull { it.selected } ?: state.textOptions.firstOrNull())
+                    else viewModel.selectTextTrack(null)
+                },
+                onSelectTrack = viewModel::selectTextTrack,
+                onOffsetChange = viewModel::setSubtitleOffset,
+                onSizeChange = container.playerPrefs::setSubtitleSize,
+                onHeightChange = container.playerPrefs::setSubtitleHeight,
+                textColor = subtitleColor,
+                bgColor = subtitleBgColor,
+                bgOpacity = subtitleBgOpacity,
+                onTextColor = container.playerPrefs::setSubtitleColor,
+                onBgColor = container.playerPrefs::setSubtitleBgColor,
+                onBgOpacity = container.playerPrefs::setSubtitleBgOpacity,
+                onClose = { sheet = null },
+                sheet = true,
             )
-            PlayerSheet.AUDIO -> TrackSheet(
-                title = "Audio",
+            PlayerSheet.AUDIO -> AudioPanel(
                 options = state.audioOptions,
-                offSelected = null,
+                progress = { 1f },
                 onSelect = viewModel::selectAudioTrack,
-                onOff = {},
-                onDismiss = { sheet = null },
+                onClose = { sheet = null },
+                sheet = true,
             )
             PlayerSheet.EPISODES -> EpisodeListSheet(
                 state = state,
@@ -417,6 +448,9 @@ private fun PlayerSurface(
     cues: List<Cue> = emptyList(),
     subtitleSize: Int = 18,
     subtitleHeight: Int = 8,
+    subtitleTextColor: Int = 0xFFFFFFFF.toInt(),
+    subtitleBgColor: Int = 0xFF000000.toInt(),
+    subtitleBgOpacity: Int = 50,
     /** Width of the side panel that slides in from the right; 0 for layouts that have none. */
     panelWidth: Dp = 0.dp,
     /** 0 = panel closed, 1 = open. Read inside layout/graphics blocks only, so animating it never recomposes. */
@@ -463,12 +497,40 @@ private fun PlayerSurface(
                 update = { it.resizeMode = resizeMode },
                 modifier = Modifier.fillMaxSize(),
             )
+            // Most subtitle formats (WebVTT, ASS) give every cue its own line position, and the view then ignores its
+            // bottom padding. So the chosen height is written into each text cue: its bottom edge sits at that
+            // fraction of the video height above the bottom.
+            val placedCues = remember(cues, subtitleHeight) {
+                cues.map { cue ->
+                    if (cue.bitmap != null) {
+                        cue
+                    } else {
+                        cue.buildUpon()
+                            .setLine(1f - subtitleHeight / 100f, Cue.LINE_TYPE_FRACTION)
+                            .setLineAnchor(Cue.ANCHOR_TYPE_END)
+                            .build()
+                    }
+                }
+            }
             AndroidView(
                 factory = { ctx -> SubtitleView(ctx) },
                 update = { view ->
-                    view.setCues(cues)
+                    // The colours below are the person's choice, so a subtitle file's own colours and sizes must not win.
+                    view.setApplyEmbeddedStyles(false)
+                    view.setApplyEmbeddedFontSizes(false)
+                    view.setStyle(
+                        CaptionStyleCompat(
+                            subtitleTextColor,
+                            subtitleBackgroundArgb(subtitleBgColor, subtitleBgOpacity),
+                            0,
+                            CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                            0xFF000000.toInt(),
+                            null,
+                        ),
+                    )
                     view.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSize.toFloat())
-                    view.setBottomPaddingFraction(subtitleHeight / 100f)
+                    view.setBottomPaddingFraction(0f)
+                    view.setCues(placedCues)
                 },
                 modifier = Modifier.fillMaxSize(),
             )

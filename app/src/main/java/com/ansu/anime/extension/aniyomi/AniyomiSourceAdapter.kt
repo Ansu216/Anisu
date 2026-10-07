@@ -328,6 +328,7 @@ class AniyomiSourceAdapter(
             url = "",
             quality = labelled(label, video.videoTitle),
             sourceLabel = name,
+            serverName = label,
             resolve = { io { getResolvedVideo(video)?.let { toPlayer(label, it) } } },
         )
         return video.preferred to pending
@@ -370,6 +371,7 @@ class AniyomiSourceAdapter(
             url = playable.videoUrl,
             quality = labelled(label, playable.videoTitle),
             sourceLabel = name,
+            serverName = label,
             headers = (
                 playable.headers?.toMultimap()?.mapKeys { it.key.lowercase() }?.mapValues { (_, values) -> values.first() }.orEmpty() +
                     mpvHeaders(playable.mpvArgs)

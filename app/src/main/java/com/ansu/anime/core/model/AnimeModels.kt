@@ -56,6 +56,8 @@ data class Video(
      * picked): [url] is empty until this is called, and it returns the playable video, or null if it cannot be resolved.
      */
     val resolve: (suspend () -> Video?)? = null,
+    /** Name of the server (hoster) the source got this video from, e.g. "HD-1"; shown next to the extension name. */
+    val serverName: String? = null,
 )
 
 data class SubtitleTrack(val url: String, val lang: String)

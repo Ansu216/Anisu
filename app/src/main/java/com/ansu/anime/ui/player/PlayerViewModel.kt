@@ -51,6 +51,8 @@ data class PlayableSource(
     val sourceId: Long? = null,
     /** Name of the extension or addon that listed this stream (shown as a chip in the Sources panel). */
     val extensionName: String? = null,
+    /** The server (hoster) inside the extension, e.g. "HD-1"; the Sources list shows it next to [extensionName]. */
+    val serverName: String? = null,
 )
 
 /** How long a picked source may take to resolve before the next one is tried. */
@@ -383,13 +385,20 @@ class PlayerViewModel(
         subtitles = subtitleTracks,
         audioTracks = audioTracks,
         resolve = resolve?.let { pending -> suspend { pending()?.toPlayable() } },
+        serverName = serverName,
     )
 
     private fun StremioStream.toPlayableSource(addonName: String): PlayableSource? {
         // Torrent-only and external-app streams carry no direct URL; ExoPlayer cannot play them.
         val streamUrl = url ?: return null
         val label = listOfNotNull(addonName, name ?: title?.lineSequence()?.firstOrNull()).joinToString(" · ")
-        return PlayableSource(label = label, url = streamUrl, headers = behaviorHints?.proxyHeaders?.request.orEmpty(), extensionName = addonName)
+        return PlayableSource(
+            label = label,
+            url = streamUrl,
+            headers = behaviorHints?.proxyHeaders?.request.orEmpty(),
+            extensionName = addonName,
+            serverName = (name ?: title?.lineSequence()?.firstOrNull())?.takeIf { it.isNotBlank() },
+        )
     }
 
     @androidx.annotation.OptIn(UnstableApi::class)
@@ -428,12 +437,18 @@ class PlayerViewModel(
             else _uiState.value = _uiState.value.copy(error = "Could not open '${source.label}'")
             return null
         }
-        // The resolved video replaces the listed one, so picking it again is instant.
-        _uiState.value = _uiState.value.copy(
-            sources = _uiState.value.sources.map { if (it == source) resolved else it },
-            selectedSource = resolved,
+        // The resolved video replaces the listed one, so picking it again is instant. It keeps the extension and
+        // server names of the listed one, so its card in the Sources list does not change when it is picked.
+        val kept = resolved.copy(
+            sourceId = source.sourceId ?: resolved.sourceId,
+            extensionName = source.extensionName ?: resolved.extensionName,
+            serverName = source.serverName ?: resolved.serverName,
         )
-        return resolved
+        _uiState.value = _uiState.value.copy(
+            sources = _uiState.value.sources.map { if (it == source) kept else it },
+            selectedSource = kept,
+        )
+        return kept
     }
 
     private val probeClient: okhttp3.OkHttpClient by lazy {

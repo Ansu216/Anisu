@@ -33,6 +33,10 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -53,6 +57,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ansu.anime.ui.theme.AnsuColors
+import kotlin.math.roundToInt
 
 /** The three small tabs that slide in from the right of the fullscreen player. */
 internal enum class PlayerPanel { SOURCES, SUBS, AUDIO }
@@ -73,15 +78,32 @@ private val PanelCardShape = RoundedCornerShape(14.dp)
  * The panel frame: slides in from the right as [progress] goes 0 -> 1 (the screen drives it with one animation that
  * also shrinks the video and drops the pill), with a title and a close button, and [content] below.
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 internal fun PlayerSidePanelFrame(
     title: String,
     progress: () -> Float,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    /** True in the portrait player: the same content, in a bottom sheet instead of a side panel. */
+    sheet: Boolean = false,
     headerExtra: @Composable () -> Unit = {},
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
+    if (sheet) {
+        ModalBottomSheet(
+            onDismissRequest = onClose,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = PanelBackground,
+            contentColor = Color.White,
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.62f)) {
+                PanelHeader(title, onClose, headerExtra)
+                content()
+            }
+        }
+        return
+    }
     Column(
         modifier = modifier
             .fillMaxHeight()
@@ -95,25 +117,30 @@ internal fun PlayerSidePanelFrame(
             // Taps on the panel must not fall through to the video's tap layer behind it.
             .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) {},
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 6.dp, top = 8.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                title,
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            headerExtra()
-            IconButton(onClick = onClose) {
-                Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(22.dp))
-            }
-        }
+        PanelHeader(title, onClose, headerExtra)
         content()
+    }
+}
+
+@Composable
+private fun PanelHeader(title: String, onClose: () -> Unit, headerExtra: @Composable () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 6.dp, top = 8.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            title,
+            color = Color.White,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        headerExtra()
+        IconButton(onClick = onClose) {
+            Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(22.dp))
+        }
     }
 }
 
@@ -132,10 +159,17 @@ internal fun SubtitlesPanel(
     onOffsetChange: (Long) -> Unit,
     onSizeChange: (Int) -> Unit,
     onHeightChange: (Int) -> Unit,
+    textColor: Int,
+    bgColor: Int,
+    bgOpacity: Int,
+    onTextColor: (Int) -> Unit,
+    onBgColor: (Int) -> Unit,
+    onBgOpacity: (Int) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    sheet: Boolean = false,
 ) {
-    PlayerSidePanelFrame(title = "Subtitle settings", progress = progress, onClose = onClose, modifier = modifier) {
+    PlayerSidePanelFrame(title = "Subtitle settings", progress = progress, onClose = onClose, modifier = modifier, sheet = sheet) {
         var languagesOpen by remember { mutableStateOf(false) }
         val active = state.textOptions.firstOrNull { it.selected }
         LazyColumn(
@@ -222,6 +256,32 @@ internal fun SubtitlesPanel(
                     onIncrease = { onHeightChange(subtitleHeight + 2) },
                 )
             }
+            item {
+                PanelCard {
+                    Text("Text colour", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
+                    ColorSwatchRow(SubtitleTextColors, textColor, onTextColor)
+                }
+            }
+            item {
+                PanelCard {
+                    Text("Background", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
+                    ColorSwatchRow(SubtitleBgColors, bgColor, onBgColor)
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 10.dp)) {
+                        Text("Density", color = PanelMuted, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Text("$bgOpacity %", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = bgOpacity.toFloat(),
+                        onValueChange = { onBgOpacity(it.roundToInt()) },
+                        valueRange = 0f..100f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = AnsuColors.Accent,
+                            activeTrackColor = AnsuColors.Accent,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.2f),
+                        ),
+                    )
+                }
+            }
         }
     }
 }
@@ -240,6 +300,7 @@ internal fun SourcesPanel(
     onRetry: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    sheet: Boolean = false,
 ) {
     // Chips come from the sources that actually answered: "All" plus one per extension or addon.
     val groups = remember(state.sources) { state.sources.mapNotNull { it.extensionName }.distinct() }
@@ -254,6 +315,7 @@ internal fun SourcesPanel(
         progress = progress,
         onClose = onClose,
         modifier = modifier,
+        sheet = sheet,
         headerExtra = {
             IconButton(onClick = onRetry) {
                 Icon(Icons.Rounded.Refresh, contentDescription = "Retry", tint = Color.White, modifier = Modifier.size(22.dp))
@@ -300,7 +362,11 @@ internal fun SourcesPanel(
 private fun SourceCard(source: PlayableSource, selected: Boolean, ping: Long?, measuring: Boolean, onClick: () -> Unit) {
     val quality = remember(source.label) { source.qualityChip() }
     val kind = remember(source.label) { source.kindChip() }
-    val title = source.extensionName ?: source.label
+    // "Anikoto · HD-1": the extension and its server. Quality and Sub/Dub are the chips below, never in the title.
+    val title = remember(source) {
+        listOfNotNull(source.extensionName, source.serverName?.takeIf { it != source.extensionName })
+            .joinToString(" · ").ifBlank { source.label }
+    }
     val border = if (selected) AnsuColors.Accent else PanelCardBorder
     Column(
         modifier = Modifier
@@ -330,8 +396,6 @@ private fun SourceCard(source: PlayableSource, selected: Boolean, ping: Long?, m
             Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (quality != null) PanelTag(quality)
                 if (kind != null) PanelTag(kind)
-                // A stream whose label says nothing recognisable still shows what the source called it.
-                if (quality == null && kind == null && source.extensionName != null) PanelTag(source.label)
             }
             LatencyText(ping = ping, measuring = measuring, unresolved = source.url.isBlank())
         }
@@ -385,8 +449,9 @@ internal fun AudioPanel(
     onSelect: (TrackOption) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    sheet: Boolean = false,
 ) {
-    PlayerSidePanelFrame(title = "Audio", progress = progress, onClose = onClose, modifier = modifier) {
+    PlayerSidePanelFrame(title = "Audio", progress = progress, onClose = onClose, modifier = modifier, sheet = sheet) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f),
             contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 16.dp),
