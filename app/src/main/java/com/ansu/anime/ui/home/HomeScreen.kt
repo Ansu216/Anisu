@@ -94,9 +94,9 @@ fun HomeScreen(
         }
 
         LazyColumn(
+            // No top padding: the hero banner runs behind the status bar, edge to edge.
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = padding.calculateTopPadding())
                 .background(AnsuColors.Background),
             // Content runs behind the floating bar; the padding lets the last row scroll clear of it.
             contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 24.dp),

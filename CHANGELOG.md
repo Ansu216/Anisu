@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The home banner no longer changes height or aspect ratio while rotating or loading.** Its height followed whatever the current poster's image size was, so it jumped between slides and while images loaded. It now uses one fixed height for every slide and crops each poster to fill it.
+
 - **Subtitle height now works in the landscape player.** Subtitle formats with their own line positions made the player ignore the height setting; it is now applied to every text cue.
 - **Opening a side panel in the landscape player no longer keeps the controls up or closes on a tap.** The controls hide after 3 seconds as usual, and tapping the shrunken video no longer closes the panel (the close button and Back still do).
 
@@ -41,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Audio panel with language cards.** Every audio track is a card with its name and, when the player reports them, channels and bitrate; the playing one is outlined.
 
 ### Changed
+
+- **The home banner now runs edge to edge behind the status bar, is taller, and fades into the page.** The list under the banner was padded by the status-bar height, which left a black strip above it. The padding is gone, the banner is about 68% of the screen tall (460-620 dp), and its bottom third fades into the page colour like a streaming-app hero. **Constraint:** the status-bar icons stay readable through a short dark gradient at the top; the build could not be run in this environment, so compile it once before release.
+- **Banner slides now glide with a gap, a parallax image and text that travels with the page.** The title, genres and buttons used to swap instantly while only the poster slid. Each slide now carries its own text, the artwork trails the swipe slightly, text fades while it leaves, pages are separated by a 16 dp gap, the page dots grow smoothly, and the automatic change uses a 700 ms ease. The 4-second timer restarts after every swipe and pauses while a finger is on the banner.
 
 - **Posters and thumbnails load from a shared, longer-lived cache.** The app now configures one image loader with a 200 MB disk cache and a 20% memory cache, and reuses a cached image without asking the server whether it changed. This removes a network round trip per image while scrolling, so lists stay smooth and posters still appear on a weak connection. **Constraint:** a poster that a site replaces under the same address keeps showing the old image until the cache is cleared or it is evicted. The build could not be run in this environment, so compile it once before release.
 

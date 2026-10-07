@@ -61,6 +61,13 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import kotlin.math.abs
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.foundation.layout.heightIn
@@ -348,15 +355,16 @@ fun HeroCarousel(
     // AniList id -> logo URL. A key with a null value means "looked up, no logo", so it is not asked twice.
     val logos = remember { mutableStateMapOf<Int, String?>() }
     
-    // Auto-rotate every 3 seconds
-    LaunchedEffect(shown) {
-        while (true) {
-            kotlinx.coroutines.delay(3000) // 3 seconds
+    // Auto-rotate: the timer restarts after every settled page (so a manual swipe gets a full pause)
+    // and never fires while a finger is on the pager.
+    LaunchedEffect(shown, pagerState.settledPage) {
+        kotlinx.coroutines.delay(4000)
+        if (!pagerState.isScrollInProgress && shown.size > 1) {
             val nextPage = (pagerState.currentPage + 1) % shown.size
-            pagerState.animateScrollToPage(nextPage)
+            pagerState.animateScrollToPage(nextPage, animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing))
         }
     }
-    
+
     LaunchedEffect(shown) {
         shown.forEach { anime ->
             val id = anime.anilistId ?: return@forEach
@@ -364,22 +372,115 @@ fun HeroCarousel(
         }
     }
 
+    // One fixed height for every slide: the old fillMaxSize inside a scrolling list let each poster's own
+    // image size decide the banner height, so it jumped while swiping and while images loaded.
+    val screenHeight = LocalConfiguration.current.screenHeightDp
+    val heroHeight = (screenHeight * 0.68f).dp.coerceIn(460.dp, 620.dp)
+
     Column(modifier = modifier.fillMaxWidth()) {
-        // The frame now fills the entire screen top-to-bottom, making the hero banner expand fully
-        // Remove the aspectRatio constraint to allow full expansion
-        Box(modifier = Modifier.fillMaxWidth().fillMaxSize()) {
-            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+        // Draws from the very top of the window, behind the status bar (no inset padding above it).
+        Box(modifier = Modifier.fillMaxWidth().height(heroHeight)) {
+            HorizontalPager(
+                state = pagerState,
+                pageSpacing = 16.dp,
+                modifier = Modifier.fillMaxSize(),
+            ) { page ->
                 val anime = shown[page]
+                // 0 when this page is centred, -1/+1 when it is fully off to one side.
+                val offset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).coerceIn(-1f, 1f)
+                val isLiked = likedIds[anime.id] == true
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // AniList's own portrait cover (extraLarge); the banner is only a fallback.
-                    AsyncImage(
-                        model = anime.posterUrl ?: anime.bannerUrl,
-                        contentDescription = anime.title,
-                        contentScale = ContentScale.Crop,
-                        colorFilter = HeroBrightness,
-                        modifier = Modifier.fillMaxSize().background(AnsuColors.BackgroundElevated),
+                    Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
+                        // AniList's own portrait cover (extraLarge); the banner is only a fallback.
+                        // Slightly oversized and shifted against the swipe, so the art trails the page (parallax).
+                        AsyncImage(
+                            model = anime.posterUrl ?: anime.bannerUrl,
+                            contentDescription = anime.title,
+                            contentScale = ContentScale.Crop,
+                            colorFilter = HeroBrightness,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(AnsuColors.BackgroundElevated)
+                                .graphicsLayer {
+                                    scaleX = 1.16f
+                                    scaleY = 1.16f
+                                    translationX = offset * size.width * 0.07f
+                                },
+                        )
+                    }
+                    // Fade into the page colour: the banner melts into "Continue Watching" below.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    0f to Color.Transparent,
+                                    0.45f to Color.Transparent,
+                                    0.72f to AnsuColors.Background.copy(alpha = 0.7f),
+                                    1f to AnsuColors.Background,
+                                ),
+                            ),
                     )
-                    BottomScrim(modifier = Modifier.fillMaxSize(), midAlpha = 0.12f, midStop = 0.6f)
+                    // Title, genres and buttons belong to the page, so they slide with it.
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = 24.dp)
+                            .padding(bottom = 12.dp)
+                            .graphicsLayer { alpha = 1f - abs(offset) * 0.6f },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        TitleLogo(
+                            title = anime.title,
+                            logoUrl = anime.anilistId?.let { logos[it] },
+                            // Wait for the lookup before falling back to text, so the lettering does not flash.
+                            lookupDone = anime.anilistId == null || logos.containsKey(anime.anilistId),
+                            alignment = Alignment.Center,
+                            textAlign = TextAlign.Center,
+                            fontSize = 27.sp,
+                            uppercase = false,
+                            maxLogoWidth = 320.dp,
+                            maxLogoHeight = 130.dp,
+                        )
+                        anime.genres.take(3).takeIf { it.isNotEmpty() }?.let { genres ->
+                            Text(
+                                text = genres.joinToString(" • ") + anime.releaseYear?.let { " • $it" }.orEmpty(),
+                                color = AnsuColors.TextSecondary,
+                                fontSize = 14.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(top = 6.dp),
+                            )
+                        }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 16.dp),
+                        ) {
+                            Button(
+                                onClick = { onClick(anime) },
+                                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
+                                shape = RoundedCornerShape(24.dp),
+                                contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
+                            ) {
+                                Text("View Details", color = AnsuColors.OnAccent, fontWeight = FontWeight.Bold)
+                            }
+                            FrostedGlassCard(modifier = Modifier.size(48.dp), shape = CircleShape, tintAlpha = 0.5f) {
+                                IconButton(
+                                    onClick = {
+                                        likedIds[anime.id] = !isLiked
+                                        onToggleFavourite(anime)
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                ) {
+                                    Icon(
+                                        imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                        contentDescription = if (isLiked) "Unlike" else "Like",
+                                        tint = AnsuColors.TextPrimary,
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -391,78 +492,22 @@ fun HeroCarousel(
                     .height(96.dp)
                     .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.4f), Color.Transparent))),
             )
-
-            val current = shown[pagerState.currentPage]
-            val isLiked = likedIds[current.id] == true
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                TitleLogo(
-                    title = current.title,
-                    logoUrl = current.anilistId?.let { logos[it] },
-                    // Wait for the lookup before falling back to text, so the lettering does not flash.
-                    lookupDone = current.anilistId == null || logos.containsKey(current.anilistId),
-                    alignment = Alignment.Center,
-                    textAlign = TextAlign.Center,
-                    fontSize = 27.sp,
-                    uppercase = false,
-                    maxLogoWidth = 320.dp,
-                    maxLogoHeight = 130.dp,
-                )
-                current.genres.take(3).takeIf { it.isNotEmpty() }?.let { genres ->
-                    Text(
-                        text = genres.joinToString(" • ") + current.releaseYear?.let { " • $it" }.orEmpty(),
-                        color = AnsuColors.TextSecondary,
-                        fontSize = 14.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(top = 16.dp),
-                ) {
-                    Button(
-                        onClick = { onClick(current) },
-                        colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
-                        shape = RoundedCornerShape(24.dp),
-                        contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
-                    ) {
-                        Text("View Details", color = AnsuColors.OnAccent, fontWeight = FontWeight.Bold)
-                    }
-                    FrostedGlassCard(modifier = Modifier.size(48.dp), shape = CircleShape, tintAlpha = 0.5f) {
-                        IconButton(
-                            onClick = {
-                                likedIds[current.id] = !isLiked
-                                onToggleFavourite(current)
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                        ) {
-                            Icon(
-                                imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                                contentDescription = if (isLiked) "Unlike" else "Like",
-                                tint = AnsuColors.TextPrimary,
-                            )
-                        }
-                    }
-                }
-            }
         }
 
         if (shown.size > 1) {
-            Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.Center) {
+            Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.Center) {
                 shown.indices.forEach { index ->
                     val selected = index == pagerState.currentPage
+                    val dotWidth by animateDpAsState(
+                        targetValue = if (selected) 18.dp else 6.dp,
+                        animationSpec = tween(durationMillis = 300),
+                        label = "heroDot",
+                    )
                     Box(
                         modifier = Modifier
                             .padding(horizontal = 3.dp)
                             .height(6.dp)
-                            .width(if (selected) 18.dp else 6.dp)
+                            .width(dotWidth)
                             .clip(RoundedCornerShape(3.dp))
                             .background(if (selected) AnsuColors.Accent else AnsuColors.TextTertiary),
                     )
