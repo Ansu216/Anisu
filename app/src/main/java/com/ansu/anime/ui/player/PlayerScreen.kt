@@ -7,6 +7,7 @@ import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.util.TypedValue
 import android.view.View
+import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -178,6 +179,16 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         onDispose {
             window?.let { WindowCompat.getInsetsController(it, it.decorView).show(WindowInsetsCompat.Type.systemBars()) }
         }
+    }
+
+    // Keep the screen awake while a stream is playing (or buffering towards playing) so the phone's sleep timer
+    // cannot blank it mid-episode. Once the video is paused, or the player is left, the flag is cleared and the
+    // normal screen timeout applies again.
+    val keepScreenOn = (state.isPlaying || state.isBuffering) && state.error == null
+    DisposableEffect(keepScreenOn) {
+        val window = activity?.window
+        if (keepScreenOn) window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 
     // Auto-hide controls after a few seconds of inactivity (not while a bottom sheet is open). A side panel does not

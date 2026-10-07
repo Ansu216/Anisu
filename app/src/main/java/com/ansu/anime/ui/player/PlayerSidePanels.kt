@@ -229,8 +229,11 @@ internal fun SubtitlesPanel(
             item {
                 PanelStepperCard(
                     title = "Subtitle offset",
-                    valueText = if (state.subtitleOffsetMs == 0L) "0 ms" else "+${state.subtitleOffsetMs} ms",
-                    canDecrease = state.subtitleOffsetMs > 0L,
+                    valueText = when {
+                        state.subtitleOffsetMs > 0L -> "+${state.subtitleOffsetMs} ms"
+                        else -> "${state.subtitleOffsetMs} ms"
+                    },
+                    canDecrease = state.subtitleOffsetMs > -10_000L,
                     canIncrease = state.subtitleOffsetMs < 10_000L,
                     onDecrease = { onOffsetChange(state.subtitleOffsetMs - OFFSET_STEP_MS) },
                     onIncrease = { onOffsetChange(state.subtitleOffsetMs + OFFSET_STEP_MS) },

@@ -79,6 +79,9 @@ class AppContainer(context: Context) {
     val aniSkipRepository: com.ansu.anime.data.repository.AniSkipRepository =
         com.ansu.anime.data.repository.AniSkipRepository(okHttpClient)
 
+    val trailerRepository: com.ansu.anime.data.repository.TrailerRepository =
+        com.ansu.anime.data.repository.TrailerRepository(okHttpClient)
+
     val localListRepository: LocalListRepository = LocalListRepository(database.localListDao())
 
     val librarySyncRepository: LibrarySyncRepository = LibrarySyncRepository(localListRepository, aniListRepository)

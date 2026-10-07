@@ -61,7 +61,7 @@ private const val RESOLVE_TIMEOUT_MS = 30_000L
 /** How long the first pick waits for a higher-priority source before playing what it already has. */
 private const val PRIORITY_GRACE_MS = 3_000L
 
-/** Longest subtitle delay the Subtitles panel offers. */
+/** Largest subtitle shift, either way, the Subtitles panel offers. */
 private const val MAX_SUBTITLE_OFFSET_MS = 10_000L
 
 /** One selectable audio or subtitle track the player reported. */
@@ -116,7 +116,10 @@ class PlayerViewModel(
     // Large buffers + a small start threshold: playback starts after a few seconds of data and the
     // rest keeps loading ahead in chunks, like other streaming apps (matters for big movie files).
     @androidx.annotation.OptIn(UnstableApi::class)
-    val player: ExoPlayer = ExoPlayer.Builder(context)
+    private val subtitleLead = SubtitleLeadRenderersFactory(context)
+
+    @androidx.annotation.OptIn(UnstableApi::class)
+    val player: ExoPlayer = ExoPlayer.Builder(context, subtitleLead)
         .setLoadControl(
             androidx.media3.exoplayer.DefaultLoadControl.Builder()
                 .setBufferDurationsMs(30_000, 120_000, 1_500, 3_000)
@@ -669,9 +672,14 @@ class PlayerViewModel(
             .build()
     }
 
-    /** Moves the subtitles later by [offsetMs] (never earlier: the player hands over cues only when they are due). */
+    /**
+     * Moves the subtitles by [offsetMs]: positive = later (cues are held back), negative = earlier (the text renderer
+     * is told the position is ahead, see [SubtitleLeadRenderersFactory]).
+     */
     fun setSubtitleOffset(offsetMs: Long) {
-        _uiState.value = _uiState.value.copy(subtitleOffsetMs = offsetMs.coerceIn(0L, MAX_SUBTITLE_OFFSET_MS))
+        val offset = offsetMs.coerceIn(-MAX_SUBTITLE_OFFSET_MS, MAX_SUBTITLE_OFFSET_MS)
+        subtitleLead.leadMs = (-offset).coerceAtLeast(0L)
+        _uiState.value = _uiState.value.copy(subtitleOffsetMs = offset)
     }
 
     /** Times a tiny request to every listed stream that has not been timed yet, for the latency shown in the Sources panel. */

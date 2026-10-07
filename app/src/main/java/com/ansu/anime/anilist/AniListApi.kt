@@ -284,6 +284,7 @@ class AniListApi(
                 mediaListEntry { status }
                 status
                 nextAiringEpisode { episode }
+                trailer { id site }
                 startDate { year }
                 characters(sort: [ROLE, RELEVANCE], perPage: 10) {
                   edges {
@@ -629,6 +630,9 @@ class AniListApi(
             listStatus = (this["mediaListEntry"] as? JsonObject)?.get("status")?.jsonPrimitive?.contentOrNull,
             status = this["status"]?.jsonPrimitive?.contentOrNull,
             nextAiringEpisode = (this["nextAiringEpisode"] as? JsonObject)?.get("episode")?.jsonPrimitive?.content?.toIntOrNull(),
+            trailerYoutubeId = (this["trailer"] as? JsonObject)?.takeIf {
+                it["site"]?.jsonPrimitive?.contentOrNull.equals("youtube", ignoreCase = true)
+            }?.get("id")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() },
         )
     }
 

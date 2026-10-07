@@ -13,6 +13,8 @@ import com.ansu.anime.data.repository.AnimeArtwork
 import com.ansu.anime.data.repository.ArtworkRepository
 import com.ansu.anime.data.repository.EpisodeMetadataRepository
 import com.ansu.anime.data.repository.LocalListRepository
+import com.ansu.anime.data.repository.Trailer
+import com.ansu.anime.data.repository.TrailerRepository
 import com.ansu.anime.extension.BUILT_IN_SOURCE_ID
 import com.ansu.anime.extension.ExtensionManager
 import com.ansu.anime.extension.EpisodeListCache
@@ -40,6 +42,8 @@ data class DetailsUiState(
     /** AniList list status for this show while signed in. */
     val remoteListStatus: String? = null,
     val isLoggedIn: Boolean = false,
+    /** Promo videos from Jikan; the screen falls back to AniList's own trailer when this stays empty. */
+    val trailers: List<Trailer> = emptyList(),
     val error: String? = null,
 ) {
     /** The heart to draw: AniList's when signed in, the on-device one otherwise. */
@@ -56,6 +60,7 @@ class DetailsViewModel(
     private val episodeMetadataRepository: EpisodeMetadataRepository,
     private val localListRepository: LocalListRepository,
     private val artworkRepository: ArtworkRepository,
+    private val trailerRepository: TrailerRepository,
     selectionHolder: SelectionHolder,
 ) : ViewModel() {
 
@@ -80,6 +85,12 @@ class DetailsViewModel(
                 viewModelScope.launch {
                     val artwork = artworkRepository.get(id)
                     _uiState.value = _uiState.value.copy(artwork = artwork, artworkLoaded = true)
+                }
+            }
+            current.anilistId?.let { id ->
+                viewModelScope.launch {
+                    val trailers = aniListRepository.getMalId(id)?.let { trailerRepository.getTrailers(it) }.orEmpty()
+                    _uiState.value = _uiState.value.copy(trailers = trailers)
                 }
             }
             // Each piece is published the moment it arrives instead of waiting for the slowest one (the

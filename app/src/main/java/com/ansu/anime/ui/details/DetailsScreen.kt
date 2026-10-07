@@ -104,7 +104,7 @@ fun DetailsScreen(
     val viewModel: DetailsViewModel = viewModel(
         factory = viewModelFactory {
             initializer {
-                DetailsViewModel(container.extensionManager, container.addonManager, container.aniListRepository, container.episodeMetadataRepository, container.localListRepository, container.artworkRepository, container.selectionHolder)
+                DetailsViewModel(container.extensionManager, container.addonManager, container.aniListRepository, container.episodeMetadataRepository, container.localListRepository, container.artworkRepository, container.trailerRepository, container.selectionHolder)
             }
         },
     )
@@ -113,6 +113,7 @@ fun DetailsScreen(
     val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
     var expandSynopsis by remember { mutableStateOf(false) }
     var selectedPerson by remember { mutableStateOf<PersonDetail?>(null) }
+    var playingTrailer by remember { mutableStateOf<com.ansu.anime.data.repository.Trailer?>(null) }
     var selectedGroup by remember(anime?.id) { mutableIntStateOf(0) }
     // Only the first few episodes of a group show until "More episodes" is tapped; reset per show and per group.
     var episodesExpanded by remember(anime?.id, selectedGroup) { mutableStateOf(false) }
@@ -224,6 +225,15 @@ fun DetailsScreen(
                         onToggle = { expandSynopsis = !expandSynopsis },
                     )
                 }
+            }
+
+            // Jikan's promo videos; AniList's own trailer stands in when Jikan has none.
+            val trailers = state.trailers.ifEmpty {
+                details?.trailerYoutubeId?.let { listOf(com.ansu.anime.data.repository.Trailer(it, "Official Trailer")) }.orEmpty()
+            }
+            if (trailers.isNotEmpty()) {
+                item { DetailsSectionHeader("Trailers") }
+                item { TrailersRow(trailers = trailers, onPlay = { playingTrailer = it }) }
             }
 
             item { DetailsSectionHeader("Episodes") }
@@ -354,6 +364,9 @@ fun DetailsScreen(
 
     selectedPerson?.let { person ->
         CharacterStaffSheet(person = person, onDismiss = { selectedPerson = null })
+    }
+    playingTrailer?.let { trailer ->
+        TrailerSheet(trailer = trailer, onDismiss = { playingTrailer = null })
     }
 }
 

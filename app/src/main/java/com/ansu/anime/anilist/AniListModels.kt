@@ -83,6 +83,8 @@ data class AniListMediaDetails(
     val status: String? = null,
     /** Number of the next episode that has not aired yet while the show is RELEASING, else null. */
     val nextAiringEpisode: Int? = null,
+    /** YouTube id of the trailer AniList lists for this show; the Trailers row's fallback when Jikan has none. */
+    val trailerYoutubeId: String? = null,
 )
 
 /** A show connected to another one on AniList, with how it connects (e.g. "Sequel", "Movie"). */
