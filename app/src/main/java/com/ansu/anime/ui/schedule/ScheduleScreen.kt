@@ -49,6 +49,7 @@ import coil.compose.AsyncImage
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.AppBottomBar
 import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.posterTransitionOrigin
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
 import java.time.LocalDate
@@ -343,6 +344,7 @@ private fun ScheduleCard(entry: ScheduleEntry, onClick: () -> Unit) {
             Box(
                 modifier = Modifier
                     .size(56.dp)
+                    .posterTransitionOrigin()
                     .clip(RoundedCornerShape(10.dp)),
             ) {
                 if (entry.imageUrl != null) {

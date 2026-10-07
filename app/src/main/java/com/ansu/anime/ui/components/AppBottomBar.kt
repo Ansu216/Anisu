@@ -132,6 +132,9 @@ private var lastPillPx = Float.NaN
 private val NavSlotWidth = 70.dp
 private val NavSlotHeight = 40.dp
 
+/** How far (at most) the whole bar slides toward the pill while it is held and dragged. */
+private val NavBarDragShift = 10.dp
+
 /**
  * The bar itself, decoupled from navigation so Settings can render an
  * identical, non-navigating copy as a live preview. It wraps its content
@@ -172,8 +175,16 @@ fun NavBarSurface(
     if (onItemClick != null) SideEffect { lastPillPx = pillLeft }
     val activeIndex = (pillLeft / slotPx).roundToInt().coerceIn(0, barItems.size - 1)
 
+    val shiftPx = with(LocalDensity.current) { NavBarDragShift.toPx() }
     FrostedGlassCard(
-        modifier = modifier,
+        // While the pill is held the whole bar leans a little toward it and swells slightly, and eases
+        // back when it is released. Everything scales with holdAmount, so a resting bar is untouched.
+        modifier = modifier.graphicsLayer {
+            val lean = ((pillLeft / maxLeft) - 0.5f) * 2f
+            translationX = lean * shiftPx * holdAmount
+            scaleX = 1f + 0.04f * holdAmount
+            scaleY = 1f + 0.06f * holdAmount
+        },
         shape = shape,
         tintAlpha = navBarTintAlpha(frostiness),
         blurRadius = navBarBlurRadius(blur),

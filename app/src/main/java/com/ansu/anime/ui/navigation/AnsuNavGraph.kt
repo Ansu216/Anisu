@@ -1,5 +1,7 @@
 package com.ansu.anime.ui.navigation
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -15,6 +17,8 @@ import com.ansu.anime.ui.appearance.AppearanceScreen
 import com.ansu.anime.ui.components.LocalNavBarBlur
 import com.ansu.anime.ui.components.LocalNavBarFrostiness
 import com.ansu.anime.ui.components.LocalNavBarRoundness
+import com.ansu.anime.ui.components.PosterExpandContainer
+import com.ansu.anime.ui.components.PosterTransition
 import com.ansu.anime.ui.contributors.ContributorsScreen
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -81,8 +85,22 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         navController = navController,
         startDestination = Dest.HOME,
         enterTransition = { fadeIn(animationSpec = tween(durationMillis = 175)) },
-        exitTransition = { fadeOut(animationSpec = tween(durationMillis = 150)) },
-        popEnterTransition = { fadeIn(animationSpec = tween(durationMillis = 150)) },
+        // The page under a details page stays put (only dimmed) while the details page grows out of the
+        // tapped poster and shrinks back into it, so the poster has something to grow out of.
+        exitTransition = {
+            if (targetState.destination.route == Dest.DETAILS) {
+                fadeOut(targetAlpha = 0.55f, animationSpec = tween(durationMillis = PosterTransition.DURATION_MILLIS))
+            } else {
+                fadeOut(animationSpec = tween(durationMillis = 150))
+            }
+        },
+        popEnterTransition = {
+            if (initialState.destination.route == Dest.DETAILS) {
+                fadeIn(initialAlpha = 0.55f, animationSpec = tween(durationMillis = PosterTransition.DURATION_MILLIS))
+            } else {
+                fadeIn(animationSpec = tween(durationMillis = 150))
+            }
+        },
         popExitTransition = { fadeOut(animationSpec = tween(durationMillis = 150)) },
     ) {
         composable(Dest.HOME) {
@@ -165,15 +183,29 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         composable(Dest.ANILIST_LOGIN) {
             AniListLoginScreen(container = container, navController = navController)
         }
-        composable(Dest.DETAILS) {
-            DetailsScreen(
-                container = container,
-                navController = navController,
-                onEpisodeSelected = { episode ->
-                    container.selectionHolder.selectEpisode(episode)
-                    navController.navigate(Dest.PLAYER)
-                },
-            )
+        // The details page animates itself (PosterExpandContainer): it grows out of the tapped poster and
+        // closes back into it. The NavHost's own transitions are switched off for it, and its progress
+        // is tied to this destination's enter/exit transition so it stays on screen until it has closed.
+        composable(
+            Dest.DETAILS,
+            enterTransition = { EnterTransition.None },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { ExitTransition.None },
+        ) { entry ->
+            PosterExpandContainer(
+                entryId = entry.id,
+                isOnBackStack = { navController.currentBackStack.value.any { it.id == entry.id } },
+            ) {
+                DetailsScreen(
+                    container = container,
+                    navController = navController,
+                    onEpisodeSelected = { episode ->
+                        container.selectionHolder.selectEpisode(episode)
+                        navController.navigate(Dest.PLAYER)
+                    },
+                )
+            }
         }
         composable(Dest.PLAYER) {
             PlayerScreen(container = container, navController = navController)

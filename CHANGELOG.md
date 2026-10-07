@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Details pages now open out of the tapped poster and close back into it.** Tapping a poster (home rows, hero banner, search grid/list, My Space, schedule, "More from this Show" and related rows) grows the details page from that poster's position to full screen with rounded window corners that square off, like an app opening from its icon; going back shrinks it into the same poster. The page underneath is only dimmed meanwhile. Going to the player and back does not replay the animation, and a details page opened from somewhere without a poster just fades in.
+- **The bottom navigation bar now moves with a held drag.** While the selection pill is held, the whole bar leans up to 10dp toward the pill and swells slightly, then settles back on release. The existing pill hold/drag behaviour is unchanged and a resting bar looks exactly as before.
+
+
 - **The bottom bar's selection pill now slides between tabs, swells when held and can be dragged.** The pill used to jump to the tapped tab. It now glides there on a soft spring, and because each screen owns its own bar, a new bar starts the pill where the previous one left it so the slide carries across the screen change. Pressing and holding grows and brightens the pill; while held it can be dragged along the bar, and letting go selects the tab it is over and settles into place. The icon colour follows the pill. **Constraint:** the tabs no longer use a ripple, and the slide across a navigation depends on the screen cross-fade, so compile and try it once before release.
 
 - **Subtitle colours and background, with a live preview in Settings > Player and streaming.** A new Subtitles box has a preview, text colour and background colour swatches, a background density slider, and size and height sliders. The player's Subtitles tab has the same colour and background options, and a Reset button in Settings restores the defaults.

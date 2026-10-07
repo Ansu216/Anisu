@@ -60,6 +60,7 @@ import com.ansu.anime.data.repository.toSAnime
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.AppBottomBar
 import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.posterTransitionOrigin
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
 
@@ -327,6 +328,7 @@ private fun ListItemRow(media: AniListMedia, onDetails: () -> Unit) {
                 modifier = Modifier
                     .width(64.dp)
                     .height(92.dp)
+                    .posterTransitionOrigin()
                     .clip(RoundedCornerShape(10.dp))
                     .background(AnsuColors.BackgroundElevated),
             )

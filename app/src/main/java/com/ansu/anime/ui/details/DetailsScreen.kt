@@ -83,6 +83,7 @@ import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.components.GenreChip
 import com.ansu.anime.ui.components.PersonCard
 import com.ansu.anime.ui.components.PosterGlassLabel
+import com.ansu.anime.ui.components.posterTransitionOrigin
 import com.ansu.anime.ui.components.StatItem
 import com.ansu.anime.ui.components.TitleLogo
 import com.ansu.anime.ui.theme.AnsuColors
@@ -801,7 +802,7 @@ private fun EpisodeBadge(episode: SEpisode) {
 private fun RelatedPoster(media: AniListMedia, onClick: () -> Unit, badge: String? = null) {
     Column(modifier = Modifier.width(120.dp).clickable(onClick = onClick)) {
         Box(
-            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)).background(AnsuColors.BackgroundElevated),
+            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).posterTransitionOrigin().clip(RoundedCornerShape(10.dp)).background(AnsuColors.BackgroundElevated),
         ) {
             if (media.posterUrl != null) {
                 AsyncImage(model = media.posterUrl, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())

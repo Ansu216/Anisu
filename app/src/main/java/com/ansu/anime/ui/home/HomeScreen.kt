@@ -44,6 +44,7 @@ import com.ansu.anime.ui.components.ContinueWatchingRow
 import com.ansu.anime.ui.components.HeroCarousel
 import com.ansu.anime.ui.components.PagedPosterRow
 import com.ansu.anime.ui.components.PosterRow
+import com.ansu.anime.ui.components.posterTransitionOrigin
 import com.ansu.anime.ui.components.ShelfHeader
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
@@ -301,6 +302,7 @@ private fun TopPickCard(anime: SAnime, onClick: () -> Unit, modifier: Modifier =
     Box(
         modifier = modifier
             .aspectRatio(2f / 3f)
+            .posterTransitionOrigin()
             .clip(RoundedCornerShape(12.dp))
             .background(AnsuColors.BackgroundElevated)
             .clickable(onClick = onClick),

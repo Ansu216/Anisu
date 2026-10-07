@@ -82,6 +82,7 @@ import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.AgeRatingChip
 import com.ansu.anime.ui.components.AppBottomBar
 import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.posterTransitionOrigin
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
 import kotlinx.coroutines.delay
@@ -435,6 +436,7 @@ private fun SearchGridCard(anime: SAnime, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(2f / 3f)
+            .posterTransitionOrigin()
             .clip(RoundedCornerShape(14.dp))
             .background(AnsuColors.BackgroundElevated)
             .clickable(onClick = onClick),
@@ -485,6 +487,7 @@ private fun SearchListItem(anime: SAnime, onClick: () -> Unit) {
             modifier = Modifier
                 .width(96.dp)
                 .aspectRatio(2f / 3f)
+                .posterTransitionOrigin()
                 .clip(RoundedCornerShape(12.dp))
                 .background(AnsuColors.Background),
         ) {

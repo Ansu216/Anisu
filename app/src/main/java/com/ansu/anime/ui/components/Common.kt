@@ -184,6 +184,7 @@ fun AnimeCard(anime: SAnime, onClick: () -> Unit, modifier: Modifier = Modifier)
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
+                .posterTransitionOrigin()
                 .clip(RoundedCornerShape(12.dp))
                 .background(AnsuColors.BackgroundElevated),
         ) {
@@ -388,7 +389,7 @@ fun HeroCarousel(
                 // 0 when this page is centred, -1/+1 when it is fully off to one side.
                 val offset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).coerceIn(-1f, 1f)
                 val isLiked = likedIds[anime.id] == true
-                Box(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.fillMaxSize().posterTransitionOrigin()) {
                     Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
                         // AniList's own portrait cover (extraLarge); the banner is only a fallback.
                         // Slightly oversized and shifted against the swipe, so the art trails the page (parallax).
