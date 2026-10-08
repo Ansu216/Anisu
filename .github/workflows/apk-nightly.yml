@@ -130,6 +130,8 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Assemble the ${{ matrix.variant }} APK
+        env:
+           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: |
           set -euo pipefail
           case "${{ matrix.variant }}" in
