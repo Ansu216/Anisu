@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The details title no longer waits on the artwork lookup in English mode.** The text title was only drawn once the ani.zip/TMDB lookup had finished, so a slow or failed lookup left the hero with no title at all. It now appears straight away when no TMDB key is set, and after at most four seconds when one is. **Constraint:** the build could not be run in this environment, so compile it once before release.
+
 - **Dragging a source in Streaming Priority is smooth.** Each row was rebuilt by position, so swapping two rows restarted the drag gesture in the middle of the drag and the row stuttered or lost your finger. Rows are now keyed by source, so the gesture survives every swap. The other rows slide into their new slots with a short spring, the dragged row lifts slightly with a shadow and follows the finger without recomposing the list, and on release it settles into its slot instead of jumping. **Constraint:** the list does not auto-scroll when you drag near the screen edge; the build could not be run in this environment, so compile it once before release.
 
 - **The home banner no longer changes height or aspect ratio while rotating or loading.** Its height followed whatever the current poster's image size was, so it jumped between slides and while images loaded. It now uses one fixed height for every slide and crops each poster to fill it.

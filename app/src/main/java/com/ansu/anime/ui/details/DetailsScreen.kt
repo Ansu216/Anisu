@@ -47,8 +47,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -157,6 +159,9 @@ fun DetailsScreen(
                 val shownTitle = details?.title ?: anime?.title.orEmpty()
                 // English without a TMDB English logo: AniList's own banner (else cover) as the picture, with the
                 // plain English text title drawn over it, since the app cannot tell whether the art has lettering.
+                // The text title must never wait on a slow or failed artwork lookup: with no TMDB key there is
+                // nothing to wait for in English mode, and otherwise the wait is capped at a few seconds.
+                val lookupTimedOut by produceState(false) { delay(4000); value = true }
                 val plainAniListArt = titleLanguage == TitleLanguage.ENGLISH && state.artwork.englishLogoUrl == null
                 DetailsHero(
                     title = shownTitle,
@@ -175,7 +180,8 @@ fun DetailsScreen(
                         artwork = state.artwork,
                     ),
                     logoUrl = state.artwork.logoFor(titleLanguage),
-                    lookupDone = state.artworkLoaded,
+                    lookupDone = state.artworkLoaded || lookupTimedOut ||
+                        (titleLanguage == TitleLanguage.ENGLISH && com.ansu.anime.BuildConfig.TMDB_API_KEY.isBlank()),
                     onBack = { navController.popBackStack() },
                 )
             }
