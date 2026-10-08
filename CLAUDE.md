@@ -23,7 +23,7 @@ that have broken this build before. Section 7 is mandatory: every change touches
 
 **Anisu** is an Android client for [AniList](https://anilist.co) with anime
 catalogue browsing, an airing schedule and news feed, library tracking and
-playback through pluggable sources (built-in demo source, Stremio addons,
+playback through pluggable sources (built-in demo source and
 extensions).
 
 - **Package / application id**: `com.ansu.anime`
@@ -33,7 +33,7 @@ extensions).
 - **UI**: Jetpack Compose + Material 3, Navigation Compose, Coil for images.
 - **Data**: Room (KSP codegen), plain `SharedPreferences` for settings,
   `EncryptedSharedPreferences` for the AniList token.
-- **Network**: OkHttp + Retrofit + `kotlinx.serialization`.
+- **Network**: OkHttp + `kotlinx.serialization`.
 - **Playback**: Media3 / ExoPlayer.
 - **SDK levels**: `minSdk 26` (Android 8.0), `targetSdk`/`compileSdk` 35.
 - **Version**: see `CHANGELOG.md`. The build defaults to `versionCode 1` /
@@ -72,13 +72,14 @@ Source root: `app/src/main/java/com/ansu/anime/`
 | `ui/components/Common.kt` | Shared composables (hero carousel, shelves, cards, chips, `PersonCard`) |
 | `ui/components/GlassSurface.kt` | `FrostedGlassCard` / `BottomScrim` glass surfaces |
 | `ui/components/AppBottomBar.kt` | Frosted bottom navigation bar (`AppBottomBar`, `NavBarSurface`) |
+| `ui/components/Backdrop.kt` | Content-behind-the-bar blur: `backdropSource` on a tab's content, `frostedBackdrop` on the bar |
 | `ui/home` | Home screen + view model (continue watching, trending, season picks, shelves) |
 | `ui/schedule` | Schedule **and** News tab, its view model and UI models |
 | `ui/myspace` | "My Space" profile tab (Liked / Watching / Completed lists) |
 | `ui/appearance` | Appearance settings (nav-bar roundness, frostiness) |
 | `ui/about` | About: version, update channel + install, developer credit and links |
 | `ui/search`, `ui/details`, `ui/player` | Search, details (cast/crew sheet) and playback |
-| `ui/extensions`, `ui/addons`, `ui/settings`, `ui/auth` | Extensions, addons, settings, AniList login |
+| `ui/extensions`, `ui/settings`, `ui/auth` | Extensions, settings, AniList login |
 | `core/model/AnimeModels.kt` | `SAnime`, `SEpisode`, `MediaOrigin`, `Shelf` |
 | `core/util/` | `Formatting`, `MediaLabels`, `BioText` (cleans AniList bios), `SelectionHolder` |
 | `core/net/` | `ApiException` / `ApiErrorKind` and `ApiErrorHandler`: every API failure is reported here (log + snackbar in `MainActivity`) |
@@ -89,7 +90,6 @@ Source root: `app/src/main/java/com/ansu/anime/`
 | `data/update/` | Self-updater: `UpdateChecker` (GitHub Releases + `apk-nightly`), `UpdateInstaller`, `UpdateManager` |
 | `extension/` | Extension manager, repo, source tester and the `AnimeCatalogueSource` API; `extension/aniyomi/` loads Aniyomi/Keiyoushi APKs and adapts their sources |
 | `eu/kanade/tachiyomi/` | **Intentional non-Ansu package.** Re-implementation of the Aniyomi extension API (library 12-15) that extension APKs are compiled against. Class and package names must match Aniyomi's exactly; do not rename or move them (§5 branding rules do not apply here) |
-| `addon/` | Stremio addon client and models |
 | `anilist/` | AniList GraphQL API (`AniListApi`), models, repository, OAuth manager |
 
 Dependency wiring flows `AnsuApp` → `AppContainer` → screens/view models. Pass
@@ -537,7 +537,7 @@ so the documentation ships with the code it describes.
 ## 12. Legal and content compliance
 
 Anisu aggregates metadata from the public AniList API and plays media through
-third-party sources, extensions and Stremio addons. Never hardcode credentials,
+third-party sources and extensions. Never hardcode credentials,
 API keys or tokens into the repository or into commit messages, and do not add
 code whose only purpose is to bypass a paywall, DRM or an access control. The
 AniList client id lives in a `buildConfigField` placeholder and is meant to be

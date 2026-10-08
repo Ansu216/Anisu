@@ -25,6 +25,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -226,6 +227,9 @@ fun AnimatedContentScope.PosterExpandContainer(
     val container = remember { OffsetHolder() }
     // The poster cover is only needed until the page is fully open; dropping it then frees its layer.
     val coverVisible by remember { derivedStateOf { progress.value < 0.999f } }
+    // True while the page is being popped (back press / back gesture) rather than covered by another page.
+    // The close shrinks the whole page into the poster; the open is left exactly as it was.
+    val closing = transition.targetState == EnterExitState.PostExit && !isOnBackStack()
 
     Box(
         modifier = Modifier
@@ -264,12 +268,27 @@ fun AnimatedContentScope.PosterExpandContainer(
                 .graphicsLayer {
                     if (originBounds != null) {
                         val p = progress.value
-                        // The page fades in once the window has grown a little, and settles in from just under full size.
-                        alpha = ((p - 0.15f) / 0.45f).coerceIn(0f, 1f)
                         compositingStrategy = CompositingStrategy.ModulateAlpha
-                        val s = lerp(0.94f, 1f, p)
-                        scaleX = s
-                        scaleY = s
+                        if (closing) {
+                            // Close: the page itself deflates with the window. It is scaled by the window's width
+                            // and pinned to the window's top-left corner, so the sides pull in and the page
+                            // visibly shrinks down into the poster instead of being cropped by a shrinking frame.
+                            val bounds = windowBounds(originBounds, container.offset, size, p)
+                            val s = if (size.width > 0f) bounds.width / size.width else 1f
+                            transformOrigin = TransformOrigin(0f, 0f)
+                            translationX = bounds.left
+                            translationY = bounds.top
+                            scaleX = s
+                            scaleY = s
+                            // Hands over to the poster cover early, so the shrinking page never reads as a tiny screen.
+                            alpha = ((p - 0.12f) / 0.4f).coerceIn(0f, 1f)
+                        } else {
+                            // The page fades in once the window has grown a little, and settles in from just under full size.
+                            alpha = ((p - 0.15f) / 0.45f).coerceIn(0f, 1f)
+                            val s = lerp(0.94f, 1f, p)
+                            scaleX = s
+                            scaleY = s
+                        }
                     }
                 },
         ) {

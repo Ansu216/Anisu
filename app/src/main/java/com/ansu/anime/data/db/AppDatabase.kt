@@ -31,8 +31,6 @@ data class ContinueWatchingEntity(
     val positionSeconds: Long,
     val durationSeconds: Long,
     val originExtensionSourceId: Long?,
-    val originAddonId: String?,
-    val originAddonBaseUrl: String?,
     val lastWatchedAt: Long,
 )
 
@@ -49,42 +47,6 @@ interface ContinueWatchingDao {
 
     @Query("SELECT * FROM continue_watching WHERE anilistId = :anilistId LIMIT 1")
     suspend fun get(anilistId: Int): ContinueWatchingEntity?
-}
-
-// ---------------------------------------------------------------------------
-// Installed addons — Stremio/Nuvio-protocol addons the user has added by
-// manifest URL.
-// ---------------------------------------------------------------------------
-
-@Entity(tableName = "installed_addons")
-data class InstalledAddonEntity(
-    @PrimaryKey val id: String,
-    val name: String,
-    val baseUrl: String,
-    val manifestUrl: String,
-    val version: String,
-    val logoUrl: String?,
-    val typesCsv: String,
-    val catalogsJson: String,
-    val enabled: Boolean,
-)
-
-@Dao
-interface InstalledAddonDao {
-    @Query("SELECT * FROM installed_addons ORDER BY name ASC")
-    fun observeAll(): Flow<List<InstalledAddonEntity>>
-
-    @Query("SELECT * FROM installed_addons WHERE enabled = 1 ORDER BY name ASC")
-    suspend fun getEnabled(): List<InstalledAddonEntity>
-
-    @Upsert
-    suspend fun upsert(entity: InstalledAddonEntity)
-
-    @Query("DELETE FROM installed_addons WHERE id = :id")
-    suspend fun remove(id: String)
-
-    @Query("UPDATE installed_addons SET enabled = :enabled WHERE id = :id")
-    suspend fun setEnabled(id: String, enabled: Boolean)
 }
 
 // ---------------------------------------------------------------------------
@@ -144,17 +106,16 @@ interface LocalListDao {
 }
 
 @Database(
-    entities = [ContinueWatchingEntity::class, InstalledAddonEntity::class, LocalListEntity::class],
-    version = 3,
+    entities = [ContinueWatchingEntity::class, LocalListEntity::class],
+    version = 4,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun continueWatchingDao(): ContinueWatchingDao
-    abstract fun installedAddonDao(): InstalledAddonDao
     abstract fun localListDao(): LocalListDao
 
     companion object {
-        /** v1 -> v2: adds the local library table without touching continue-watching or addons. */
+        /** v1 -> v2: adds the local library table without touching continue-watching. */
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -184,9 +145,42 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v3 -> v4: addons were removed from the app. Drops their table and rebuilds continue-watching without the two
+         * addon columns (SQLite before 3.35 cannot drop a column), keeping every row.
+         */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `installed_addons`")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `continue_watching_new` (" +
+                        "`anilistId` INTEGER NOT NULL, " +
+                        "`title` TEXT NOT NULL, " +
+                        "`posterUrl` TEXT, " +
+                        "`bannerUrl` TEXT, " +
+                        "`episodeId` TEXT NOT NULL, " +
+                        "`episodeNumber` REAL NOT NULL, " +
+                        "`episodeName` TEXT NOT NULL, " +
+                        "`positionSeconds` INTEGER NOT NULL, " +
+                        "`durationSeconds` INTEGER NOT NULL, " +
+                        "`originExtensionSourceId` INTEGER, " +
+                        "`lastWatchedAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`anilistId`))",
+                )
+                db.execSQL(
+                    "INSERT INTO `continue_watching_new` (`anilistId`, `title`, `posterUrl`, `bannerUrl`, `episodeId`, " +
+                        "`episodeNumber`, `episodeName`, `positionSeconds`, `durationSeconds`, `originExtensionSourceId`, `lastWatchedAt`) " +
+                        "SELECT `anilistId`, `title`, `posterUrl`, `bannerUrl`, `episodeId`, `episodeNumber`, `episodeName`, " +
+                        "`positionSeconds`, `durationSeconds`, `originExtensionSourceId`, `lastWatchedAt` FROM `continue_watching`",
+                )
+                db.execSQL("DROP TABLE `continue_watching`")
+                db.execSQL("ALTER TABLE `continue_watching_new` RENAME TO `continue_watching`")
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "ansu.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .fallbackToDestructiveMigration()
                 .build()
     }

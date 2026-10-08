@@ -21,6 +21,8 @@ data class AniListMedia(
     val isAdult: Boolean = false,
     /** Romaji, English, native and synonym titles, so a source's copy of the show can be recognised in any language. */
     val altTitles: List<String> = emptyList(),
+    /** Episodes the user has watched: AniList's list progress when signed in, the device's own record otherwise. 0 when unknown. */
+    val progress: Int = 0,
 )
 
 /**

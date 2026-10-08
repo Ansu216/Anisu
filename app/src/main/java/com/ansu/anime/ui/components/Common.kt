@@ -98,7 +98,7 @@ fun ShelfHeader(title: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** A poster-only catalogue row — the generic browse shelf used for extension/addon/AniList lists. */
+/** A poster-only catalogue row — the generic browse shelf used for extension and AniList lists. */
 @Composable
 fun PosterRow(items: List<SAnime>, onClick: (SAnime) -> Unit, modifier: Modifier = Modifier) {
     LazyRow(

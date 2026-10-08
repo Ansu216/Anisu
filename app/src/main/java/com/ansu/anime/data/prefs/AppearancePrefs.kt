@@ -41,20 +41,17 @@ class AppearancePrefs(context: Context) {
         prefs.edit().putFloat(KEY_NAV_FROSTINESS, v).apply()
     }
 
-    private val _navBarBlur = MutableStateFlow(
-        prefs.getFloat(KEY_NAV_BLUR, DEFAULT_NAV_BLUR).coerceIn(0f, 1f),
-    )
+    private val _navBarBackdropBlur = MutableStateFlow(prefs.getBoolean(KEY_NAV_BACKDROP_BLUR, DEFAULT_NAV_BACKDROP_BLUR))
 
     /**
-     * Blur strength of the bar background, 0f = none … 1f = maximum. On Android 12+ it drives a real
-     * platform blur; on Android 8–11, which have no such effect, the bar simply keeps its frosted glass.
+     * Frosted blur of whatever scrolls behind the bottom bar. On Android 12+ it is a real blur of the screen
+     * content; on Android 8-11, which have no such effect, the bar simply keeps its frosted glass.
      */
-    val navBarBlur: StateFlow<Float> = _navBarBlur
+    val navBarBackdropBlur: StateFlow<Boolean> = _navBarBackdropBlur
 
-    fun setNavBarBlur(value: Float) {
-        val v = value.coerceIn(0f, 1f)
-        _navBarBlur.value = v
-        prefs.edit().putFloat(KEY_NAV_BLUR, v).apply()
+    fun setNavBarBackdropBlur(value: Boolean) {
+        _navBarBackdropBlur.value = value
+        prefs.edit().putBoolean(KEY_NAV_BACKDROP_BLUR, value).apply()
     }
 
     private val _titleLanguage = MutableStateFlow(
@@ -116,8 +113,8 @@ class AppearancePrefs(context: Context) {
         private const val KEY_NAV_FROSTINESS = "nav_bar_frostiness"
         const val DEFAULT_NAV_FROSTINESS = 0.5f // = the previous fixed 0.5 tint alpha
 
-        private const val KEY_NAV_BLUR = "nav_bar_blur"
-        const val DEFAULT_NAV_BLUR = 0f // off by default
+        private const val KEY_NAV_BACKDROP_BLUR = "nav_bar_backdrop_blur"
+        const val DEFAULT_NAV_BACKDROP_BLUR = true
     }
 }
 

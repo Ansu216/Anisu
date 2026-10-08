@@ -1,7 +1,5 @@
 package com.ansu.anime.data.repository
 
-import com.ansu.anime.addon.AddonManager
-import com.ansu.anime.addon.model.StremioMeta
 import com.ansu.anime.anilist.AniListMedia
 import com.ansu.anime.anilist.AniListMediaListEntry
 import com.ansu.anime.anilist.AniListRepository
@@ -20,21 +18,19 @@ import kotlinx.coroutines.coroutineScope
 
 /**
  * Builds the home screen's feed by pulling from every content source the app
- * currently knows about: installed extensions, installed addons, and (if
- * logged in) the user's own AniList lists. Nothing here is hardcoded to one
- * provider — add an extension or an addon and a new shelf shows up.
+ * currently knows about: installed extensions and (if logged in) the user's own
+ * AniList lists. Nothing here is hardcoded to one provider — add an extension and
+ * a new shelf shows up.
  */
 class CatalogRepository(
     private val extensionManager: ExtensionManager,
-    private val addonManager: AddonManager,
     private val aniList: AniListRepository,
 ) {
     suspend fun buildHomeShelves(): List<Shelf> = coroutineScope {
         val extensionShelves = async { buildExtensionShelves() }
-        val addonShelves = async { buildAddonShelves() }
         val listShelves = async { buildAniListShelves() }
 
-        listShelves.await() + extensionShelves.await() + addonShelves.await()
+        listShelves.await() + extensionShelves.await()
     }
 
     private suspend fun buildExtensionShelves(): List<Shelf> = coroutineScope {
@@ -45,20 +41,6 @@ class CatalogRepository(
                 Shelf(title = label, items = page?.animes.orEmpty().filterNot { ContentFilter.isAdultGenres(it.genres) })
             }
         }.map { it.await() }.filter { it.items.isNotEmpty() }
-    }
-
-    private suspend fun buildAddonShelves(): List<Shelf> = coroutineScope {
-        val seriesShelves = async { addonManager.getShelvesForType("series") }
-        val movieShelves = async { addonManager.getShelvesForType("movie") }
-        // Kitsu-style anime addons declare their own "anime" type rather than "series".
-        val animeShelves = async { addonManager.getShelvesForType("anime") }
-        val combined = seriesShelves.await() + movieShelves.await() + animeShelves.await()
-        combined.map { (addon, metas) ->
-            Shelf(
-                title = "From ${addon.name}",
-                items = metas.map { it.toSAnime(addon.id, addon.baseUrl) }.filterNot { ContentFilter.isAdultGenres(it.genres) },
-            )
-        }.filter { it.items.isNotEmpty() }
     }
 
     private suspend fun buildAniListShelves(): List<Shelf> {
@@ -92,21 +74,6 @@ class CatalogRepository(
 
     private fun AniListMediaListEntry.toSAnime(): SAnime =
         media.toSAnime(sourceId = defaultSource()?.id ?: 1L)
-
-    private fun StremioMeta.toSAnime(addonId: String, addonBaseUrl: String): SAnime = SAnime(
-        id = id,
-        title = name,
-        posterUrl = poster,
-        bannerUrl = background,
-        description = description,
-        genres = genres.orEmpty(),
-        releaseYear = releaseInfo?.take(4)?.toIntOrNull(),
-        rating = imdbRating?.toDoubleOrNull(),
-        anilistId = null,
-        format = if (type == "movie") "Movie" else "TV",
-        ageRating = ageRatingFor(genres.orEmpty(), isAdult = false),
-        origin = MediaOrigin.Addon(addonId = addonId, addonBaseUrl = addonBaseUrl, type = type, stremioId = id),
-    )
 }
 
 /**

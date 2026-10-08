@@ -97,7 +97,7 @@ import com.ansu.anime.ui.theme.AnsuColors
  * white "Play Now" + frosted circular like button, score/episodes/year/format
  * stats, genre row, expandable synopsis, episode list, cast, crew, related
  * shows. Data comes from [DetailsViewModel]: episodes are resolved from the
- * anime's real extension/addon source, AniList details load in parallel.
+ * anime's real extension source, AniList details load in parallel.
  */
 @Composable
 fun DetailsScreen(
@@ -108,7 +108,7 @@ fun DetailsScreen(
     val viewModel: DetailsViewModel = viewModel(
         factory = viewModelFactory {
             initializer {
-                DetailsViewModel(container.extensionManager, container.addonManager, container.aniListRepository, container.episodeMetadataRepository, container.localListRepository, container.artworkRepository, container.trailerRepository, container.selectionHolder)
+                DetailsViewModel(container.extensionManager, container.aniListRepository, container.episodeMetadataRepository, container.localListRepository, container.artworkRepository, container.trailerRepository, container.selectionHolder)
             }
         },
     )

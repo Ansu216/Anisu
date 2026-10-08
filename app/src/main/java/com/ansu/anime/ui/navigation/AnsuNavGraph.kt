@@ -14,7 +14,7 @@ import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.ui.about.AboutScreen
 import com.ansu.anime.ui.about.UpdatesScreen
 import com.ansu.anime.ui.appearance.AppearanceScreen
-import com.ansu.anime.ui.components.LocalNavBarBlur
+import com.ansu.anime.ui.components.LocalNavBarBackdropBlur
 import com.ansu.anime.ui.components.LocalNavBarFrostiness
 import com.ansu.anime.ui.components.LocalNavBarRoundness
 import com.ansu.anime.ui.components.PosterExpandContainer
@@ -26,7 +26,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.addons.AddonsScreen
 import com.ansu.anime.ui.auth.AniListLoginScreen
 import com.ansu.anime.ui.details.DetailsScreen
 import com.ansu.anime.ui.extensions.ExtensionsScreen
@@ -53,7 +52,6 @@ object Dest {
     const val DETAILS = "details"
     const val PLAYER = "player"
     const val EXTENSIONS = "extensions"
-    const val ADDONS = "addons"
     const val ANILIST_LOGIN = "anilist_login"
 }
 
@@ -64,7 +62,7 @@ val bottomNavDestinations = listOf(Dest.HOME, Dest.SEARCH, Dest.SCHEDULE, Dest.M
 fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rememberNavController()) {
     val navBarRoundness by container.appearancePrefs.navBarRoundness.collectAsStateWithLifecycle()
     val navBarFrostiness by container.appearancePrefs.navBarFrostiness.collectAsStateWithLifecycle()
-    val navBarBlur by container.appearancePrefs.navBarBlur.collectAsStateWithLifecycle()
+    val navBarBackdropBlur by container.appearancePrefs.navBarBackdropBlur.collectAsStateWithLifecycle()
 
     // Every route change is written to the diagnostics log, so an exported report shows where the
     // user actually went before a problem happened.
@@ -78,7 +76,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
     CompositionLocalProvider(
         LocalNavBarRoundness provides navBarRoundness,
         LocalNavBarFrostiness provides navBarFrostiness,
-        LocalNavBarBlur provides navBarBlur,
+        LocalNavBarBackdropBlur provides navBarBackdropBlur,
     ) {
     // Screen transitions are about half the platform default, which makes the whole app feel snappier.
     NavHost(
@@ -133,7 +131,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
                         title = entry.animeTitle,
                         posterUrl = entry.imageUrl,
                         anilistId = entry.animeId,
-                        // No installed extension/addon has matched this show yet — it only
+                        // No installed extension has matched this show yet — it only
                         // came from AniList's public schedule — so episodes on the details
                         // page may come back empty until a real source is wired up for it.
                         origin = com.ansu.anime.core.model.MediaOrigin.Extension(sourceId = 1L, urlPath = entry.animeId.toString()),
@@ -176,9 +174,6 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         }
         composable(Dest.EXTENSIONS) {
             ExtensionsScreen(container = container, navController = navController)
-        }
-        composable(Dest.ADDONS) {
-            AddonsScreen(container = container, navController = navController)
         }
         composable(Dest.ANILIST_LOGIN) {
             AniListLoginScreen(container = container, navController = navController)

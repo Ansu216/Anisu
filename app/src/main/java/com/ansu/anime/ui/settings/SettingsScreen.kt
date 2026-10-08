@@ -21,7 +21,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
@@ -120,12 +119,6 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                     subtitle = "Manage installed anime source extensions",
                     showDivider = false,
                     onClick = { navController.navigate(Dest.EXTENSIONS) },
-                )
-                SettingsRow(
-                    icon = Icons.Filled.Hub,
-                    title = "Addons",
-                    subtitle = "Manage Stremio/Nuvio-protocol addons",
-                    onClick = { navController.navigate(Dest.ADDONS) },
                 )
             }
 

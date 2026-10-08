@@ -81,6 +81,8 @@ import com.ansu.anime.core.util.ageRatingFor
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.AgeRatingChip
 import com.ansu.anime.ui.components.AppBottomBar
+import com.ansu.anime.ui.components.backdropSource
+import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.components.posterTransitionOrigin
 import com.ansu.anime.ui.navigation.Dest
@@ -172,8 +174,9 @@ fun SearchScreen(
         }
     }
 
-    Scaffold(bottomBar = { AppBottomBar(navController, Dest.SEARCH) }) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
+    val backdrop = rememberBackdropState()
+    Scaffold(bottomBar = { AppBottomBar(navController, Dest.SEARCH, backdrop) }) { padding ->
+        Column(modifier = Modifier.fillMaxSize().backdropSource(backdrop).padding(top = padding.calculateTopPadding())) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),

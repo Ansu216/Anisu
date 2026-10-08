@@ -48,6 +48,8 @@ import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.AppBottomBar
+import com.ansu.anime.ui.components.backdropSource
+import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.components.posterTransitionOrigin
 import com.ansu.anime.ui.navigation.Dest
@@ -75,14 +77,16 @@ fun ScheduleScreen(
     var tab by remember { mutableStateOf(ScheduleTab.NEWS) }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
 
+    val backdrop = rememberBackdropState()
     Scaffold(
         containerColor = AnsuColors.Background,
-        bottomBar = { AppBottomBar(navController, Dest.SCHEDULE) },
+        bottomBar = { AppBottomBar(navController, Dest.SCHEDULE, backdrop) },
     ) { padding ->
         val barInset = padding.calculateBottomPadding()
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .backdropSource(backdrop)
                 .padding(top = padding.calculateTopPadding())
                 .background(AnsuColors.Background),
         ) {

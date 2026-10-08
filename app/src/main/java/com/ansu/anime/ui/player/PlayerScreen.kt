@@ -109,7 +109,6 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 PlayerViewModel(
                     context.applicationContext,
                     container.extensionManager,
-                    container.addonManager,
                     container.continueWatchingRepository,
                     container.selectionHolder,
                     container.diagnostics,

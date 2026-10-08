@@ -133,7 +133,7 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
             SectionTitle("Credits")
             Text(
                 text = "Anisu aggregates metadata from the public AniList API and plays media through " +
-                    "third-party sources, extensions and Stremio addons. It is not affiliated with, " +
+                    "third-party sources and extensions. It is not affiliated with, " +
                     "endorsed by or sponsored by AniList or by any provider you connect.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = AnsuColors.TextSecondary,

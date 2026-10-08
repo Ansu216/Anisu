@@ -42,6 +42,8 @@ import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.AppBottomBar
+import com.ansu.anime.ui.components.backdropSource
+import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.components.ContinueWatchingRow
 import com.ansu.anime.ui.components.HeroCarousel
 import com.ansu.anime.ui.components.PagedPosterRow
@@ -84,9 +86,10 @@ fun HomeScreen(
         onAnimeSelected(anime)
     }
 
+    val backdrop = rememberBackdropState()
     Scaffold(
         containerColor = AnsuColors.Background,
-        bottomBar = { AppBottomBar(navController, Dest.HOME) },
+        bottomBar = { AppBottomBar(navController, Dest.HOME, backdrop) },
     ) { padding ->
         if (state.isLoading && trending.isEmpty() && state.shelves.isEmpty()) {
             Column(
@@ -105,6 +108,7 @@ fun HomeScreen(
             // No top padding: the hero banner runs behind the status bar, edge to edge.
             modifier = Modifier
                 .fillMaxSize()
+                .backdropSource(backdrop)
                 .background(AnsuColors.Background),
             // Content runs behind the floating bar; the padding lets the last row scroll clear of it.
             contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 24.dp),
@@ -140,19 +144,10 @@ fun HomeScreen(
                     ContinueWatchingRow(
                         entries = state.continueWatching,
                         onClick = { entry ->
-                            val origin = when {
-                                entry.originAddonId != null && entry.originAddonBaseUrl != null ->
-                                    com.ansu.anime.core.model.MediaOrigin.Addon(
-                                        addonId = entry.originAddonId,
-                                        addonBaseUrl = entry.originAddonBaseUrl,
-                                        type = "series",
-                                        stremioId = entry.anilistId.toString(),
-                                    )
-                                else -> com.ansu.anime.core.model.MediaOrigin.Extension(
-                                    sourceId = entry.originExtensionSourceId ?: 1L,
-                                    urlPath = entry.anilistId.toString(),
-                                )
-                            }
+                            val origin = com.ansu.anime.core.model.MediaOrigin.Extension(
+                                sourceId = entry.originExtensionSourceId ?: 1L,
+                                urlPath = entry.anilistId.toString(),
+                            )
                             val anime = SAnime(
                                 id = entry.anilistId.toString(),
                                 title = entry.title,
@@ -194,8 +189,7 @@ fun HomeScreen(
                 )
             }
 
-            // Two shelves can share a title (the same addon serving both series and movies, or an
-            // extension and an addon with the same name), so the key is the title plus its position.
+            // Two shelves can share a title (two sources with the same name), so the key is the title plus its position.
             itemsIndexed(state.shelves, key = { index, shelf -> "${shelf.title}#$index" }) { _, shelf ->
                 Column {
                     ShelfHeader(shelf.title)

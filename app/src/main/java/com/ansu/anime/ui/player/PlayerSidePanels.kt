@@ -305,7 +305,7 @@ internal fun SourcesPanel(
     modifier: Modifier = Modifier,
     sheet: Boolean = false,
 ) {
-    // Chips come from the sources that actually answered: "All" plus one per extension or addon.
+    // Chips come from the sources that actually answered: "All" plus one per extension.
     val groups = remember(state.sources) { state.sources.mapNotNull { it.extensionName }.distinct() }
     var filter by remember { mutableStateOf<String?>(null) }
     val activeFilter = filter?.takeIf { it in groups }

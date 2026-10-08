@@ -2,7 +2,6 @@
 
 package com.ansu.anime.ui.appearance
 
-import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,6 +29,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -48,6 +49,9 @@ import com.ansu.anime.data.prefs.AppearancePrefs
 import com.ansu.anime.data.prefs.TitleLanguage
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.NavBarSurface
+import com.ansu.anime.ui.components.backdropBlurSupported
+import com.ansu.anime.ui.components.backdropSource
+import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.components.navBarShape
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
@@ -69,7 +73,8 @@ private val previewBackdropColors = listOf(
 fun AppearanceScreen(container: AppContainer, navController: NavHostController) {
     val roundness by container.appearancePrefs.navBarRoundness.collectAsStateWithLifecycle()
     val frostiness by container.appearancePrefs.navBarFrostiness.collectAsStateWithLifecycle()
-    val blur by container.appearancePrefs.navBarBlur.collectAsStateWithLifecycle()
+    val backdropBlur by container.appearancePrefs.navBarBackdropBlur.collectAsStateWithLifecycle()
+    val previewBackdrop = rememberBackdropState()
     val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
     val accent by container.appearancePrefs.accent.collectAsStateWithLifecycle()
 
@@ -171,7 +176,7 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                                 .border(1.dp, AnsuColors.StrokeGlass, MaterialTheme.shapes.large),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Row(modifier = Modifier.fillMaxSize()) {
+                            Row(modifier = Modifier.fillMaxSize().backdropSource(previewBackdrop)) {
                                 previewBackdropColors.forEach { color ->
                                     Box(
                                         modifier = Modifier
@@ -181,7 +186,13 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                                     )
                                 }
                             }
-                            NavBarSurface(currentRoute = Dest.HOME, roundness = roundness, frostiness = frostiness, blur = blur)
+                            NavBarSurface(
+                                currentRoute = Dest.HOME,
+                                roundness = roundness,
+                                frostiness = frostiness,
+                                backdropBlur = backdropBlur,
+                                backdrop = previewBackdrop,
+                            )
                         }
                     }
 
@@ -227,18 +238,28 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                         )
                     }
 
-                    // ---- Blur Slider ----
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SettingSlider(
-                            title = "Blur",
-                            value = blur,
-                            onValueChange = { container.appearancePrefs.setNavBarBlur(it) },
-                        )
+                    // ---- Frosted blur toggle ----
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("Frosted blur", style = MaterialTheme.typography.titleSmall)
+                            Switch(
+                                checked = backdropBlur,
+                                onCheckedChange = { container.appearancePrefs.setNavBarBackdropBlur(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = AnsuColors.OnAccent,
+                                    checkedTrackColor = AnsuColors.Accent,
+                                ),
+                            )
+                        }
                         Text(
-                            text = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                "Softens the glass behind the bar."
+                            text = if (backdropBlurSupported) {
+                                "Blurs whatever scrolls behind the bar, like frosted glass."
                             } else {
-                                "Real blur needs Android 12 or newer; this device keeps the frosted look."
+                                "Real blur needs Android 12 or newer; this device keeps the plain frosted look."
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = AnsuColors.TextTertiary,
@@ -252,7 +273,7 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                 onClick = {
                     container.appearancePrefs.setNavBarRoundness(AppearancePrefs.DEFAULT_NAV_ROUNDNESS)
                     container.appearancePrefs.setNavBarFrostiness(AppearancePrefs.DEFAULT_NAV_FROSTINESS)
-                    container.appearancePrefs.setNavBarBlur(AppearancePrefs.DEFAULT_NAV_BLUR)
+                    container.appearancePrefs.setNavBarBackdropBlur(AppearancePrefs.DEFAULT_NAV_BACKDROP_BLUR)
                     container.appearancePrefs.setAccent(AccentPalette.WHITE)
                 },
                 modifier = Modifier.align(Alignment.End),

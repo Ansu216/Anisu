@@ -59,6 +59,8 @@ import com.ansu.anime.data.repository.ListStatus
 import com.ansu.anime.data.repository.toSAnime
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.AppBottomBar
+import com.ansu.anime.ui.components.backdropSource
+import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.components.posterTransitionOrigin
 import com.ansu.anime.ui.navigation.Dest
@@ -113,12 +115,12 @@ fun MySpaceScreen(
         if (isLoggedIn && viewer != null) {
             isLoading = true
             liked = container.aniListRepository.getLiked()
-            watching = container.aniListRepository.getCurrentlyWatching().map { it.media }
-            planning = container.aniListRepository.getPlanning().map { it.media }
-            completed = container.aniListRepository.getCompleted().map { it.media }
-            paused = container.aniListRepository.getPaused().map { it.media }
-            dropped = container.aniListRepository.getDropped().map { it.media }
-            repeating = container.aniListRepository.getRepeating().map { it.media }
+            watching = container.aniListRepository.getCurrentlyWatching().map { it.media.copy(progress = it.progress) }
+            planning = container.aniListRepository.getPlanning().map { it.media.copy(progress = it.progress) }
+            completed = container.aniListRepository.getCompleted().map { it.media.copy(progress = it.progress) }
+            paused = container.aniListRepository.getPaused().map { it.media.copy(progress = it.progress) }
+            dropped = container.aniListRepository.getDropped().map { it.media.copy(progress = it.progress) }
+            repeating = container.aniListRepository.getRepeating().map { it.media.copy(progress = it.progress) }
             isLoading = false
         } else {
             liked = emptyList(); watching = emptyList(); planning = emptyList(); completed = emptyList()
@@ -127,8 +129,12 @@ fun MySpaceScreen(
         }
     }
 
+    // The Liked list comes without list progress, so borrow it from whichever list the show also sits in.
+    val progressById = remember(watching, planning, completed, paused, dropped, repeating) {
+        (watching + planning + completed + paused + dropped + repeating).associate { it.id to it.progress }
+    }
     val shown = when (selected) {
-        ListTab.Liked -> if (isLoggedIn) liked else localLiked
+        ListTab.Liked -> if (isLoggedIn) liked.map { it.copy(progress = progressById[it.id] ?: 0) } else localLiked
         ListTab.Watching -> if (isLoggedIn) watching else localWatching
         ListTab.Planning -> if (isLoggedIn) planning else localPlanning
         ListTab.Completed -> if (isLoggedIn) completed else localCompleted
@@ -137,11 +143,12 @@ fun MySpaceScreen(
         ListTab.Repeating -> if (isLoggedIn) repeating else localRepeating
     }
 
+    val backdrop = rememberBackdropState()
     Scaffold(
         containerColor = AnsuColors.Background,
-        bottomBar = { AppBottomBar(navController, Dest.MY_SPACE) },
+        bottomBar = { AppBottomBar(navController, Dest.MY_SPACE, backdrop) },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
+        Column(modifier = Modifier.fillMaxSize().backdropSource(backdrop).padding(top = padding.calculateTopPadding())) {
             // Top row: settings gear pinned to the right, as in the sketch.
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
                 FrostedGlassCard(modifier = Modifier.size(44.dp), shape = CircleShape, tintAlpha = 0.5f) {
@@ -332,7 +339,11 @@ private fun ListItemRow(media: AniListMedia, onDetails: () -> Unit) {
                     .clip(RoundedCornerShape(10.dp))
                     .background(AnsuColors.BackgroundElevated),
             )
-            Column(modifier = Modifier.padding(start = 14.dp).weight(1f)) {
+            Column(
+                modifier = Modifier.padding(start = 14.dp).weight(1f).height(92.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
+              Column {
                 Text(
                     text = media.title,
                     color = AnsuColors.TextPrimary,
@@ -350,6 +361,29 @@ private fun ListItemRow(media: AniListMedia, onDetails: () -> Unit) {
                 if (meta.isNotEmpty()) {
                     Text(meta, color = AnsuColors.TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 6.dp))
                 }
+              }
+                WatchProgress(watched = media.progress, total = media.episodes)
+            }
+        }
+    }
+}
+
+/** "11/12" with a thin bar under it: how far through the show the user is. Without a known total it is just the count. */
+@Composable
+private fun WatchProgress(watched: Int, total: Int?) {
+    val known = total?.takeIf { it > 0 }
+    if (known == null && watched <= 0) return
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(
+            text = if (known != null) "$watched/$known" else "Ep $watched",
+            color = AnsuColors.TextSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        if (known != null) {
+            val fraction = (watched.toFloat() / known).coerceIn(0f, 1f)
+            Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(AnsuColors.AccentSoft)) {
+                Box(modifier = Modifier.fillMaxWidth(fraction).height(4.dp).clip(CircleShape).background(AnsuColors.Accent))
             }
         }
     }

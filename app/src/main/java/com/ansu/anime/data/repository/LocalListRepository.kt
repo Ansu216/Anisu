@@ -135,5 +135,6 @@ class LocalListRepository(private val dao: LocalListDao) {
         episodes = episodes,
         year = year,
         format = format,
+        progress = progress,
     )
 }

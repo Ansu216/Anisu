@@ -125,8 +125,6 @@ dependencies {
     implementation(libs.okhttp.logging)
     // Extensions call these at runtime and bundle none of them (Aniyomi ships them too).
     implementation(libs.okhttp.dnsoverhttps)
-    implementation(libs.retrofit)
-    implementation(libs.retrofit.kotlinx.serialization)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.serialization.json.okio)
     implementation(libs.kotlinx.serialization.protobuf)

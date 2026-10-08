@@ -43,7 +43,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Addons are gone from the app.** The Stremio/Nuvio-protocol addon client, its Settings → Addons screen and route, its entry on the Extensions screen and in the source tester, the addon shelves on Home and the addon branches of the details and player view models were deleted, along with `MediaOrigin.Addon`, the `addon/` package and the Retrofit dependency that only the addon client used. Pasting an addon manifest URL on the Extensions screen now says it is not an extension repo, and `stremio://` links are no longer rewritten. The database goes from version 3 to 4 through a real migration that drops the `installed_addons` table and rebuilds `continue_watching` without its two addon columns, so Continue Watching rows are kept. **Constraint:** addons you had added are forgotten; nothing else is touched. The build could not be run in this environment, so compile it once before release.
+
+### Added
+
+- **Bottom navigation bar has a real frosted blur, with a switch in Appearance.** The old Blur slider only softened the bar's own flat tint, so it was invisible. Each tab screen now records its content into a layer (`Backdrop.kt`), and the bar draws a blurred copy of the part of the screen behind it, with a thinner tint on top so the blur shows. Appearance has a "Frosted blur" toggle (on by default) that also drives the live preview; the Frostiness slider still sets the tint. **Constraint:** the blur needs Android 12 or newer; on Android 8-11 the toggle has no effect and the bar keeps its plain frosted glass. The old blur slider value is not carried over.
+
+- **My Space cards show how far through a show you are.** Every card in My List now has "11/12" and a thin progress bar at the bottom (just "Ep 11" when the episode total is unknown). When you are signed in the progress is the one on AniList; otherwise it is the on-device record kept as you watch, and the Liked tab borrows it from whichever list the show also sits in.
+
 ### Changed
+
+- **The nav bar's selection pill stretches and squeezes like a drop of glass when it moves.** The pill used to slide as one rigid block. Its two edges now move on separate springs: the edge facing the new tab is pushed out quickly and overshoots slightly, the trailing edge is pulled along more slowly, so the pill elongates toward the destination, bulges a little taller, brightens and magnifies its icon mid-move, then settles back to one slot. It also does this when a new screen's bar takes over the pill from the previous one, and after a drag is released.
+
+- **Closing a details page now shrinks the whole page into the poster, the way opening grows out of it.** The close only cropped the page with a shrinking frame, so the content stayed full size and was cut off at the sides. The page itself is now scaled by the frame's width and pinned to its corner while it hands over to the poster, so the sides pull in and it deflates smoothly into the tapped poster. The open is unchanged. **Constraint:** the build could not be run in this environment, so compile it once before release.
 
 - **Opening and closing a details page now morphs smoothly out of, and back into, the tapped poster.** The old animation stretched the whole page from the poster's rectangle with different horizontal and vertical scales, so the page looked squashed mid-flight and every frame redrew a full-screen layer with a changing clip and alpha. A rounded window with the poster's own corner radius now grows from the poster's exact bounds to full screen (and back), the poster image is drawn in it at its own aspect ratio, and the page fades in over it at full size, so nothing is stretched and each frame is only a clip and an alpha change. Open uses a fast-out, soft-landing curve (440 ms) and close a slightly quicker settling one (320 ms). **Constraint:** the build could not be run in this environment, so compile and try it on a device once before release.
 

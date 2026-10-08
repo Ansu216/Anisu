@@ -34,7 +34,7 @@ fun AniListLoginScreen(container: AppContainer, navController: NavHostController
         Text("Connect AniList", style = MaterialTheme.typography.headlineMedium)
         Text(
             "Anisu uses AniList to sync your watch progress and show your lists on the Library tab. " +
-                "You'll be taken to anilist.co to sign in; nothing is shared with any extension or addon.",
+                "You'll be taken to anilist.co to sign in; nothing is shared with any extension.",
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(vertical = 16.dp),
         )

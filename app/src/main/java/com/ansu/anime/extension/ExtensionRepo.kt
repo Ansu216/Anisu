@@ -47,9 +47,6 @@ fun ExtensionRepoEntry.isAdult(): Boolean =
 sealed class JsonUrlResult {
     /** An extension repo index: [entries] were read from [indexUrl]. */
     data class Repo(val indexUrl: String, val entries: List<ExtensionRepoEntry>) : JsonUrlResult()
-
-    /** A Stremio/Nuvio addon manifest: the caller adds it through the addon manager. */
-    data class AddonManifest(val manifestUrl: String) : JsonUrlResult()
 }
 
 /**
@@ -80,7 +77,7 @@ class ExtensionRepo(
 
     /**
      * Turns what a person pasted into the URL candidates worth trying: handles
-     * `aniyomi://add-repo?url=`, `tachiyomi://`, `stremio://`, GitHub "blob" links
+     * `aniyomi://add-repo?url=`, `tachiyomi://`, GitHub "blob" links
      * and bare repo folders (which get `index.min.json` appended).
      */
     fun candidates(input: String): List<String> {
@@ -89,7 +86,6 @@ class ExtensionRepo(
         if (url.startsWith("aniyomi://") || url.startsWith("tachiyomi://") || url.startsWith("mihon://")) {
             url = android.net.Uri.parse(url).getQueryParameter("url") ?: url
         }
-        if (url.startsWith("stremio://")) url = "https://" + url.removePrefix("stremio://")
         if (url.startsWith("github.com/") || url.startsWith("raw.githubusercontent.com/")) url = "https://$url"
         if (!url.startsWith("http://") && !url.startsWith("https://")) url = "https://$url"
         url = Regex("^https://github\\.com/([^/]+)/([^/]+)/blob/(.+)$").replace(url) { m ->
@@ -97,7 +93,7 @@ class ExtensionRepo(
         }
         val trimmed = url.trimEnd('/')
         val looksLikeFile = trimmed.substringAfterLast('/').contains('.')
-        return if (looksLikeFile) listOf(trimmed) else listOf("$trimmed/index.min.json", "$trimmed/manifest.json", trimmed)
+        return if (looksLikeFile) listOf(trimmed) else listOf("$trimmed/index.min.json", trimmed)
     }
 
     /** Fetches [input] and works out which kind of JSON it is. */
@@ -125,15 +121,12 @@ class ExtensionRepo(
 
     private fun classify(url: String, root: JsonElement): JsonUrlResult {
         if (root is JsonArray) return JsonUrlResult.Repo(url, parseEntries(root))
-        val obj = root as? JsonObject ?: error("That URL does not return a JSON repo or addon manifest")
-        val isManifest = obj.containsKey("resources") || obj.containsKey("catalogs") ||
-            (obj.containsKey("id") && obj.containsKey("name") && obj.containsKey("version") && !obj.containsKey("pkg"))
-        if (isManifest) return JsonUrlResult.AddonManifest(url)
+        val obj = root as? JsonObject ?: error("That URL does not return a JSON extension repo")
         for (key in listOf("extensions", "sources", "plugins", "items", "data")) {
             val arr = obj[key]?.let { runCatching { it.jsonArray }.getOrNull() } ?: continue
             return JsonUrlResult.Repo(url, parseEntries(arr))
         }
-        error("Unrecognised JSON: expected an extension repo (list of extensions) or an addon manifest")
+        error("Unrecognised JSON: expected an extension repo (a list of extensions)")
     }
 
     private fun parseEntries(array: JsonArray): List<ExtensionRepoEntry> {

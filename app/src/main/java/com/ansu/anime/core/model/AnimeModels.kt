@@ -1,8 +1,7 @@
 package com.ansu.anime.core.model
 
 /**
- * A show as reported by a source (an installed extension) or normalized from
- * an addon's catalog/meta response. [origin] records where it came from so
+ * A show as reported by a source (an installed extension). [origin] records where it came from so
  * the rest of the app knows how to fetch episodes / streams for it later.
  */
 data class SAnime(
@@ -26,7 +25,6 @@ data class SAnime(
 /** Where a piece of media came from, and enough info to go fetch more of it. */
 sealed class MediaOrigin {
     data class Extension(val sourceId: Long, val urlPath: String) : MediaOrigin()
-    data class Addon(val addonId: String, val addonBaseUrl: String, val type: String, val stremioId: String) : MediaOrigin()
 }
 
 data class SEpisode(

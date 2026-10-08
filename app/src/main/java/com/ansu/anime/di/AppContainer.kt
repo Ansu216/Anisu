@@ -1,9 +1,6 @@
 package com.ansu.anime.di
 
 import android.content.Context
-import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
-import com.ansu.anime.addon.AddonManager
-import com.ansu.anime.addon.StremioAddonApi
 import com.ansu.anime.anilist.AniListApi
 import com.ansu.anime.anilist.AniListAuthManager
 import com.ansu.anime.anilist.AniListRepository
@@ -23,11 +20,8 @@ import com.ansu.anime.core.util.SelectionHolder
 import com.ansu.anime.extension.ExtensionManager
 import com.ansu.anime.extension.ExtensionRepo
 import com.ansu.anime.extension.SourceTester
-import kotlinx.serialization.json.Json
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
-import retrofit2.Retrofit
 
 /**
  * A single, plainly-constructed object graph. Every dependency is created
@@ -38,8 +32,6 @@ import retrofit2.Retrofit
 class AppContainer(context: Context) {
 
     private val appContext = context.applicationContext
-
-    private val json = Json { ignoreUnknownKeys = true }
 
     init {
         com.ansu.anime.extension.EpisodeListCache.attach(appContext.cacheDir)
@@ -52,20 +44,11 @@ class AppContainer(context: Context) {
         .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
         .build()
 
-    private val retrofit: Retrofit = Retrofit.Builder()
-        .baseUrl("https://example-placeholder.invalid/") // unused: every call supplies a full @Url
-        .client(okHttpClient)
-        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
-        .build()
-
-    val stremioAddonApi: StremioAddonApi = retrofit.create(StremioAddonApi::class.java)
-
     val database: AppDatabase = AppDatabase.build(appContext)
 
     val extensionManager: ExtensionManager = ExtensionManager(appContext)
     val extensionRepo: ExtensionRepo = ExtensionRepo(appContext, okHttpClient)
-    val addonManager: AddonManager = AddonManager(stremioAddonApi, database.installedAddonDao())
-    val sourceTester: SourceTester = SourceTester(okHttpClient, addonManager)
+    val sourceTester: SourceTester = SourceTester(okHttpClient)
 
     val apiErrorHandler: ApiErrorHandler = ApiErrorHandler(diagnostics)
 
@@ -92,7 +75,7 @@ class AppContainer(context: Context) {
         localListRepository,
     )
 
-    val catalogRepository: CatalogRepository = CatalogRepository(extensionManager, addonManager, aniListRepository)
+    val catalogRepository: CatalogRepository = CatalogRepository(extensionManager, aniListRepository)
 
     val episodeMetadataRepository: EpisodeMetadataRepository = EpisodeMetadataRepository(okHttpClient, aniListRepository, apiErrorHandler)
 

@@ -35,8 +35,6 @@ class ContinueWatchingRepository(
                 positionSeconds = positionSeconds,
                 durationSeconds = durationSeconds,
                 originExtensionSourceId = (anime.origin as? MediaOrigin.Extension)?.sourceId,
-                originAddonId = (anime.origin as? MediaOrigin.Addon)?.addonId,
-                originAddonBaseUrl = (anime.origin as? MediaOrigin.Addon)?.addonBaseUrl,
                 lastWatchedAt = System.currentTimeMillis(),
             ),
         )

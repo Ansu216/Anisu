@@ -15,8 +15,6 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MergingMediaSource
-import com.ansu.anime.addon.AddonManager
-import com.ansu.anime.addon.model.StremioStream
 import com.ansu.anime.core.model.MediaOrigin
 import com.ansu.anime.core.diagnostics.Diagnostics
 import com.ansu.anime.core.diagnostics.LogCategory
@@ -38,7 +36,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-/** A single playable option, whichever extension or addon it came from - what the source-select sheet lists. */
+/** A single playable option, whichever extension it came from - what the source-select sheet lists. */
 data class PlayableSource(
     val label: String,
     val url: String,
@@ -49,7 +47,7 @@ data class PlayableSource(
     val resolve: (suspend () -> PlayableSource?)? = null,
     /** The extension this stream came from; used to order streams by the person's source priority. */
     val sourceId: Long? = null,
-    /** Name of the extension or addon that listed this stream (shown as a chip in the Sources panel). */
+    /** Name of the extension that listed this stream (shown as a chip in the Sources panel). */
     val extensionName: String? = null,
     /** The server (hoster) inside the extension, e.g. "HD-1"; the Sources list shows it next to [extensionName]. */
     val serverName: String? = null,
@@ -104,7 +102,6 @@ data class PlayerUiState(
 class PlayerViewModel(
     context: Context,
     private val extensionManager: ExtensionManager,
-    private val addonManager: AddonManager,
     private val continueWatchingRepository: ContinueWatchingRepository,
     private val selectionHolder: SelectionHolder,
     private val diagnostics: Diagnostics? = null,
@@ -379,12 +376,6 @@ class PlayerViewModel(
                     }.awaitAll()
                 }
             }
-            is MediaOrigin.Addon -> {
-                // Stremio asks for streams by *video* id (for a series that is the episode id such as
-                // "tt0903747:1:2"); the show id only works for movies, and a movie's single episode carries it.
-                val streamsByAddon = addonManager.getStreamsFromAllAddons(origin.type, episode.id.ifBlank { origin.stremioId })
-                onBatch(streamsByAddon.flatMap { (addonName, streams) -> streams.mapNotNull { it.toPlayableSource(addonName) } })
-            }
         }
     }
 
@@ -397,19 +388,6 @@ class PlayerViewModel(
         resolve = resolve?.let { pending -> suspend { pending()?.toPlayable() } },
         serverName = serverName,
     )
-
-    private fun StremioStream.toPlayableSource(addonName: String): PlayableSource? {
-        // Torrent-only and external-app streams carry no direct URL; ExoPlayer cannot play them.
-        val streamUrl = url ?: return null
-        val label = listOfNotNull(addonName, name ?: title?.lineSequence()?.firstOrNull()).joinToString(" · ")
-        return PlayableSource(
-            label = label,
-            url = streamUrl,
-            headers = behaviorHints?.proxyHeaders?.request.orEmpty(),
-            extensionName = addonName,
-            serverName = (name ?: title?.lineSequence()?.firstOrNull())?.takeIf { it.isNotBlank() },
-        )
-    }
 
     @androidx.annotation.OptIn(UnstableApi::class)
     fun selectSource(source: PlayableSource) {

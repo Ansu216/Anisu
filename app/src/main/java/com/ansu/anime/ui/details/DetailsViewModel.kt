@@ -2,7 +2,6 @@ package com.ansu.anime.ui.details
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ansu.anime.addon.AddonManager
 import com.ansu.anime.anilist.AniListMediaDetails
 import com.ansu.anime.anilist.AniListRepository
 import com.ansu.anime.core.model.MediaOrigin
@@ -55,7 +54,6 @@ data class DetailsUiState(
 
 class DetailsViewModel(
     private val extensionManager: ExtensionManager,
-    private val addonManager: AddonManager,
     private val aniListRepository: AniListRepository,
     private val episodeMetadataRepository: EpisodeMetadataRepository,
     private val localListRepository: LocalListRepository,
@@ -228,25 +226,6 @@ class DetailsViewModel(
                     listOf(SEpisode(id = origin.urlPath, name = anime.title, episodeNumber = 1f))
                 } else {
                     episodes
-                }
-            }
-
-            is MediaOrigin.Addon -> {
-                val addon = addonManager.installedAddons.first().firstOrNull { it.id == origin.addonId } ?: return@coroutineScope emptyList()
-                val meta = addonManager.getMeta(addon, origin.type, origin.stremioId)
-                val videos = meta?.videos.orEmpty()
-                if (videos.isEmpty()) {
-                    // A movie (or a catalog entry with no episode list) is one playable item whose video id is its own id.
-                    listOf(SEpisode(id = origin.stremioId, name = meta?.name ?: anime.title, episodeNumber = 1f))
-                } else {
-                    videos.map { video ->
-                        SEpisode(
-                            id = video.id,
-                            name = video.title ?: "Episode ${video.episode ?: "?"}",
-                            episodeNumber = (video.episode ?: 0).toFloat(),
-                            thumbnailUrl = video.thumbnail,
-                        )
-                    }
                 }
             }
         }

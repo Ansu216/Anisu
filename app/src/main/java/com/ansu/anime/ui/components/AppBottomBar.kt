@@ -31,9 +31,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineStart
 import kotlin.math.abs
@@ -84,16 +84,14 @@ val LocalNavBarRoundness = compositionLocalOf { AppearancePrefs.DEFAULT_NAV_ROUN
 val LocalNavBarFrostiness = compositionLocalOf { AppearancePrefs.DEFAULT_NAV_FROSTINESS }
 
 /**
- * Current nav bar blur level (0f none … 1f maximum), provided next to the other two so the bar
- * follows the setting live. Real blur needs Android 12+; below that it degrades to frost.
+ * Whether the bar blurs the content scrolling behind it (the "Frosted blur" toggle in Appearance), provided next
+ * to the other two so the real bar follows the setting live. Real blur needs Android 12+; below that the bar
+ * keeps its plain frosted glass.
  */
-val LocalNavBarBlur = compositionLocalOf { AppearancePrefs.DEFAULT_NAV_BLUR }
+val LocalNavBarBackdropBlur = compositionLocalOf { AppearancePrefs.DEFAULT_NAV_BACKDROP_BLUR }
 
 /** Maps frostiness/opacity 0..1 to the background tint opacity: 0.05 (nearly see-through) … 1.0 (solid). */
 fun navBarTintAlpha(frostiness: Float): Float = 0.05f + frostiness.coerceIn(0f, 1f) * 0.95f
-
-/** Maps blur 0..1 to a blur radius in dp (0 … 24dp). */
-fun navBarBlurRadius(blur: Float): Dp = (blur.coerceIn(0f, 1f) * 24f).dp
 
 /** Maps roundness 0..1 to a corner radius that scales with the bar's own height (50% = full pill). */
 fun navBarShape(roundness: Float): RoundedCornerShape =
@@ -101,7 +99,7 @@ fun navBarShape(roundness: Float): RoundedCornerShape =
 
 /** Frosted-glass bottom nav bar: a compact, icon-only floating pill. */
 @Composable
-fun AppBottomBar(navController: NavHostController, currentRoute: String?) {
+fun AppBottomBar(navController: NavHostController, currentRoute: String?, backdrop: BackdropState? = null) {
     // The Scaffold's bottomBar slot has no background of its own, so only the
     // pill itself is drawn and the screen content shows around it.
     Box(
@@ -118,7 +116,8 @@ fun AppBottomBar(navController: NavHostController, currentRoute: String?) {
             currentRoute = currentRoute,
             roundness = LocalNavBarRoundness.current,
             frostiness = LocalNavBarFrostiness.current,
-            blur = LocalNavBarBlur.current,
+            backdropBlur = LocalNavBarBackdropBlur.current,
+            backdrop = backdrop,
             onItemClick = { route ->
                 navController.navigate(route) {
                     popUpTo(Dest.HOME) { saveState = true }
@@ -144,6 +143,34 @@ private val NavSlotHeight = 40.dp
 private val NavBarDragShift = 10.dp
 
 /**
+ * The selection pill as two edges that move on their own springs. The edge facing the destination is pushed
+ * out quickly and overshoots a little, the trailing edge is pulled along more slowly, so the pill stretches
+ * toward the new tab mid-flight and then squeezes back to a single slot, like a drop of glass being dragged.
+ */
+private class PillMotion(initialLeft: Float, private val slotPx: Float) {
+    private val leftEdge = Animatable(initialLeft)
+    private val rightEdge = Animatable(initialLeft + slotPx)
+
+    val left: Float get() = leftEdge.value
+    val right: Float get() = rightEdge.value
+
+    suspend fun snapTo(left: Float) {
+        leftEdge.snapTo(left)
+        rightEdge.snapTo(left + slotPx)
+    }
+
+    suspend fun animateTo(targetLeft: Float) {
+        val movingRight = targetLeft + slotPx >= rightEdge.value
+        val leading = spring<Float>(dampingRatio = 0.64f, stiffness = 520f)
+        val trailing = spring<Float>(dampingRatio = 0.82f, stiffness = 170f)
+        coroutineScope {
+            launch { leftEdge.animateTo(targetLeft, if (movingRight) trailing else leading) }
+            launch { rightEdge.animateTo(targetLeft + slotPx, if (movingRight) leading else trailing) }
+        }
+    }
+}
+
+/**
  * The bar itself, decoupled from navigation so Settings can render an
  * identical, non-navigating copy as a live preview. It wraps its content
  * (four 70dp x 40dp slots) instead of spanning the screen.
@@ -158,7 +185,8 @@ fun NavBarSurface(
     roundness: Float,
     frostiness: Float,
     modifier: Modifier = Modifier,
-    blur: Float = AppearancePrefs.DEFAULT_NAV_BLUR,
+    backdropBlur: Boolean = AppearancePrefs.DEFAULT_NAV_BACKDROP_BLUR,
+    backdrop: BackdropState? = null,
     onItemClick: ((String) -> Unit)? = null,
 ) {
     val shape = navBarShape(roundness)
@@ -166,40 +194,45 @@ fun NavBarSurface(
     val maxLeft = slotPx * (barItems.size - 1)
     val targetIndex = barItems.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
     val scope = rememberCoroutineScope()
-    val pillSpring = spring<Float>(dampingRatio = 0.78f, stiffness = 380f)
 
-    val pill = remember { Animatable(if (lastPillPx.isNaN()) targetIndex * slotPx else lastPillPx) }
+    val pill = remember { PillMotion(if (lastPillPx.isNaN()) targetIndex * slotPx else lastPillPx, slotPx) }
     var held by remember { mutableStateOf(false) }
     // Left edge of the pill while a finger drags it; null whenever [pill] is in charge.
     var dragLeft by remember { mutableStateOf<Float?>(null) }
-    val pillLeft = dragLeft ?: pill.value
+    val pillLeft = dragLeft ?: pill.left
+    val pillRight = if (dragLeft != null) pillLeft + slotPx else pill.right
+    // 0 at rest, up to ~1 while the pill is stretched across two slots mid-move.
+    val stretch = ((pillRight - pillLeft) / slotPx - 1f).coerceIn(0f, 1.2f)
     val holdAmount by animateFloatAsState(
         targetValue = if (held) 1f else 0f,
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
         label = "navPillHold",
     )
 
-    LaunchedEffect(targetIndex) { pill.animateTo(targetIndex * slotPx, pillSpring) }
+    LaunchedEffect(targetIndex) { pill.animateTo(targetIndex * slotPx) }
     if (onItemClick != null) SideEffect { lastPillPx = pillLeft }
-    val activeIndex = (pillLeft / slotPx).roundToInt().coerceIn(0, barItems.size - 1)
+    val activeIndex = (((pillLeft + pillRight) / 2f) / slotPx).toInt().coerceIn(0, barItems.size - 1)
 
     val shiftPx = with(LocalDensity.current) { NavBarDragShift.toPx() }
+    // With a backdrop to blur, the glass tint is thinner so the blurred content actually shows through it.
+    val blurActive = backdrop != null && backdropBlur && backdropBlurSupported
+    val tintAlpha = navBarTintAlpha(frostiness) * (if (blurActive) 0.6f else 1f)
     // The bar's glass is clipped to its shape, but the held pill has to swell past the bar's edges, so the pill and
     // the icons are drawn on top of the glass instead of inside it.
     Box(
         // While the pill is held the whole bar leans a little toward it and swells slightly, and eases
         // back when it is released. Everything scales with holdAmount, so a resting bar is untouched.
         modifier = modifier.graphicsLayer {
-            val lean = ((pillLeft / maxLeft) - 0.5f) * 2f
+            val lean = (((pillLeft + pillRight) / 2f - slotPx / 2f) / maxLeft - 0.5f) * 2f
             translationX = lean * shiftPx * holdAmount
             scaleX = 1f + 0.04f * holdAmount
             scaleY = 1f + 0.06f * holdAmount
         },
     ) {
         FrostedGlassCard(
+            modifier = Modifier.frostedBackdrop(backdrop, backdropBlur, shape),
             shape = shape,
-            tintAlpha = navBarTintAlpha(frostiness),
-            blurRadius = navBarBlurRadius(blur),
+            tintAlpha = tintAlpha,
         ) {
             Spacer(Modifier.size(width = NavSlotWidth * barItems.size + 10.dp, height = NavSlotHeight + 10.dp))
         }
@@ -230,14 +263,15 @@ fun NavBarSurface(
                         scope.launch(start = CoroutineStart.UNDISPATCHED) {
                             if (from != null) pill.snapTo(from)
                             dragLeft = null
-                            pill.animateTo(index * slotPx, pillSpring)
+                            pill.animateTo(index * slotPx)
                         }
                         if (barItems[index].route != currentRoute) onItemClick(barItems[index].route)
                     }
                 },
         ) {
             // Translucent "glass" pill marking the current tab. Held, it swells wider and taller than the bar
-            // itself (drawn, not clipped), brightens like a lens, and follows the finger.
+            // itself (drawn, not clipped), brightens like a lens, and follows the finger. Moving between tabs it
+            // stretches toward the destination and bulges, then settles back into one slot.
             Box(
                 modifier = Modifier
                     .offset { IntOffset(pillLeft.roundToInt(), 0) }
@@ -245,16 +279,17 @@ fun NavBarSurface(
                     .drawBehind {
                         val h = holdAmount
                         val extraW = 28.dp.toPx() * h
-                        val extraH = 26.dp.toPx() * h
-                        val w = size.width + extraW
+                        val extraH = 26.dp.toPx() * h + 14.dp.toPx() * (stretch / 1.2f)
+                        val w = (pillRight - pillLeft) + extraW
                         val ht = size.height + extraH
                         val topLeft = Offset(-extraW / 2f, -extraH / 2f)
+                        val glow = (h + stretch).coerceAtMost(1.2f)
                         val radius = CornerRadius(minOf(w, ht) * roundness.coerceIn(0f, 1f) / 2f)
                         drawRoundRect(
                             brush = Brush.verticalGradient(
                                 listOf(
-                                    AnsuColors.Accent.copy(alpha = 0.16f + 0.14f * h),
-                                    AnsuColors.Accent.copy(alpha = 0.10f + 0.08f * h),
+                                    AnsuColors.Accent.copy(alpha = (0.16f + 0.14f * glow).coerceAtMost(0.5f)),
+                                    AnsuColors.Accent.copy(alpha = (0.10f + 0.08f * glow).coerceAtMost(0.4f)),
                                 ),
                             ),
                             topLeft = topLeft,
@@ -263,13 +298,13 @@ fun NavBarSurface(
                         )
                         // Soft white sheen so the swollen pill reads as glass over the bar.
                         drawRoundRect(
-                            color = Color.White.copy(alpha = 0.12f * h),
+                            color = Color.White.copy(alpha = (0.12f * glow).coerceAtMost(0.2f)),
                             topLeft = topLeft,
                             size = Size(w, ht),
                             cornerRadius = radius,
                         )
                         drawRoundRect(
-                            color = Color.White.copy(alpha = 0.10f + 0.22f * h),
+                            color = Color.White.copy(alpha = (0.10f + 0.22f * glow).coerceAtMost(0.34f)),
                             topLeft = topLeft,
                             size = Size(w, ht),
                             cornerRadius = radius,
@@ -297,8 +332,8 @@ fun NavBarSurface(
                             modifier = Modifier
                                 .size(24.dp)
                                 .graphicsLayer {
-                                    // The icon under the held pill is magnified, like the lens is enlarging it.
-                                    val scale = if (index == activeIndex) 1f + 0.3f * holdAmount else 1f
+                                    // The icon under the pill is magnified, like the lens is enlarging it.
+                                    val scale = if (index == activeIndex) 1f + 0.3f * holdAmount + 0.18f * stretch else 1f
                                     scaleX = scale
                                     scaleY = scale
                                 },

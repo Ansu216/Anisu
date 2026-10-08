@@ -60,7 +60,6 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
-import com.ansu.anime.addon.model.InstalledAddon
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.extension.ExtensionRepoEntry
 import com.ansu.anime.extension.InstalledExtension
@@ -102,7 +101,6 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
 
     val extensions by manager.extensions.collectAsStateWithLifecycle()
     val disabledIds by manager.disabledSourceIds.collectAsStateWithLifecycle()
-    val addons by container.addonManager.installedAddons.collectAsStateWithLifecycle(initialValue = emptyList())
 
     var jsonUrl by remember { mutableStateOf("") }
     var isAdding by remember { mutableStateOf(false) }
@@ -158,11 +156,10 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
             val icon = ext.icon ?: runCatching { packageManager.getApplicationIcon(ext.packageName) }.getOrNull()
             addAll(extensionRows(ext, icon, disabledIds, manager::setSourceEnabled, onSettings = { settingsFor = it }) { manager.uninstall(ext.packageName) })
         }
-        addons.forEach { addon -> add(addonRow(addon, scope, container)) }
     }
 
     val targets: List<TestTarget> =
-        (builtInSources + extensionSources).map { TestTarget.Extension(it) } + addons.map { TestTarget.Addon(it) }
+        (builtInSources + extensionSources).map { TestTarget.Extension(it) }
     val selected = targets.firstOrNull { it.key == selectedKey }
 
     settingsFor?.let { adapter -> ExtensionSettingsSheet(source = adapter, onDismiss = { settingsFor = null }) }
@@ -204,8 +201,6 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                                         availableByRepo = availableByRepo + (parsed.indexUrl to parsed.entries)
                                         "Repo added: ${parsed.entries.size} extensions available"
                                     }
-                                    is JsonUrlResult.AddonManifest ->
-                                        "Addon added: " + container.addonManager.addAddon(parsed.manifestUrl).getOrThrow().name
                                 }
                             }
                             outcome.fold(
@@ -438,16 +433,6 @@ private fun extensionRows(
         sourceRow(source, "v${ext.versionName}", icon, disabledIds, setEnabled, if (index == 0) onRemove else null, settings)
     }
 }
-
-private fun addonRow(addon: InstalledAddon, scope: kotlinx.coroutines.CoroutineScope, container: AppContainer) = InstalledRow(
-    key = "addon:${addon.id}",
-    title = addon.name,
-    subtitle = "Addon · v${addon.version} · ${addon.types.joinToString(", ").ifEmpty { "no types declared" }}",
-    icon = addon.logoUrl,
-    checked = addon.enabled,
-    onCheckedChange = { checked -> scope.launch { container.addonManager.setEnabled(addon.id, checked) } },
-    onRemove = { scope.launch { container.addonManager.removeAddon(addon.id) } },
-)
 
 @Composable
 private fun SectionTitle(text: String, modifier: Modifier = Modifier) {
