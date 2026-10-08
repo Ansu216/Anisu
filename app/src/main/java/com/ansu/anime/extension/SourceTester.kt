@@ -128,7 +128,8 @@ class SourceTester(
                 throw e
             } catch (e: Throwable) {
                 android.util.Log.e("SourceTester", "episode list failed for ${source.name}", e)
-                reason = "episode list of \"${anime.title}\": ${e::class.simpleName}: ${e.message ?: "Unknown error"}"
+                reason = "episode list of \"${anime.title}\": ${e::class.simpleName}: ${e.message ?: "Unknown error"}" +
+                    ((e as? eu.kanade.tachiyomi.network.HttpException)?.let { " (the site itself refused the request, not the app)" } ?: "")
                 continue
             }
             val episode = episodes.firstOrNull()
@@ -153,7 +154,10 @@ class SourceTester(
             }
             if (listed.isEmpty()) {
                 // The source's own per-server lines say which hoster failed and why.
-                reason = synchronized(lines) { lines.lastOrNull() } ?: "no server returned a video for \"${anime.title}\""
+                reason = synchronized(lines) {
+                    // Skip the "N hoster(s)" summary line and keep the last two, which carry the actual cause.
+                    lines.filterNot { it.contains("hoster(s):") }.takeLast(2).joinToString(" | ").ifBlank { null }
+                } ?: "no server returned a video for \"${anime.title}\""
                 continue
             }
             // The player resolves the video that is picked (and moves on when one fails), so prove one of the first resolves.

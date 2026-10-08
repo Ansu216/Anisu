@@ -344,7 +344,7 @@ private fun ScheduleCard(entry: ScheduleEntry, onClick: () -> Unit) {
             Box(
                 modifier = Modifier
                     .size(56.dp)
-                    .posterTransitionOrigin()
+                    .posterTransitionOrigin(entry.imageUrl, 10.dp)
                     .clip(RoundedCornerShape(10.dp)),
             ) {
                 if (entry.imageUrl != null) {

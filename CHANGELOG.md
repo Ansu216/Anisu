@@ -33,7 +33,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Opening and closing a details page now morphs smoothly out of, and back into, the tapped poster.** The old animation stretched the whole page from the poster's rectangle with different horizontal and vertical scales, so the page looked squashed mid-flight and every frame redrew a full-screen layer with a changing clip and alpha. A rounded window with the poster's own corner radius now grows from the poster's exact bounds to full screen (and back), the poster image is drawn in it at its own aspect ratio, and the page fades in over it at full size, so nothing is stretched and each frame is only a clip and an alpha change. Open uses a fast-out, soft-landing curve (440 ms) and close a slightly quicker settling one (320 ms). **Constraint:** the build could not be run in this environment, so compile and try it on a device once before release.
+
+- **Source tests say why a source returned no videos.** A source whose catalogue loads but whose streams come back empty (Toonstream) only reported "no_hoster_list: no playable video". The adapter now logs when a source returns an empty video list and, for older (library 12-15) sources, the exact error that dropped each video link; the test shows the last two of those lines. An episode-list failure with an HTTP status (MovieBox's 441) is labelled as the site refusing the request. Older sources' videos also keep their page `url` after their link is fetched or resolved (the generated `copy()` dropped it). **Constraint:** this does not make those two sources work; MovieBox's 441 comes from its server and Toonstream's empty list comes from inside the extension. The build could not be run in this environment, so compile it once before release.
+
 ### Added
+
+- **Built-in 18+ filter: no hentai in Search, and no adult sources.** The filter is always on and has no switch. AniList queries (Search, Home rows, trending, season picks) now exclude adult-flagged titles and the Hentai genre, and any such title that still arrives (your list, favourites, related and recommended rows) is dropped when the response is read, so it cannot be opened from a deep link either. Extension repos no longer list 18+ extensions (flagged `nsfw` in the index, or named after adult content), and installing one is refused. Already-installed adult extensions are never loaded: one downloaded inside Anisu is deleted on the next reload, one installed on the phone itself is only skipped, because Android needs your confirmation to uninstall it. With the extension unloaded its sources do not appear on Home, are not used to find episodes and cannot stream. Home shelves from sources and addons also drop any title tagged as adult. **Constraint:** sources that do not flag themselves are caught by name (words such as hentai or hanime) and by genre tags only; Stremio addons are filtered by genre tag only. The build could not be run in this environment, so compile it once before release.
 
 - **Subtitle offset can go negative.** The Subtitles panel only moved subtitles later (0 to +10 s) because the player hands over a cue only when playback reaches it. Offsets now run from -10 s to +10 s in 100 ms steps: a negative value makes the text renderer treat the playback position as that much ahead (`SubtitleLeadRenderersFactory`), so cues show earlier, while a positive value still holds cues back as before. **Constraint:** the build could not be run in this environment, so compile it once before release.
 - **Details pages have a Trailers row between the synopsis and the episodes.** It lists the show's trailers and PVs (Jikan, keyed by the MyAnimeList id; AniList's own trailer is used when Jikan has none) as 16:9 thumbnails. Tapping one opens a bottom sheet that autoplays it in YouTube's embedded player; the player's own button goes fullscreen and Back leaves it, and an "open in YouTube" button covers videos that forbid embedding. The row is hidden when no trailer is found.
@@ -252,6 +260,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The build compiles again.** The Appearance screen's colour preview called a `Modifier.paddingTop` that does not exist, which failed both the debug and release compile; it now uses `Modifier.padding(top = 8.dp)`.
 
 - **Opening the same title a second time no longer crashes the app.** The details screen's `rawEpisodes` and `episodeMeta` were declared below the `init` block, so the episode list coming from the cache was published before those fields existed (a null `map` crash), and they were then reset to empty once the constructor finished. They are now declared above `init`, so the cached list is shown straight away on the second visit.
+
+### Removed
+
+- **The "Show 18+ titles" switch in the Search filters is gone.** Adult titles are now always hidden by the built-in filter, so the switch and its "18+ shown" chip no longer exist.
 
 ## [0.1.0] - 2026-09-28
 

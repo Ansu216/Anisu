@@ -89,14 +89,14 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         // tapped poster and shrinks back into it, so the poster has something to grow out of.
         exitTransition = {
             if (targetState.destination.route == Dest.DETAILS) {
-                fadeOut(targetAlpha = 0.55f, animationSpec = tween(durationMillis = PosterTransition.DURATION_MILLIS))
+                fadeOut(targetAlpha = 0.55f, animationSpec = tween(durationMillis = PosterTransition.OPEN_MILLIS))
             } else {
                 fadeOut(animationSpec = tween(durationMillis = 150))
             }
         },
         popEnterTransition = {
             if (initialState.destination.route == Dest.DETAILS) {
-                fadeIn(initialAlpha = 0.55f, animationSpec = tween(durationMillis = PosterTransition.DURATION_MILLIS))
+                fadeIn(initialAlpha = 0.55f, animationSpec = tween(durationMillis = PosterTransition.CLOSE_MILLIS))
             } else {
                 fadeIn(animationSpec = tween(durationMillis = 150))
             }

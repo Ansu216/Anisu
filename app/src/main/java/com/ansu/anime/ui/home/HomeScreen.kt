@@ -302,7 +302,7 @@ private fun TopPickCard(anime: SAnime, onClick: () -> Unit, modifier: Modifier =
     Box(
         modifier = modifier
             .aspectRatio(2f / 3f)
-            .posterTransitionOrigin()
+            .posterTransitionOrigin(anime.posterUrl, 12.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(AnsuColors.BackgroundElevated)
             .clickable(onClick = onClick),

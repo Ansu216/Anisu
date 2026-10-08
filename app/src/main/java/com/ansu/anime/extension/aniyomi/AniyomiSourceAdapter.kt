@@ -180,7 +180,7 @@ class AniyomiSourceAdapter(
                     gate.withPermit {
                         try {
                             val found = withTimeoutOrNull(HOSTER_TIMEOUT_MS) {
-                                listVideos(hoster).mapNotNull { video -> entryFor(hoster, video) }
+                                listVideos(hoster, log).mapNotNull { video -> entryFor(hoster, video) }
                             }
                             when {
                                 found == null -> log("  $name / $label: timed out after ${HOSTER_TIMEOUT_MS / 1000}s")
@@ -284,30 +284,35 @@ class AniyomiSourceAdapter(
      * carries (or the source's `getVideoList(hoster)`), a legacy video whose URL is still the string "null" asks the
      * source for it, then `sortVideos`. Nothing is resolved here.
      */
-    private suspend fun listVideos(hoster: Hoster): List<Video> {
+    private suspend fun listVideos(hoster: Hoster, log: (String) -> Unit): List<Video> {
         val http = source as? AnimeHttpSource
         val preset = hoster.videoList
         val videos = when {
-            preset != null && http != null -> parseVideoUrls(http, preset)
+            preset != null && http != null -> parseVideoUrls(http, preset, log)
             preset != null -> preset
-            http != null -> parseVideoUrls(http, source.getVideoList(hoster))
+            http != null -> parseVideoUrls(http, source.getVideoList(hoster), log)
             else -> source.getVideoList(hoster)
         }
+        if (videos.isEmpty()) log("  $name: the source returned no videos for this episode (its servers gave nothing or failed inside the extension)")
         return if (http != null) with(http) { videos.sortVideos() } else videos
     }
 
     /** Library 12-15 sources return videos without a final URL (the string "null"); the source is asked for it. */
-    private suspend fun parseVideoUrls(http: AnimeHttpSource, videos: List<Video>): List<Video> =
+    private suspend fun parseVideoUrls(http: AnimeHttpSource, videos: List<Video>, log: (String) -> Unit): List<Video> =
         videos.mapNotNull { video ->
             if (video.videoUrl != "null") {
                 video
             } else {
                 try {
-                    video.copy(videoUrl = http.getVideoUrl(video))
+                    // The generated copy() does not carry the library 12-15 `url`, so it is put back by hand.
+                    val link = http.getVideoUrl(video)
+                    video.copy(videoUrl = link).also { it.url = video.url }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Throwable) {
                     android.util.Log.w("AniyomiSource", "$name: getVideoUrl for '${video.videoTitle}' failed", e)
+                    // Say why the video was dropped; otherwise the test only shows "no playable video".
+                    log("  $name: link for '${video.videoTitle}' failed: ${e::class.java.simpleName}: ${e.message ?: "no message"}")
                     null
                 }
             }
@@ -352,7 +357,7 @@ class AniyomiSourceAdapter(
         } else {
             video
         }
-        return resolved?.copy(initialized = true)
+        return resolved?.copy(initialized = true)?.also { it.url = resolved.url }
     }
 
     private fun hosterLabel(hoster: Hoster): String? =

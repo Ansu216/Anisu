@@ -9,6 +9,7 @@ import com.ansu.anime.anilist.AniListSearchFilters
 import com.ansu.anime.core.model.MediaOrigin
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.Shelf
+import com.ansu.anime.core.util.ContentFilter
 import com.ansu.anime.core.util.ageRatingFor
 import com.ansu.anime.core.util.formatLabel
 import com.ansu.anime.extension.ExtensionManager
@@ -41,7 +42,7 @@ class CatalogRepository(
             async {
                 val label = if (source.id == 1L) "Trending Now" else "From ${source.name}"
                 val page = runCatching { source.getPopularAnime(1) }.getOrNull()
-                Shelf(title = label, items = page?.animes.orEmpty())
+                Shelf(title = label, items = page?.animes.orEmpty().filterNot { ContentFilter.isAdultGenres(it.genres) })
             }
         }.map { it.await() }.filter { it.items.isNotEmpty() }
     }
@@ -55,7 +56,7 @@ class CatalogRepository(
         combined.map { (addon, metas) ->
             Shelf(
                 title = "From ${addon.name}",
-                items = metas.map { it.toSAnime(addon.id, addon.baseUrl) },
+                items = metas.map { it.toSAnime(addon.id, addon.baseUrl) }.filterNot { ContentFilter.isAdultGenres(it.genres) },
             )
         }.filter { it.items.isNotEmpty() }
     }

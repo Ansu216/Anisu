@@ -815,7 +815,7 @@ private fun EpisodeBadge(episode: SEpisode) {
 private fun RelatedPoster(media: AniListMedia, onClick: () -> Unit, badge: String? = null) {
     Column(modifier = Modifier.width(120.dp).clickable(onClick = onClick)) {
         Box(
-            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).posterTransitionOrigin().clip(RoundedCornerShape(10.dp)).background(AnsuColors.BackgroundElevated),
+            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).posterTransitionOrigin(media.posterUrl, 10.dp).clip(RoundedCornerShape(10.dp)).background(AnsuColors.BackgroundElevated),
         ) {
             if (media.posterUrl != null) {
                 AsyncImage(model = media.posterUrl, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())

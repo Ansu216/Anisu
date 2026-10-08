@@ -36,15 +36,13 @@ data class AniListSearchFilters(
     val tags: Set<String> = emptySet(),
     val season: String? = null,
     val year: Int? = null,
-    val showAdult: Boolean = false,
 ) {
     /** How many things differ from the default; drives the badge on the filter button. */
     val activeCount: Int
         get() = formats.size + statuses.size + genres.size + tags.size +
             (if (sort != null) 1 else 0) +
             (if (season != null) 1 else 0) +
-            (if (year != null) 1 else 0) +
-            (if (showAdult) 1 else 0)
+            (if (year != null) 1 else 0)
 
     val isActive: Boolean get() = activeCount > 0
 }

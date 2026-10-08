@@ -1,6 +1,7 @@
 package com.ansu.anime.extension
 
 import android.content.Context
+import com.ansu.anime.core.util.ContentFilter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -36,6 +37,11 @@ data class ExtensionRepoEntry(
     val icon: String? = null,
     val sources: List<ExtensionRepoSource> = emptyList(),
 )
+
+/** True for an 18+ extension: it flags itself `nsfw`, or it or one of its sources has an adult name. */
+fun ExtensionRepoEntry.isAdult(): Boolean =
+    nsfw == 1 || ContentFilter.isAdultName(name) || ContentFilter.isAdultName(pkg) ||
+        sources.any { ContentFilter.isAdultName(it.name) }
 
 /** What a pasted JSON URL turned out to be. */
 sealed class JsonUrlResult {
@@ -135,7 +141,8 @@ class ExtensionRepo(
             runCatching { json.decodeFromJsonElement(ExtensionRepoEntry.serializer(), element.jsonObject) }.getOrNull()
         }
         if (entries.isEmpty() && array.isNotEmpty()) error("The list is not in a supported extension repo format")
-        return entries
+        // The built-in adult filter: 18+ extensions are never listed, so they cannot be installed.
+        return entries.filterNot { it.isAdult() }
     }
 
     /** Base folder an entry's relative `apk` / `icon` paths hang off. */

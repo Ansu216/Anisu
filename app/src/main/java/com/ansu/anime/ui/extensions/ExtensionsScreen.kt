@@ -258,7 +258,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                         Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
                             Text(item.entry.name.removePrefix("Aniyomi: "), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
-                                listOf(item.entry.lang, "v${item.entry.version}", if (item.entry.nsfw == 1) "18+" else null)
+                                listOf(item.entry.lang, "v${item.entry.version}")
                                     .filter { !it.isNullOrBlank() && it != "v" }.joinToString(" · "),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = AnsuColors.TextSecondary,

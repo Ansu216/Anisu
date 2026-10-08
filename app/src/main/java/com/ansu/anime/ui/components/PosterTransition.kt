@@ -6,55 +6,88 @@ import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
+import coil.compose.AsyncImage
+import coil.memory.MemoryCache
+import coil.request.ImageRequest
+import com.ansu.anime.ui.theme.AnsuColors
+import kotlin.math.roundToInt
 
 /**
- * Remembers where the tapped poster was on screen, so the details page can grow out of it when it
- * opens and shrink back into it when the user goes back (the same motion as an app opening from, and
- * closing into, its launcher icon).
+ * Remembers which poster was tapped (where it is on screen, its image and its corner radius), so the
+ * details page can grow out of that exact poster when it opens and shrink back into it when the user
+ * goes back, the same morph as an app opening from, and closing into, its launcher icon.
  *
- * A poster marks itself with [posterTransitionOrigin]; on touch-down that writes its bounds here as the
- * "pending" origin. The details destination claims the pending origin once, when it first composes,
+ * A poster marks itself with [posterTransitionOrigin]; on touch-down that writes its [Origin] here as
+ * the "pending" origin. The details destination claims the pending origin once, when it first composes,
  * and keeps it per back-stack entry so a back press always closes into the poster it opened from.
  */
 object PosterTransition {
-    /** Length of the open and close animation. */
-    const val DURATION_MILLIS = 380
+    /** Open: fast out of the poster, long soft landing (Material "emphasized decelerate"). */
+    const val OPEN_MILLIS = 440
 
-    /** Accelerate-then-settle curve (Material "emphasized"), close to the launcher's open motion. */
-    val Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+    /** Close: a little quicker than the open, as a launcher does. */
+    const val CLOSE_MILLIS = 320
+
+    private val OpenEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
+
+    /** Settles gently into the poster at the end (Material "emphasized"). */
+    private val CloseEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+
+    /** What the details page grows out of. [posterUrl] is drawn inside the growing window. */
+    class Origin(val bounds: Rect, val posterUrl: String?, val cornerRadius: Dp)
 
     /** A tap's touch-down and the navigation it triggers are far closer than this; older origins are stale. */
     private const val PENDING_TTL_MILLIS = 1500L
 
-    private var pending: Rect? = null
+    private var pending: Origin? = null
     private var pendingAt = 0L
-    private val claimed = HashMap<String, Rect?>()
+    private val claimed = HashMap<String, Origin?>()
+
+    internal fun openSpec() = tween<Float>(durationMillis = OPEN_MILLIS, easing = OpenEasing)
+
+    internal fun closeSpec() = tween<Float>(durationMillis = CLOSE_MILLIS, easing = CloseEasing)
 
     /** True when [entryId] has been opened before, i.e. this is a return to it (from the player, say), not a first open. */
     fun hasClaimed(entryId: String): Boolean = claimed.containsKey(entryId)
 
-    fun setPending(bounds: Rect) {
-        pending = bounds
+    fun setPending(origin: Origin) {
+        pending = origin
         pendingAt = SystemClock.uptimeMillis()
     }
 
@@ -67,7 +100,7 @@ object PosterTransition {
      * The origin for the back-stack entry [entryId]: the pending one on first call (consumed), the same
      * value on every later call, or null when the entry was not opened from a poster.
      */
-    fun originFor(entryId: String): Rect? {
+    fun originFor(entryId: String): Origin? {
         if (claimed.containsKey(entryId)) return claimed[entryId]
         val fresh = pending?.takeIf { SystemClock.uptimeMillis() - pendingAt <= PENDING_TTL_MILLIS }
         pending = null
@@ -80,17 +113,25 @@ object PosterTransition {
 
 /**
  * Marks a poster (or any tappable card) as the starting point of the details open/close animation.
- * Place it on the poster image itself. It only observes the touch-down without consuming it, so
- * clicks, scrolling and long-presses behave exactly as before.
+ * Place it on the poster image itself, before its `clip`. It only observes the touch-down without
+ * consuming it, so clicks, scrolling and long-presses behave exactly as before.
+ *
+ * [posterUrl] is the image drawn inside the growing window (pass the same URL the poster shows), and
+ * [cornerRadius] the poster's own corner radius, so the window starts out with exactly the poster's shape.
  */
-fun Modifier.posterTransitionOrigin(): Modifier = composed {
+fun Modifier.posterTransitionOrigin(
+    posterUrl: String? = null,
+    cornerRadius: Dp = 12.dp,
+): Modifier = composed {
     val holder = remember { CoordinatesHolder() }
     this
         .onGloballyPositioned { holder.coordinates = it }
-        .pointerInput(Unit) {
+        .pointerInput(posterUrl, cornerRadius) {
             awaitEachGesture {
                 awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                holder.coordinates?.takeIf { it.isAttached }?.let { PosterTransition.setPending(it.boundsInRoot()) }
+                holder.coordinates?.takeIf { it.isAttached }?.let {
+                    PosterTransition.setPending(PosterTransition.Origin(it.boundsInRoot(), posterUrl, cornerRadius))
+                }
             }
         }
 }
@@ -100,14 +141,45 @@ private class CoordinatesHolder {
     var coordinates: LayoutCoordinates? = null
 }
 
+/** Where the container sits in the window; a plain holder for the same reason. */
+private class OffsetHolder {
+    var offset: Offset = Offset.Zero
+}
+
+/** The window's rounded rectangle. A data class, so an unchanged window does not invalidate the layer. */
+private data class WindowShape(val rect: Rect, val radiusPx: Float) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
+        Outline.Rounded(RoundRect(rect, CornerRadius(radiusPx)))
+}
+
+/** The window at progress [p]: the poster's bounds at 0, the whole container at 1. Container coordinates. */
+private fun windowBounds(origin: Rect?, containerOffset: Offset, containerSize: Size, p: Float): Rect {
+    if (origin == null) return Rect(0f, 0f, containerSize.width, containerSize.height)
+    val from = origin.translate(-containerOffset.x, -containerOffset.y)
+    return Rect(
+        left = lerp(from.left, 0f, p),
+        top = lerp(from.top, 0f, p),
+        right = lerp(from.right, containerSize.width, p),
+        bottom = lerp(from.bottom, containerSize.height, p),
+    )
+}
+
+/** Poster radius -> phone-screen radius by halfway, then the screen's own square edge at full size. */
+private fun windowCornerPx(posterPx: Float, screenPx: Float, p: Float): Float =
+    if (p < 0.5f) lerp(posterPx, screenPx, p / 0.5f) else lerp(screenPx, 0f, (p - 0.5f) / 0.5f)
+
 /**
  * Hosts a details destination so it opens out of the tapped poster and closes back into it.
  *
- * The page is drawn at the poster's size and position and eased up to full screen (with the window
- * corners rounding off and the content fading in), and played in reverse when the destination leaves
- * through a back press. The progress is driven by the destination's own enter/exit transition, so
- * the NavHost keeps the page on screen until the close animation has finished, and a predictive back
- * gesture scrubs it. A destination that was not opened from a poster just cross-fades.
+ * A rounded window with the poster's own shape grows from the poster's exact bounds to the full screen
+ * (and shrinks back the same way). The poster image is drawn in the window at its own aspect ratio, so
+ * it is never stretched, and the page fades in over it. The page itself is never resized or stretched:
+ * it stays at full-screen size and is only revealed by the window, so each frame costs a clip and an
+ * alpha change instead of a re-layout or an off-screen copy of the whole page.
+ *
+ * The progress is driven by the destination's own enter/exit transition, so the NavHost keeps the page
+ * on screen until the close animation has finished, and a predictive back gesture scrubs it. A destination
+ * that was not opened from a poster just cross-fades.
  *
  * [isOnBackStack] must report whether this entry is still on the back stack; it is how a push to
  * another page (the page stays, covered, and must not shrink) is told apart from a back press.
@@ -121,8 +193,10 @@ fun AnimatedContentScope.PosterExpandContainer(
     // Order matters: the first open is read before originFor() records the entry as opened.
     val firstOpen = remember(entryId) { !PosterTransition.hasClaimed(entryId) }
     val origin = remember(entryId) { PosterTransition.originFor(entryId) }
-    val progress by transition.animateFloat(
-        transitionSpec = { tween(durationMillis = PosterTransition.DURATION_MILLIS, easing = PosterTransition.Easing) },
+    val progress = transition.animateFloat(
+        transitionSpec = {
+            if (targetState == EnterExitState.PostExit) PosterTransition.closeSpec() else PosterTransition.openSpec()
+        },
         label = "posterExpand",
     ) { state ->
         when (state) {
@@ -133,33 +207,101 @@ fun AnimatedContentScope.PosterExpandContainer(
             EnterExitState.PostExit -> if (isOnBackStack()) 1f else 0f
         }
     }
-    val windowCornerPx = with(LocalDensity.current) { 28.dp.toPx() }
+    val density = LocalDensity.current
+    val screenCornerPx = with(density) { 28.dp.toPx() }
+    val posterCornerPx = with(density) { (origin?.cornerRadius ?: 0.dp).toPx() }
+    val originBounds = origin?.bounds
+    val container = remember { OffsetHolder() }
+    // The poster cover is only needed until the page is fully open; dropping it then frees its layer.
+    val coverVisible by remember { derivedStateOf { progress.value < 0.999f } }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .onGloballyPositioned { container.offset = it.positionInRoot() }
             .graphicsLayer {
-                val p = progress
-                if (origin == null || size.width <= 0f || size.height <= 0f) {
+                val p = progress.value
+                if (originBounds == null) {
+                    // No poster to grow from: a plain fade, without an off-screen copy of the page.
                     alpha = (p * 2f).coerceIn(0f, 1f)
+                    compositingStrategy = CompositingStrategy.ModulateAlpha
                 } else {
-                    val sx = lerp(origin.width / size.width, 1f, p)
-                    val sy = lerp(origin.height / size.height, 1f, p)
-                    scaleX = sx
-                    scaleY = sy
-                    translationX = lerp(origin.center.x - size.width / 2f, 0f, p)
-                    translationY = lerp(origin.center.y - size.height / 2f, 0f, p)
-                    // The poster's own thumbnail is still visible underneath at the start, so the page
-                    // fades in over the first third instead of popping in.
-                    alpha = (p * 3f).coerceIn(0f, 1f)
-                    // Corner radius is set before the scale is applied, so divide it back out to get
-                    // the same on-screen radius on both axes.
-                    val onScreenRadius = lerp(windowCornerPx, 0f, p)
-                    val radius = onScreenRadius / minOf(sx, sy).coerceAtLeast(0.05f)
-                    shape = RoundedCornerShape(radius.coerceAtMost(size.minDimension / 2f))
+                    val bounds = windowBounds(originBounds, container.offset, size, p)
+                    val radius = windowCornerPx(posterCornerPx, screenCornerPx, p)
+                        .coerceAtMost(minOf(bounds.width, bounds.height) / 2f)
+                    shape = WindowShape(bounds, radius)
                     clip = true
                 }
-            },
+            }
+            .background(AnsuColors.Background),
     ) {
-        content()
+        if (origin != null && origin.posterUrl != null && coverVisible) {
+            PosterCover(
+                posterUrl = origin.posterUrl,
+                posterBounds = origin.bounds,
+                boundsAt = { containerSize ->
+                    windowBounds(origin.bounds, container.offset, containerSize, progress.value)
+                },
+                // Fully there until the page is open, then gone; played backwards on close.
+                alpha = { ((1f - progress.value) / 0.15f).coerceIn(0f, 1f) },
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    if (originBounds != null) {
+                        val p = progress.value
+                        // The page fades in once the window has grown a little, and settles in from just under full size.
+                        alpha = ((p - 0.15f) / 0.45f).coerceIn(0f, 1f)
+                        compositingStrategy = CompositingStrategy.ModulateAlpha
+                        val s = lerp(0.94f, 1f, p)
+                        scaleX = s
+                        scaleY = s
+                    }
+                },
+        ) {
+            content()
+        }
     }
+}
+
+/**
+ * The tapped poster, drawn to fill the growing window with its aspect ratio kept (cropped, never
+ * stretched). Only this one node is re-laid out while the window grows, not the page.
+ */
+@Composable
+private fun PosterCover(
+    posterUrl: String,
+    posterBounds: Rect,
+    boundsAt: (containerSize: Size) -> Rect,
+    alpha: () -> Float,
+) {
+    val context = LocalContext.current
+    // Same URL and size as the poster the user tapped, so it is served from the memory cache with no
+    // flash; the placeholder key covers a poster that was cached at a different size.
+    val request = remember(posterUrl, posterBounds) {
+        ImageRequest.Builder(context)
+            .data(posterUrl)
+            .size(posterBounds.width.roundToInt().coerceAtLeast(1), posterBounds.height.roundToInt().coerceAtLeast(1))
+            .placeholderMemoryCacheKey(MemoryCache.Key(posterUrl))
+            .crossfade(false)
+            .build()
+    }
+    AsyncImage(
+        model = request,
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .layout { measurable, constraints ->
+                val bounds = boundsAt(Size(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat()))
+                val w = bounds.width.roundToInt().coerceAtLeast(1)
+                val h = bounds.height.roundToInt().coerceAtLeast(1)
+                val placeable = measurable.measure(Constraints.fixed(w, h))
+                layout(constraints.maxWidth, constraints.maxHeight) {
+                    placeable.place(bounds.left.roundToInt(), bounds.top.roundToInt())
+                }
+            }
+            .graphicsLayer { this.alpha = alpha() },
+    )
 }

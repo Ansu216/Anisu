@@ -31,8 +31,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -145,7 +143,6 @@ internal fun activeFilterChips(f: AniListSearchFilters): List<ActiveFilter> = bu
     f.year?.let { y -> add(ActiveFilter(y.toString()) { it.copy(year = null) }) }
     f.genres.forEach { g -> add(ActiveFilter(g) { it.copy(genres = it.genres - g) }) }
     f.tags.forEach { t -> add(ActiveFilter(t) { it.copy(tags = it.tags - t) }) }
-    if (f.showAdult) add(ActiveFilter("18+ shown") { it.copy(showAdult = false) })
 }
 
 private fun <T> Set<T>.toggled(value: T): Set<T> = if (value in this) this - value else this + value
@@ -265,29 +262,6 @@ fun SearchFilterSheet(
                     }
                 }
 
-                FilterSection(title = "Content") {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Show 18+ titles", style = MaterialTheme.typography.bodyLarge, color = AnsuColors.TextPrimary)
-                            Text(
-                                "Adult titles are hidden unless this is on.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = AnsuColors.TextTertiary,
-                            )
-                        }
-                        Switch(
-                            checked = draft.showAdult,
-                            onCheckedChange = { draft = draft.copy(showAdult = it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = AnsuColors.OnAccent,
-                                checkedTrackColor = AnsuColors.Accent,
-                                uncheckedThumbColor = AnsuColors.TextSecondary,
-                                uncheckedTrackColor = AnsuColors.SurfaceGlassBase,
-                                uncheckedBorderColor = AnsuColors.StrokeGlass,
-                            ),
-                        )
-                    }
-                }
                 Spacer(Modifier.height(24.dp))
             }
 

@@ -328,7 +328,7 @@ private fun ListItemRow(media: AniListMedia, onDetails: () -> Unit) {
                 modifier = Modifier
                     .width(64.dp)
                     .height(92.dp)
-                    .posterTransitionOrigin()
+                    .posterTransitionOrigin(media.posterUrl, 10.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(AnsuColors.BackgroundElevated),
             )

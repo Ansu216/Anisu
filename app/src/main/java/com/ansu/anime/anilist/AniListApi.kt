@@ -4,6 +4,7 @@ import com.ansu.anime.core.net.ApiErrorKind
 import com.ansu.anime.core.net.ApiException
 import com.ansu.anime.core.net.httpApiException
 import com.ansu.anime.core.net.toApiException
+import com.ansu.anime.core.util.ContentFilter
 import com.ansu.anime.data.prefs.TitleLanguage
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -111,7 +112,7 @@ class AniListApi(
         val gql = """
             query (${'$'}page: Int, ${'$'}search: String) {
               Page(page: ${'$'}page, perPage: 20) {
-                media(type: ANIME, search: ${'$'}search) { ...mediaFields }
+                media(type: ANIME, search: ${'$'}search, isAdult: false) { ...mediaFields }
               }
             }
             $MEDIA_FIELDS
@@ -153,7 +154,8 @@ class AniListApi(
                 ?.let { list -> add("tag_in: [${list.joinToString { "\"$it\"" }}]") }
             filters.season?.takeIf { safeLiteral(it) }?.let { add("season: $it") }
             filters.year?.let { add("seasonYear: $it") }
-            if (!filters.showAdult) add("isAdult: false")
+            add("isAdult: false")
+            add("genre_not_in: [\"Hentai\"]")
         }.joinToString(", ")
         val searchVar = if (hasText) ", ${'$'}search: String" else ""
         val gql = """
@@ -186,7 +188,7 @@ class AniListApi(
         val gql = """
             query (${'$'}page: Int) {
               Page(page: ${'$'}page, perPage: 20) {
-                media(type: ANIME, sort: TRENDING_DESC) { ...mediaFields }
+                media(type: ANIME, sort: TRENDING_DESC, isAdult: false) { ...mediaFields }
               }
             }
             $MEDIA_FIELDS
@@ -200,7 +202,7 @@ class AniListApi(
         val gql = """
             query (${'$'}page: Int, ${'$'}season: MediaSeason, ${'$'}seasonYear: Int) {
               Page(page: ${'$'}page, perPage: 20) {
-                media(type: ANIME, season: ${'$'}season, seasonYear: ${'$'}seasonYear, sort: POPULARITY_DESC) { ...mediaFields }
+                media(type: ANIME, season: ${'$'}season, seasonYear: ${'$'}seasonYear, sort: POPULARITY_DESC, isAdult: false) { ...mediaFields }
               }
             }
             $MEDIA_FIELDS
@@ -227,6 +229,7 @@ class AniListApi(
             status?.let { add("status: $it") }
             if (formats.isNotEmpty()) add("format_in: [${formats.joinToString()}]")
             add("isAdult: false")
+            add("genre_not_in: [\"Hentai\"]")
         }.joinToString(", ")
         val gql = """
             query (${'$'}page: Int, ${'$'}perPage: Int) {
@@ -277,6 +280,7 @@ class AniListApi(
                 bannerImage
                 description(asHtml: false)
                 genres
+                isAdult
                 averageScore
                 episodes
                 format
@@ -307,7 +311,7 @@ class AniListApi(
                 }
                 recommendations(perPage: 8, sort: RATING_DESC) {
                   nodes {
-                    mediaRecommendation { id title { romaji english } coverImage { extraLarge } bannerImage genres averageScore episodes startDate { year } }
+                    mediaRecommendation { id title { romaji english } coverImage { extraLarge } bannerImage genres averageScore episodes startDate { year } isAdult }
                   }
                 }
               }
@@ -546,6 +550,7 @@ class AniListApi(
     private fun JsonObject.toMedia(): AniListMedia? {
         val idValue = this["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
         val title = pickTitle(this["title"] as? JsonObject) ?: return null
+        if (isAdultMedia()) return null
         return AniListMedia(
             id = idValue,
             title = title,
@@ -560,6 +565,13 @@ class AniListApi(
             isAdult = this["isAdult"]?.jsonPrimitive?.content == "true",
             altTitles = allTitles(),
         )
+    }
+
+    /** True for an AniList title flagged adult or tagged Hentai; the built-in filter drops these everywhere. */
+    private fun JsonObject.isAdultMedia(): Boolean {
+        if (this["isAdult"]?.jsonPrimitive?.contentOrNull == "true") return true
+        val genres = this["genres"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
+        return ContentFilter.isAdultGenres(genres)
     }
 
     /** Every name AniList has for the show (romaji, English, native, synonyms), whichever language is displayed. */
@@ -577,6 +589,7 @@ class AniListApi(
     private fun JsonObject.toMediaDetails(): AniListMediaDetails? {
         val idValue = this["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
         val title = pickTitle(this["title"] as? JsonObject) ?: return null
+        if (isAdultMedia()) return null
 
         // Every one of these lists is drawn with the row's own `id` as the Compose key, and a
         // LazyRow/LazyColumn throws `Key ... was already used` when two items share one. AniList

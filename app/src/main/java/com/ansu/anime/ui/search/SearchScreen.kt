@@ -436,7 +436,7 @@ private fun SearchGridCard(anime: SAnime, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(2f / 3f)
-            .posterTransitionOrigin()
+            .posterTransitionOrigin(anime.posterUrl, 14.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(AnsuColors.BackgroundElevated)
             .clickable(onClick = onClick),
@@ -487,7 +487,7 @@ private fun SearchListItem(anime: SAnime, onClick: () -> Unit) {
             modifier = Modifier
                 .width(96.dp)
                 .aspectRatio(2f / 3f)
-                .posterTransitionOrigin()
+                .posterTransitionOrigin(anime.posterUrl, 12.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(AnsuColors.Background),
         ) {

@@ -6,6 +6,7 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import androidx.core.content.pm.PackageInfoCompat
+import com.ansu.anime.core.util.ContentFilter
 import com.ansu.anime.extension.aniyomi.AniyomiExtensionLoader
 import com.ansu.anime.extension.api.AnimeCatalogueSource
 import dalvik.system.PathClassLoader
@@ -64,6 +65,8 @@ class ExtensionManager(private val context: Context) {
         /** Feature + metadata names Aniyomi/Keiyoushi APKs declare, so they can at least be recognised. */
         const val ANIYOMI_FEATURE = "tachiyomi.animeextension"
         const val ANIYOMI_METADATA_CLASS = "tachiyomi.animeextension.class"
+        const val ANIYOMI_METADATA_NSFW = "tachiyomi.animeextension.nsfw"
+        const val ANIYOMI_METADATA_CONTENT_WARNING = "aniyomix.contentWarning"
 
         /** Extension files downloaded inside Ansu are kept as `<package>.ext` in this folder of the app's private storage. */
         private const val PRIVATE_DIR = "exts"
@@ -184,6 +187,10 @@ class ExtensionManager(private val context: Context) {
         val isExtension = info.reqFeatures?.any { it.name == ANIYOMI_FEATURE } == true ||
             !meta?.getString(METADATA_SOURCE_CLASS).isNullOrBlank()
         if (!isExtension) error("The downloaded file is not an anime extension")
+        if (isAdultExtension(info)) {
+            apk.delete()
+            error("18+ extensions are blocked by the built-in content filter")
+        }
 
         val target = privateFile(info.packageName)
         if (target.exists()) {
@@ -197,21 +204,63 @@ class ExtensionManager(private val context: Context) {
 
         val loaded = reloadAll()
         loaded.firstOrNull { it.packageName == info.packageName }
-            ?: error("Extension was saved but could not be loaded")
+            ?: error("Extension could not be loaded, or was blocked by the built-in 18+ content filter")
     }
 
-    /** Re-scans the device and the private folder and (re)loads every discoverable extension. Call off the main thread. */
+    /**
+     * Re-scans the device and the private folder and (re)loads every discoverable extension. Call off the main thread.
+     * The built-in 18+ filter applies here: an adult extension is never loaded, so none of its sources reach Home,
+     * title matching or the player. One that was downloaded inside Ansu is deleted; one installed on the phone
+     * itself cannot be removed silently, so it is only skipped.
+     */
     fun reloadAll(): List<InstalledExtension> {
         val privatePackages = findPrivateExtensions()
         val privateNames = privatePackages.map { it.packageName }.toSet()
-        val loaded = privatePackages.map { loadExtension(it, isPrivate = true) } +
-            findAvailableExtensions().filter { it.packageName !in privateNames }.map { loadExtension(it) }
+        val candidates = privatePackages.map { it to true } +
+            findAvailableExtensions().filter { it.packageName !in privateNames }.map { it to false }
+        val loaded = candidates.mapNotNull { (pkg, isPrivate) ->
+            if (isAdultExtension(pkg)) {
+                if (isPrivate) deletePrivate(pkg.packageName)
+                return@mapNotNull null
+            }
+            val ext = loadExtension(pkg, isPrivate = isPrivate)
+            // Second pass on what actually loaded: the loader's own NSFW reading and the sources' names.
+            if (ext.isNsfw || ext.sources.any { ContentFilter.isAdultName(it.name) }) {
+                if (isPrivate) deletePrivate(pkg.packageName)
+                return@mapNotNull null
+            }
+            ext
+        }
         val next = LinkedHashMap<Long, AnimeCatalogueSource>()
         builtInSources.forEach { next[it.id] = it }
         loaded.forEach { ext -> ext.sources.forEach { next[it.id] = it } }
         sourcesById = next
         _extensions.update { loaded }
         return loaded
+    }
+
+    /** True for an extension that flags itself 18+ in its manifest, or whose package or app name says so. */
+    private fun isAdultExtension(info: PackageInfo): Boolean {
+        val appInfo = info.applicationInfo
+        val meta = appInfo?.metaData
+        if (meta != null && (
+                meta.getBoolean(METADATA_NSFW, false) ||
+                    meta.getInt(ANIYOMI_METADATA_NSFW, 0) == 1 ||
+                    meta.getInt(ANIYOMI_METADATA_CONTENT_WARNING, 0) > 0
+                )
+        ) return true
+        val label = appInfo?.let { runCatching { context.packageManager.getApplicationLabel(it).toString() }.getOrNull() }
+        return ContentFilter.isAdultName(info.packageName) || ContentFilter.isAdultName(label)
+    }
+
+    /** Deletes a private extension's stored APK and unpacked libraries. */
+    private fun deletePrivate(packageName: String) {
+        val file = privateFile(packageName)
+        if (file.exists()) {
+            file.setWritable(true)
+            file.delete()
+        }
+        libsDir(packageName).deleteRecursively()
     }
 
     private fun loadExtension(pkgInfo: PackageInfo, isPrivate: Boolean = false): InstalledExtension {
@@ -292,11 +341,8 @@ class ExtensionManager(private val context: Context) {
 
     /** Removes an extension: a private one is simply deleted, a phone-installed one goes through Android's uninstall prompt. */
     fun uninstall(packageName: String) {
-        val file = privateFile(packageName)
-        if (file.exists()) {
-            file.setWritable(true)
-            file.delete()
-            libsDir(packageName).deleteRecursively()
+        if (privateFile(packageName).exists()) {
+            deletePrivate(packageName)
             reloadAll()
             return
         }
