@@ -15,6 +15,11 @@ val ciVersionName = (project.findProperty("versionName") as String?) ?: "0.1.0"
 // this file via gradle.properties / local command line: -PANILIST_CLIENT_ID=12345
 val aniListClientId = (project.findProperty("ANILIST_CLIENT_ID") as String?) ?: "YOUR_ANILIST_CLIENT_ID"
 
+// Optional TMDB key (free, https://www.themoviedb.org/settings/api) used only to find ENGLISH title logos.
+// Leave it empty and the app shows the plain English title instead of a Japanese logo in English mode.
+// Set it via gradle.properties / -PTMDB_API_KEY=... / the TMDB_API_KEY environment variable.
+val tmdbApiKey = (project.findProperty("TMDB_API_KEY") as String?) ?: System.getenv("TMDB_API_KEY") ?: ""
+
 android {
     namespace = "com.ansu.anime"
     compileSdk = 35
@@ -29,6 +34,7 @@ android {
         // Fill these in from https://anilist.co/settings/developer
         // (or override in a non-committed gradle.properties / local.properties entry).
         buildConfigField("String", "ANILIST_CLIENT_ID", "\"$aniListClientId\"")
+        buildConfigField("String", "TMDB_API_KEY", "\"$tmdbApiKey\"")
         buildConfigField("String", "ANILIST_REDIRECT_URI", "\"ansu://anilist-auth\"")
     }
 

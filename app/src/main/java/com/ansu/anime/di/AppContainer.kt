@@ -96,7 +96,7 @@ class AppContainer(context: Context) {
 
     val episodeMetadataRepository: EpisodeMetadataRepository = EpisodeMetadataRepository(okHttpClient, aniListRepository, apiErrorHandler)
 
-    val artworkRepository: ArtworkRepository = ArtworkRepository(okHttpClient, apiErrorHandler)
+    val artworkRepository: ArtworkRepository = ArtworkRepository(okHttpClient, apiErrorHandler, com.ansu.anime.BuildConfig.TMDB_API_KEY)
 
     val selectionHolder: SelectionHolder = SelectionHolder()
 

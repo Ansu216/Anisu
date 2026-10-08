@@ -76,7 +76,9 @@ import com.ansu.anime.core.util.SynopsisBlock
 import com.ansu.anime.core.util.formatEpisodeNumber
 import com.ansu.anime.core.util.parseSynopsis
 import com.ansu.anime.data.repository.ListStatus
+import com.ansu.anime.data.repository.logoFor
 import com.ansu.anime.data.repository.pickHeroImage
+import com.ansu.anime.data.repository.seasonLabel
 import com.ansu.anime.data.prefs.TitleLanguage
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.FrostedGlassCard
@@ -153,9 +155,15 @@ fun DetailsScreen(
                 // movies and specials use their own banner/cover so they no longer all look the same.
                 // The title comes from AniList's details in the chosen language once they have loaded.
                 val shownTitle = details?.title ?: anime?.title.orEmpty()
+                // English without a TMDB English logo: show AniList's own banner (else cover) as it is, with
+                // no logo or title drawn over it. Those images usually carry the show's English lettering.
+                val plainAniListArt = titleLanguage == TitleLanguage.ENGLISH && state.artwork.englishLogoUrl == null
                 DetailsHero(
                     title = shownTitle,
-                    imageUrl = pickHeroImage(
+                    showTitle = !plainAniListArt,
+                    imageUrl = if (plainAniListArt) {
+                        details?.bannerUrl ?: anime?.bannerUrl ?: details?.posterUrl ?: anime?.posterUrl
+                    } else pickHeroImage(
                         title = shownTitle,
                         format = details?.format ?: anime?.format,
                         hasPrequel = details?.hasPrequel == true,
@@ -167,10 +175,22 @@ fun DetailsScreen(
                         },
                         artwork = state.artwork,
                     ),
-                    logoUrl = state.artwork.logoUrl,
+                    logoUrl = state.artwork.logoFor(titleLanguage),
                     lookupDone = state.artworkLoaded,
                     onBack = { navController.popBackStack() },
                 )
+            }
+
+            // Which season (or movie/OVA) this page is, right under the hero's title.
+            seasonLabel(
+                title = details?.title ?: anime?.title.orEmpty(),
+                format = details?.format ?: anime?.format,
+                hasPrequel = details?.hasPrequel == true,
+                aniZipSeason = state.artwork.season,
+            )?.let { label ->
+                item {
+                    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) { GenreChip(label) }
+                }
             }
 
             item {
@@ -376,12 +396,16 @@ fun DetailsScreen(
  * one exists and plain text otherwise.
  */
 @Composable
-private fun DetailsHero(title: String, imageUrl: String?, logoUrl: String?, lookupDone: Boolean, onBack: () -> Unit) {
+private fun DetailsHero(title: String, showTitle: Boolean, imageUrl: String?, logoUrl: String?, lookupDone: Boolean, onBack: () -> Unit) {
+    // No picture (or it failed to load) means no lettering either, so the plain text title is drawn.
+    var artFailed by remember(imageUrl) { mutableStateOf(false) }
+    val titleShown = showTitle || imageUrl == null || artFailed
     // Taller than the art's 16:9 so the fade has room; the banner melts into the page like the home hero.
     Box(modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f)) {
         AsyncImage(
             model = imageUrl,
             contentDescription = title,
+            onError = { artFailed = true },
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize().background(AnsuColors.BackgroundElevated),
         )
@@ -416,7 +440,7 @@ private fun DetailsHero(title: String, imageUrl: String?, logoUrl: String?, look
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = AnsuColors.TextPrimary)
         }
-        TitleLogo(
+        if (titleShown) TitleLogo(
             title = title,
             logoUrl = logoUrl,
             lookupDone = lookupDone,

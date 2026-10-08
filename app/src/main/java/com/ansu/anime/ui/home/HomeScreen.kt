@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ansu.anime.data.repository.logoFor
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -70,6 +72,11 @@ fun HomeScreen(
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
+    // Stable until the language changes, so the carousel re-resolves its logos exactly then.
+    val logoLookup: suspend (Int) -> String? = remember(titleLanguage) {
+        { id -> container.artworkRepository.get(id).logoFor(titleLanguage) }
+    }
     val trending = state.feed(AniListFeed.TRENDING_NOW).items
     // Every way into a title goes through here, so one tap line is logged instead of five.
     val selectAnime: (SAnime) -> Unit = { anime ->
@@ -110,7 +117,7 @@ fun HomeScreen(
                     HeroCarousel(
                         items = heroSource,
                         onClick = selectAnime,
-                        logoFor = { id -> container.artworkRepository.get(id).logoUrl },
+                        logoFor = logoLookup,
                         onToggleFavourite = { anime ->
                             anime.anilistId?.let { id ->
                                 scope.launch {

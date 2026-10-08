@@ -354,7 +354,7 @@ fun HeroCarousel(
     val pagerState = rememberPagerState(pageCount = { shown.size })
     val likedIds = remember { mutableStateMapOf<String, Boolean>() }
     // AniList id -> logo URL. A key with a null value means "looked up, no logo", so it is not asked twice.
-    val logos = remember { mutableStateMapOf<Int, String?>() }
+    val logos = remember(logoFor) { mutableStateMapOf<Int, String?>() }
     
     // Auto-rotate: the timer restarts after every settled page (so a manual swipe gets a full pause)
     // and never fires while a finger is on the pager.
@@ -366,7 +366,7 @@ fun HeroCarousel(
         }
     }
 
-    LaunchedEffect(shown) {
+    LaunchedEffect(shown, logoFor) {
         shown.forEach { anime ->
             val id = anime.anilistId ?: return@forEach
             if (!logos.containsKey(id)) launch { logos[id] = logoFor(id) }

@@ -25,6 +25,9 @@ import java.util.concurrent.ConcurrentHashMap
  * that is usually sharper than AniList's cover, [backdropUrl] a 16:9 picture and [bannerUrl] a
  * very wide strip.
  *
+ * [logoUrl] is whatever clearlogo ani.zip lists first (often Japanese); [englishLogoUrl] is the English
+ * one from TMDB, only filled in when a TMDB key is configured.
+ *
  * [backdropUrl] and [bannerUrl] come from ani.zip and describe the whole series, so every season of
  * a show gets the same picture. [entryCoverUrl] is a wide cover for this exact AniList entry (one
  * season, one movie) and [season] is the season number ani.zip maps the entry to; together they let
@@ -37,9 +40,42 @@ data class AnimeArtwork(
     val bannerUrl: String? = null,
     val entryCoverUrl: String? = null,
     val season: Int? = null,
+    /** TMDB's English-language title logo; null without a TMDB key or when TMDB has no English one. */
+    val englishLogoUrl: String? = null,
+    /** TMDB id and kind from ani.zip's mapping, used to look [englishLogoUrl] up. */
+    val tmdbId: Int? = null,
+    val tmdbIsMovie: Boolean = false,
 )
 
+/**
+ * The title logo for the chosen language. English shows only a real English logo (TMDB) and otherwise
+ * null, so the plain English text title is drawn instead of a Japanese-lettered logo; Romaji keeps
+ * ani.zip's logo as before.
+ */
+fun AnimeArtwork.logoFor(language: com.ansu.anime.data.prefs.TitleLanguage): String? = when (language) {
+    com.ansu.anime.data.prefs.TitleLanguage.ENGLISH -> englishLogoUrl
+    com.ansu.anime.data.prefs.TitleLanguage.ROMAJI -> logoUrl
+}
+
 private val SEASON_IN_TITLE = Regex("""(\d+)(?:st|nd|rd|th)\s+Season|Season\s+(\d+)|\bPart\s+(\d+)|\bCour\s+(\d+)""", RegexOption.IGNORE_CASE)
+
+/**
+ * The small chip under a details title: "Season N" for a second or later season, plus "Part N" when the
+ * title names a part or cour, joined as "Season 2 · Part 2". A first season with no part, and every
+ * movie, OVA, ONA, special or music entry, gets no chip (null). The season number is ani.zip's, else
+ * the "Season N" / "2nd Season" in the title, else unknown (a later entry with no number shows no
+ * season rather than a wrong one).
+ */
+fun seasonLabel(title: String, format: String?, hasPrequel: Boolean, aniZipSeason: Int?): String? {
+    if (format != null && !format.uppercase().startsWith("TV")) return null
+    val fromTitle = Regex("""(\d+)(?:st|nd|rd|th)\s+Season|Season\s+(\d+)""", RegexOption.IGNORE_CASE)
+        .find(title)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() }?.toIntOrNull()
+    val season = (aniZipSeason ?: fromTitle)?.takeIf { it > 1 }
+    val part = Regex("""\b(?:Part|Cour)\s+(\d+)""", RegexOption.IGNORE_CASE)
+        .find(title)?.groupValues?.get(1)?.toIntOrNull()
+    return listOfNotNull(season?.let { "Season $it" }, part?.let { "Part $it" })
+        .takeIf { it.isNotEmpty() }?.joinToString(" · ")
+}
 
 /**
  * The hero picture for one details page, chosen per entry instead of per title.
@@ -81,6 +117,7 @@ fun pickHeroImage(
 class ArtworkRepository(
     private val client: OkHttpClient,
     private val errors: ApiErrorHandler,
+    private val tmdbApiKey: String = "",
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val cache = ConcurrentHashMap<Int, AnimeArtwork>()
@@ -101,7 +138,44 @@ class ArtworkRepository(
     private suspend fun fetch(anilistId: Int): AnimeArtwork = coroutineScope {
         val cover = async { fetchEntryCover(anilistId) }
         val base = fetchAniZip(anilistId)
-        base.copy(entryCoverUrl = cover.await())
+        val englishLogo = base.tmdbId?.let { fetchTmdbEnglishLogo(it, base.tmdbIsMovie) }
+        base.copy(entryCoverUrl = cover.await(), englishLogoUrl = englishLogo)
+    }
+
+    /**
+     * The best English-language logo TMDB has for [tmdbId]; null with no key, no English logo or any
+     * failure (the UI then shows the plain English title). SVG logos are skipped, Coil cannot draw them here.
+     */
+    private suspend fun fetchTmdbEnglishLogo(tmdbId: Int, isMovie: Boolean): String? = withContext(Dispatchers.IO) {
+        if (tmdbApiKey.isBlank()) return@withContext null
+        try {
+            val kind = if (isMovie) "movie" else "tv"
+            val builder = "https://api.themoviedb.org/3/$kind/$tmdbId/images".toHttpUrl().newBuilder()
+                .addQueryParameter("include_image_language", "en")
+            // A long "eyJ..." value is TMDB's v4 read token; the short hex one is the v3 key.
+            val isToken = tmdbApiKey.startsWith("eyJ")
+            if (!isToken) builder.addQueryParameter("api_key", tmdbApiKey)
+            val request = Request.Builder().url(builder.build())
+                .apply { if (isToken) header("Authorization", "Bearer $tmdbApiKey") }
+                .build()
+            val text = client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use ""
+                response.body.string()
+            }
+            if (text.isBlank()) return@withContext null
+            val logos = json.parseToJsonElement(text).jsonObject["logos"] as? JsonArray ?: return@withContext null
+            val best = logos.asSequence()
+                .mapNotNull { it as? JsonObject }
+                .filter { (it["iso_639_1"] as? JsonPrimitive)?.contentOrNull == "en" }
+                .filter { (it["file_path"] as? JsonPrimitive)?.contentOrNull?.endsWith(".svg", ignoreCase = true) == false }
+                .maxByOrNull { (it["vote_average"] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull() ?: 0.0 }
+                ?: return@withContext null
+            (best["file_path"] as? JsonPrimitive)?.contentOrNull?.let { "https://image.tmdb.org/t/p/w500$it" }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null // Optional extra: without it the UI falls back to the plain English title.
+        }
     }
 
     /** Wide cover of this exact AniList entry from Kitsu's id mapping; null when Kitsu has none or fails. */
@@ -164,7 +238,13 @@ class ArtworkRepository(
             else -> null
         }
 
+        val mappings = json.parseToJsonElement(text).jsonObject["mappings"] as? JsonObject
+        val tmdbId = (mappings?.get("themoviedb_id") as? JsonPrimitive)?.intOrNull
+        val isMovie = (mappings?.get("type") as? JsonPrimitive)?.contentOrNull.equals("MOVIE", ignoreCase = true)
+
         AnimeArtwork(
+            tmdbId = tmdbId,
+            tmdbIsMovie = isMovie,
             season = season,
             logoUrl = urlOf("clearlogo") ?: urlOf("logo"),
             posterUrl = urlOf("poster"),
