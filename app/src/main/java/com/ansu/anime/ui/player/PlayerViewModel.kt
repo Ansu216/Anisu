@@ -130,6 +130,14 @@ class PlayerViewModel(
 
     // Declared before init{}: loadSources() runs from init and assigns these.
     private var loadJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Where the next stream should start, in ms. Set from the saved continue-watching point when an episode opens,
+     * and from the live position when the source is switched, so neither a resume nor a source change restarts
+     * the episode. It is handed to the player together with the media (a seek issued before the media is set
+     * is thrown away by the player) and cleared once used.
+     */
+    private var startPositionMs: Long = 0L
     private var graceJob: kotlinx.coroutines.Job? = null
 
     /** Sources asked for the current episode; lets the first pick wait briefly for a higher-priority one. */
@@ -221,8 +229,12 @@ class PlayerViewModel(
             fun startNow() {
                 graceJob?.cancel()
                 first = false
-                selectSource(collected.first())
-                resumeIfSaved(anime, episode)
+                viewModelScope.launch {
+                    startPositionMs = savedPositionMs(anime, episode)
+                    // The person may have moved to another episode while the saved point was being read.
+                    if (_uiState.value.episode?.id != episode.id || collected.isEmpty()) return@launch
+                    selectSource(collected.first())
+                }
             }
             val onBatch: (List<PlayableSource>) -> Unit = { batch ->
                 val fresh = batch.filter { b -> b.url.isBlank() || collected.none { it.url == b.url } }
@@ -308,17 +320,12 @@ class PlayerViewModel(
         }
     }
 
-    private fun resumeIfSaved(anime: SAnime, episode: SEpisode) {
-        viewModelScope.launch {
-            val resumePoint = anime.anilistId?.let { continueWatchingRepository.resumePointFor(it) }
-            val sameEpisode = resumePoint != null &&
-                (resumePoint.episodeId == episode.id || resumePoint.episodeNumber == episode.episodeNumber)
-            val finished = resumePoint != null && resumePoint.durationSeconds > 0 &&
-                resumePoint.positionSeconds >= resumePoint.durationSeconds * 0.9
-            if (resumePoint != null && sameEpisode && !finished && resumePoint.positionSeconds > 5) {
-                player.seekTo(resumePoint.positionSeconds * 1000)
-            }
-        }
+    /** The saved position for this episode in ms, or 0 when it was not started, is finished, or is another episode. */
+    private suspend fun savedPositionMs(anime: SAnime, episode: SEpisode): Long {
+        val resumePoint = anime.anilistId?.let { continueWatchingRepository.resumePointFor(it) } ?: return 0L
+        val sameEpisode = resumePoint.episodeId == episode.id || resumePoint.episodeNumber == episode.episodeNumber
+        val finished = resumePoint.durationSeconds > 0 && resumePoint.positionSeconds >= resumePoint.durationSeconds * 0.9
+        return if (sameEpisode && !finished && resumePoint.positionSeconds > 5) resumePoint.positionSeconds * 1000 else 0L
     }
 
     private suspend fun resolveSources(anime: SAnime, episode: SEpisode, onBatch: (List<PlayableSource>) -> Unit) {
@@ -408,6 +415,8 @@ class PlayerViewModel(
     fun selectSource(source: PlayableSource) {
         diagnostics?.log(LogCategory.PLAYBACK, "Source selected: ${source.label} → ${source.url.ifBlank { "(resolved when played)" }}")
         _uiState.value = _uiState.value.copy(selectedSource = source)
+        // Switching source (or falling back to the next one) carries on from where the video is now.
+        if (player.mediaItemCount > 0 && player.currentPosition > 2_000L) startPositionMs = player.currentPosition
 
         // A URL that does not name its container (most extension streams) is asked what it is, instead of guessed.
         playbackJob?.cancel()
@@ -523,8 +532,10 @@ class PlayerViewModel(
             }
             .build()
         
+        val startMs = if (startPositionMs > 0L) startPositionMs else C.TIME_UNSET
+        startPositionMs = 0L
         if (source.headers.isEmpty() && source.audioTracks.isEmpty()) {
-            player.setMediaItem(mediaItem)
+            player.setMediaItem(mediaItem, startMs)
         } else {
             // Extension sites usually insist on a Referer/User-Agent; send what the source asked for.
             val dataSource = DefaultHttpDataSource.Factory()
@@ -541,7 +552,7 @@ class PlayerViewModel(
                         .build(),
                 )
             }
-            player.setMediaSource(if (audio.isEmpty()) main else MergingMediaSource(main, *audio.toTypedArray()))
+            player.setMediaSource(if (audio.isEmpty()) main else MergingMediaSource(main, *audio.toTypedArray()), startMs)
         }
         player.prepare()
         player.playWhenReady = true
@@ -761,6 +772,7 @@ class PlayerViewModel(
         playbackJob?.cancel()
         player.stop()
         player.clearMediaItems()
+        startPositionMs = 0L
         selectionHolder.selectEpisode(target)
         _uiState.value = _uiState.value.copy(
             episode = target,

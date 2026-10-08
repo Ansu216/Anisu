@@ -4,6 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
@@ -176,7 +184,9 @@ fun NavBarSurface(
     val activeIndex = (pillLeft / slotPx).roundToInt().coerceIn(0, barItems.size - 1)
 
     val shiftPx = with(LocalDensity.current) { NavBarDragShift.toPx() }
-    FrostedGlassCard(
+    // The bar's glass is clipped to its shape, but the held pill has to swell past the bar's edges, so the pill and
+    // the icons are drawn on top of the glass instead of inside it.
+    Box(
         // While the pill is held the whole bar leans a little toward it and swells slightly, and eases
         // back when it is released. Everything scales with holdAmount, so a resting bar is untouched.
         modifier = modifier.graphicsLayer {
@@ -185,10 +195,14 @@ fun NavBarSurface(
             scaleX = 1f + 0.04f * holdAmount
             scaleY = 1f + 0.06f * holdAmount
         },
-        shape = shape,
-        tintAlpha = navBarTintAlpha(frostiness),
-        blurRadius = navBarBlurRadius(blur),
     ) {
+        FrostedGlassCard(
+            shape = shape,
+            tintAlpha = navBarTintAlpha(frostiness),
+            blurRadius = navBarBlurRadius(blur),
+        ) {
+            Spacer(Modifier.size(width = NavSlotWidth * barItems.size + 10.dp, height = NavSlotHeight + 10.dp))
+        }
         Box(
             modifier = Modifier
                 .padding(5.dp)
@@ -222,18 +236,46 @@ fun NavBarSurface(
                     }
                 },
         ) {
-            // Translucent "glass" pill marking the current tab; it slides between tabs and swells while held.
+            // Translucent "glass" pill marking the current tab. Held, it swells wider and taller than the bar
+            // itself (drawn, not clipped), brightens like a lens, and follows the finger.
             Box(
                 modifier = Modifier
                     .offset { IntOffset(pillLeft.roundToInt(), 0) }
                     .size(width = NavSlotWidth, height = NavSlotHeight)
-                    .graphicsLayer {
-                        scaleX = 1f + 0.2f * holdAmount
-                        scaleY = 1f + 0.22f * holdAmount
-                    }
-                    .clip(shape)
-                    .background(AnsuColors.Accent.copy(alpha = 0.16f + 0.14f * holdAmount))
-                    .border(1.dp, AnsuColors.Accent.copy(alpha = 0.14f + 0.1f * holdAmount), shape),
+                    .drawBehind {
+                        val h = holdAmount
+                        val extraW = 28.dp.toPx() * h
+                        val extraH = 26.dp.toPx() * h
+                        val w = size.width + extraW
+                        val ht = size.height + extraH
+                        val topLeft = Offset(-extraW / 2f, -extraH / 2f)
+                        val radius = CornerRadius(minOf(w, ht) * roundness.coerceIn(0f, 1f) / 2f)
+                        drawRoundRect(
+                            brush = Brush.verticalGradient(
+                                listOf(
+                                    AnsuColors.Accent.copy(alpha = 0.16f + 0.14f * h),
+                                    AnsuColors.Accent.copy(alpha = 0.10f + 0.08f * h),
+                                ),
+                            ),
+                            topLeft = topLeft,
+                            size = Size(w, ht),
+                            cornerRadius = radius,
+                        )
+                        // Soft white sheen so the swollen pill reads as glass over the bar.
+                        drawRoundRect(
+                            color = Color.White.copy(alpha = 0.12f * h),
+                            topLeft = topLeft,
+                            size = Size(w, ht),
+                            cornerRadius = radius,
+                        )
+                        drawRoundRect(
+                            color = Color.White.copy(alpha = 0.10f + 0.22f * h),
+                            topLeft = topLeft,
+                            size = Size(w, ht),
+                            cornerRadius = radius,
+                            style = Stroke(width = 1.dp.toPx()),
+                        )
+                    },
             )
             Row {
                 barItems.forEachIndexed { index, item ->
@@ -252,7 +294,14 @@ fun NavBarSurface(
                             imageVector = item.icon,
                             contentDescription = item.label,
                             tint = if (index == activeIndex) AnsuColors.Accent else AnsuColors.TextTertiary,
-                            modifier = Modifier.size(24.dp),
+                            modifier = Modifier
+                                .size(24.dp)
+                                .graphicsLayer {
+                                    // The icon under the held pill is magnified, like the lens is enlarging it.
+                                    val scale = if (index == activeIndex) 1f + 0.3f * holdAmount else 1f
+                                    scaleX = scale
+                                    scaleY = scale
+                                },
                         )
                     }
                 }

@@ -61,10 +61,17 @@ object PosterTransition {
     /** Open: fast out of the poster, long soft landing (Material "emphasized decelerate"). */
     const val OPEN_MILLIS = 440
 
+    /**
+     * The details page is heavy: composing it on the first frame eats a big, variable chunk of the animation's
+     * clock, so the window used to appear already half open. The open therefore waits this long before it starts
+     * moving, which gives that first frame time to finish; the close has nothing to compose and needs no wait.
+     */
+    private const val OPEN_START_DELAY_MILLIS = 90
+
     /** Close: a little quicker than the open, as a launcher does. */
     const val CLOSE_MILLIS = 320
 
-    private val OpenEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
+    private val OpenEasing = CubicBezierEasing(0.3f, 0f, 0f, 1f)
 
     /** Settles gently into the poster at the end (Material "emphasized"). */
     private val CloseEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
@@ -79,7 +86,8 @@ object PosterTransition {
     private var pendingAt = 0L
     private val claimed = HashMap<String, Origin?>()
 
-    internal fun openSpec() = tween<Float>(durationMillis = OPEN_MILLIS, easing = OpenEasing)
+    internal fun openSpec(delayed: Boolean = false) =
+        tween<Float>(durationMillis = OPEN_MILLIS, delayMillis = if (delayed) OPEN_START_DELAY_MILLIS else 0, easing = OpenEasing)
 
     internal fun closeSpec() = tween<Float>(durationMillis = CLOSE_MILLIS, easing = CloseEasing)
 
@@ -195,7 +203,11 @@ fun AnimatedContentScope.PosterExpandContainer(
     val origin = remember(entryId) { PosterTransition.originFor(entryId) }
     val progress = transition.animateFloat(
         transitionSpec = {
-            if (targetState == EnterExitState.PostExit) PosterTransition.closeSpec() else PosterTransition.openSpec()
+            if (targetState == EnterExitState.PostExit) {
+                PosterTransition.closeSpec()
+            } else {
+                PosterTransition.openSpec(delayed = firstOpen && origin != null)
+            }
         },
         label = "posterExpand",
     ) { state ->

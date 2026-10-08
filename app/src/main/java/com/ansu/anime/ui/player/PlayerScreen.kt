@@ -47,6 +47,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Constraints
@@ -511,17 +513,10 @@ private fun PlayerSurface(
             // Most subtitle formats (WebVTT, ASS) give every cue its own line position, and the view then ignores its
             // bottom padding. So the chosen height is written into each text cue: its bottom edge sits at that
             // fraction of the video height above the bottom.
-            val placedCues = remember(cues, subtitleHeight) {
-                cues.map { cue ->
-                    if (cue.bitmap != null) {
-                        cue
-                    } else {
-                        cue.buildUpon()
-                            .setLine(1f - subtitleHeight / 100f, Cue.LINE_TYPE_FRACTION)
-                            .setLineAnchor(Cue.ANCHOR_TYPE_END)
-                            .build()
-                    }
-                }
+            var subtitleAreaHeightPx by remember { mutableIntStateOf(0) }
+            val subtitleTextSizePx = with(androidx.compose.ui.platform.LocalDensity.current) { subtitleSize.sp.toPx() }
+            val placedCues = remember(cues, subtitleHeight, subtitleTextSizePx, subtitleAreaHeightPx) {
+                placeCues(cues, subtitleHeight, subtitleTextSizePx, subtitleAreaHeightPx)
             }
             AndroidView(
                 factory = { ctx -> SubtitleView(ctx) },
@@ -543,7 +538,9 @@ private fun PlayerSurface(
                     view.setBottomPaddingFraction(0f)
                     view.setCues(placedCues)
                 },
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onSizeChanged { subtitleAreaHeightPx = it.height },
             )
         }
 

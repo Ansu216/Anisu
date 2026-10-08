@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The details page now opens with its full animation.** Composing the page on the first frame used up part of the animation's clock, so the window appeared already half open, while the close (nothing to compose) played fully. The open now waits 90 ms before it starts moving and uses a gentler curve, so it grows out of the poster from the very first frame, like the close does. **Constraint:** the build could not be run in this environment, so compile it once before release.
+
+- **Two subtitles on screen at once no longer overlap.** Every text cue was forced onto the same line, so a character's dialogue and a translated on-screen sign were drawn on top of each other. Cues the subtitle file places away from the bottom (signs) keep their own position, and the remaining cues are stacked upward from the chosen subtitle height. A single subtitle is placed exactly as before.
+
+- **The player remembers where you left off, and changing source keeps your place.** The saved position was applied with a seek before the stream was loaded, which the player discards, so Continue Watching always started at 0:00; changing source also restarted the episode. The start position is now handed to the player together with the stream, both for a saved resume and for a source switch or automatic fallback to the next source.
+
+- **Holding the navigation pill now visibly expands it.** The pill was drawn inside the bar's clipped glass, so its growth was cut off at the bar's edge. It is now drawn over the glass, swells wider and taller than the bar with a glassy sheen, magnifies the icon under it and follows the finger when dragged.
+
 - **The details title no longer waits on the artwork lookup in English mode.** The text title was only drawn once the ani.zip/TMDB lookup had finished, so a slow or failed lookup left the hero with no title at all. It now appears straight away when no TMDB key is set, and after at most four seconds when one is. **Constraint:** the build could not be run in this environment, so compile it once before release.
 
 - **Dragging a source in Streaming Priority is smooth.** Each row was rebuilt by position, so swapping two rows restarted the drag gesture in the middle of the drag and the row stuttered or lost your finger. Rows are now keyed by source, so the gesture survives every swap. The other rows slide into their new slots with a short spring, the dragged row lifts slightly with a shadow and follows the finger without recomposing the list, and on release it settles into its slot instead of jumping. **Constraint:** the list does not auto-scroll when you drag near the screen edge; the build could not be run in this environment, so compile it once before release.
