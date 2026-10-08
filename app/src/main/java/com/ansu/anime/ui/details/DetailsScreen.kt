@@ -155,12 +155,11 @@ fun DetailsScreen(
                 // movies and specials use their own banner/cover so they no longer all look the same.
                 // The title comes from AniList's details in the chosen language once they have loaded.
                 val shownTitle = details?.title ?: anime?.title.orEmpty()
-                // English without a TMDB English logo: show AniList's own banner (else cover) as it is, with
-                // no logo or title drawn over it. Those images usually carry the show's English lettering.
+                // English without a TMDB English logo: AniList's own banner (else cover) as the picture, with the
+                // plain English text title drawn over it, since the app cannot tell whether the art has lettering.
                 val plainAniListArt = titleLanguage == TitleLanguage.ENGLISH && state.artwork.englishLogoUrl == null
                 DetailsHero(
                     title = shownTitle,
-                    showTitle = !plainAniListArt,
                     imageUrl = if (plainAniListArt) {
                         details?.bannerUrl ?: anime?.bannerUrl ?: details?.posterUrl ?: anime?.posterUrl
                     } else pickHeroImage(
@@ -396,16 +395,12 @@ fun DetailsScreen(
  * one exists and plain text otherwise.
  */
 @Composable
-private fun DetailsHero(title: String, showTitle: Boolean, imageUrl: String?, logoUrl: String?, lookupDone: Boolean, onBack: () -> Unit) {
-    // No picture (or it failed to load) means no lettering either, so the plain text title is drawn.
-    var artFailed by remember(imageUrl) { mutableStateOf(false) }
-    val titleShown = showTitle || imageUrl == null || artFailed
+private fun DetailsHero(title: String, imageUrl: String?, logoUrl: String?, lookupDone: Boolean, onBack: () -> Unit) {
     // Taller than the art's 16:9 so the fade has room; the banner melts into the page like the home hero.
     Box(modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f)) {
         AsyncImage(
             model = imageUrl,
             contentDescription = title,
-            onError = { artFailed = true },
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize().background(AnsuColors.BackgroundElevated),
         )
@@ -440,7 +435,7 @@ private fun DetailsHero(title: String, showTitle: Boolean, imageUrl: String?, lo
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = AnsuColors.TextPrimary)
         }
-        if (titleShown) TitleLogo(
+        TitleLogo(
             title = title,
             logoUrl = logoUrl,
             lookupDone = lookupDone,
