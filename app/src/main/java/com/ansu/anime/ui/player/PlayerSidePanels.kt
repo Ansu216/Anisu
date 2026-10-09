@@ -60,7 +60,7 @@ import com.ansu.anime.ui.theme.AnsuColors
 import kotlin.math.roundToInt
 
 /** The three small tabs that slide in from the right of the fullscreen player. */
-internal enum class PlayerPanel { SOURCES, SUBS, AUDIO }
+internal enum class PlayerPanel { SOURCES, SUBS, AUDIO, EPISODES }
 
 /** Share of the screen width the panel takes; the video shrinks into the rest. */
 internal const val PANEL_WIDTH_FRACTION = 0.36f

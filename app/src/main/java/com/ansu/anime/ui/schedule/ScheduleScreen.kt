@@ -1,5 +1,28 @@
 package com.ansu.anime.ui.schedule
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
+import com.ansu.anime.ui.components.BackdropState
+import com.ansu.anime.ui.components.LocalNavBarBackdropBlur
+import com.ansu.anime.ui.components.LocalNavBarFrostiness
+import com.ansu.anime.ui.components.LocalNavBarRoundness
+import com.ansu.anime.ui.components.backdropBlurSupported
+import com.ansu.anime.ui.components.frostedBackdrop
+import com.ansu.anime.ui.components.navBarShape
+import com.ansu.anime.ui.components.navBarTintAlpha
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -83,77 +106,167 @@ fun ScheduleScreen(
         bottomBar = { AppBottomBar(navController, Dest.SCHEDULE, backdrop) },
     ) { padding ->
         val barInset = padding.calculateBottomPadding()
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .backdropSource(backdrop)
-                .padding(top = padding.calculateTopPadding())
-                .background(AnsuColors.Background),
-        ) {
-            Text(
-                text = if (tab == ScheduleTab.NEWS) "Anime News" else "Schedule",
-                color = AnsuColors.TextPrimary,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 8.dp),
-            )
+        // The floating toggle is a sibling of the content it blurs, never inside it.
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .backdropSource(backdrop)
+                    .padding(top = padding.calculateTopPadding())
+                    .background(AnsuColors.Background),
+            ) {
+                Text(
+                    text = if (tab == ScheduleTab.NEWS) "Anime News" else "Schedule",
+                    color = AnsuColors.TextPrimary,
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 8.dp),
+                )
 
-            Box(modifier = Modifier.weight(1f)) {
-                if (state.isLoading) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = AnsuColors.Accent)
-                    }
-                } else {
-                    when (tab) {
-                        ScheduleTab.NEWS -> NewsList(articles = state.news, bottomInset = barInset)
-                        ScheduleTab.SCHEDULE -> ScheduleList(
-                            entries = state.schedule,
-                            selectedDate = selectedDate,
-                            onSelectDate = { selectedDate = it },
-                            onClick = onEntrySelected,
-                            bottomInset = barInset,
-                        )
+                Box(modifier = Modifier.weight(1f)) {
+                    if (state.isLoading) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = AnsuColors.Accent)
+                        }
+                    } else {
+                        when (tab) {
+                            ScheduleTab.NEWS -> NewsList(articles = state.news, bottomInset = barInset)
+                            ScheduleTab.SCHEDULE -> ScheduleList(
+                                entries = state.schedule,
+                                selectedDate = selectedDate,
+                                onSelectDate = { selectedDate = it },
+                                onClick = onEntrySelected,
+                                bottomInset = barInset,
+                            )
+                        }
                     }
                 }
-
-                SubTabToggle(
-                    selected = tab,
-                    onSelect = { tab = it },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = barInset + 16.dp),
-                )
             }
+
+            SubTabToggle(
+                selected = tab,
+                onSelect = { tab = it },
+                backdrop = backdrop,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = barInset + 16.dp),
+            )
         }
     }
 }
 
+/**
+ * The floating Schedule / News switch. It shares the bottom navigation bar's look and settings: the same
+ * roundness, frostiness and live backdrop blur, a glass indicator that slides (stretching a little as it
+ * travels) with the same accent glow, and the same swell while a finger is held on it.
+ */
 @Composable
 private fun SubTabToggle(
     selected: ScheduleTab,
     onSelect: (ScheduleTab) -> Unit,
+    backdrop: BackdropState,
     modifier: Modifier = Modifier,
 ) {
-    FrostedGlassCard(
-        modifier = modifier
-            .width(210.dp)
-            .height(46.dp),
-        shape = RoundedCornerShape(23.dp),
-        tintAlpha = 0.5f,
+    val roundness = LocalNavBarRoundness.current
+    val frostiness = LocalNavBarFrostiness.current
+    val backdropBlur = LocalNavBarBackdropBlur.current
+    val shape = navBarShape(roundness)
+    val blurActive = backdropBlur && backdropBlurSupported
+    val tintAlpha = navBarTintAlpha(frostiness) * (if (blurActive) 0.6f else 1f)
+
+    val scheduleSource = remember { MutableInteractionSource() }
+    val newsSource = remember { MutableInteractionSource() }
+    val held = scheduleSource.collectIsPressedAsState().value || newsSource.collectIsPressedAsState().value
+    val holdAmount by animateFloatAsState(
+        targetValue = if (held) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
+        label = "scheduleToggleHold",
+    )
+    // 0 = Schedule, 1 = News; the spring overshoots a touch, like the nav pill.
+    val position by animateFloatAsState(
+        targetValue = if (selected == ScheduleTab.SCHEDULE) 0f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
+        label = "scheduleTogglePosition",
+    )
+
+    val barWidth = 210.dp
+    val barHeight = 46.dp
+    val inset = 4.dp
+    val slotWidth = (barWidth - inset * 2) / 2
+    val slotHeight = barHeight - inset * 2
+    val slotPx = with(LocalDensity.current) { slotWidth.toPx() }
+
+    Box(
+        modifier = modifier.graphicsLayer {
+            scaleX = 1f + 0.04f * holdAmount
+            scaleY = 1f + 0.06f * holdAmount
+        },
     ) {
-        Row(modifier = Modifier.fillMaxSize().padding(4.dp)) {
-            ToggleSegment(
-                text = "Schedule",
-                isSelected = selected == ScheduleTab.SCHEDULE,
-                onClick = { onSelect(ScheduleTab.SCHEDULE) },
-                modifier = Modifier.weight(1f),
+        FrostedGlassCard(
+            modifier = Modifier
+                .width(barWidth)
+                .height(barHeight)
+                .frostedBackdrop(backdrop, backdropBlur, shape),
+            shape = shape,
+            tintAlpha = tintAlpha,
+        ) {}
+        Box(modifier = Modifier.padding(inset)) {
+            // The glass indicator: accent gradient, white sheen and a hairline edge, as on the nav bar's pill.
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset((position * slotPx).roundToInt(), 0) }
+                    .size(width = slotWidth, height = slotHeight)
+                    .drawBehind {
+                        val travel = (4f * position * (1f - position)).coerceIn(0f, 1f)
+                        val extraW = 14.dp.toPx() * travel + 20.dp.toPx() * holdAmount
+                        val extraH = 14.dp.toPx() * holdAmount + 6.dp.toPx() * travel
+                        val w = size.width + extraW
+                        val h = size.height + extraH
+                        val topLeft = Offset(-extraW / 2f, -extraH / 2f)
+                        val glow = (holdAmount + travel).coerceAtMost(1.2f)
+                        val radius = CornerRadius(minOf(w, h) * roundness.coerceIn(0f, 1f) / 2f)
+                        drawRoundRect(
+                            brush = Brush.verticalGradient(
+                                listOf(
+                                    AnsuColors.Accent.copy(alpha = (0.16f + 0.14f * glow).coerceAtMost(0.5f)),
+                                    AnsuColors.Accent.copy(alpha = (0.10f + 0.08f * glow).coerceAtMost(0.4f)),
+                                ),
+                            ),
+                            topLeft = topLeft,
+                            size = Size(w, h),
+                            cornerRadius = radius,
+                        )
+                        drawRoundRect(
+                            color = Color.White.copy(alpha = (0.12f * glow).coerceAtMost(0.2f)),
+                            topLeft = topLeft,
+                            size = Size(w, h),
+                            cornerRadius = radius,
+                        )
+                        drawRoundRect(
+                            color = Color.White.copy(alpha = (0.10f + 0.22f * glow).coerceAtMost(0.34f)),
+                            topLeft = topLeft,
+                            size = Size(w, h),
+                            cornerRadius = radius,
+                            style = Stroke(width = 1.dp.toPx()),
+                        )
+                    },
             )
-            ToggleSegment(
-                text = "News",
-                isSelected = selected == ScheduleTab.NEWS,
-                onClick = { onSelect(ScheduleTab.NEWS) },
-                modifier = Modifier.weight(1f),
-            )
+            Row(modifier = Modifier.size(width = slotWidth * 2, height = slotHeight)) {
+                ToggleSegment(
+                    text = "Schedule",
+                    isSelected = selected == ScheduleTab.SCHEDULE,
+                    onClick = { onSelect(ScheduleTab.SCHEDULE) },
+                    interactionSource = scheduleSource,
+                    modifier = Modifier.weight(1f),
+                )
+                ToggleSegment(
+                    text = "News",
+                    isSelected = selected == ScheduleTab.NEWS,
+                    onClick = { onSelect(ScheduleTab.NEWS) },
+                    interactionSource = newsSource,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
@@ -163,19 +276,18 @@ private fun ToggleSegment(
     text: String,
     isSelected: Boolean,
     onClick: () -> Unit,
+    interactionSource: MutableInteractionSource,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .clip(RoundedCornerShape(19.dp))
-            .background(if (isSelected) AnsuColors.Accent else Color.Transparent)
-            .clickable(onClick = onClick),
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = text,
-            color = if (isSelected) AnsuColors.OnAccent else AnsuColors.TextSecondary,
+            color = if (isSelected) AnsuColors.TextPrimary else AnsuColors.TextSecondary,
             fontSize = 13.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
         )

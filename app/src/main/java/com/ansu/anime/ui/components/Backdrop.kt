@@ -2,7 +2,10 @@ package com.ansu.anime.ui.components
 
 import android.os.Build
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -30,7 +33,10 @@ val backdropBlurSupported: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSIO
  * inside it, otherwise it would try to draw itself into itself.
  */
 class BackdropState internal constructor(internal val layer: GraphicsLayer) {
-    internal var coordinates: LayoutCoordinates? = null
+    // Observable on purpose: the bar's draw reads it, so the bar redraws the moment the content has been laid out.
+    // As a plain field the bar had already drawn (with nothing to blur) and stayed that way until something
+    // else, like a scroll, happened to redraw it, which is why the blur seemed to arrive late after launch.
+    internal var coordinates: LayoutCoordinates? by mutableStateOf(null)
 }
 
 @Composable
@@ -47,9 +53,12 @@ fun Modifier.backdropSource(state: BackdropState): Modifier = this
         drawLayer(state.layer)
     }
 
-/** A plain (non-state) holder: layout coordinates change every frame while scrolling and must not recompose. */
+/**
+ * The bar's own coordinates. Observable for the same reason as [BackdropState.coordinates]; the instance only
+ * changes when the bar is re-attached, so reading it in the draw block does not redraw on every frame.
+ */
 private class BackdropBarHolder {
-    var coordinates: LayoutCoordinates? = null
+    var coordinates: LayoutCoordinates? by mutableStateOf(null)
 }
 
 /**

@@ -8,7 +8,14 @@ import android.content.res.Configuration
 import android.util.TypedValue
 import android.view.View
 import android.view.WindowManager
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.core.app.PictureInPictureModeChangedInfo
+import androidx.core.util.Consumer
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.ansu.anime.MainActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -129,6 +136,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     val cues by viewModel.cues.collectAsStateWithLifecycle()
     val subtitleSize by container.playerPrefs.subtitleSize.collectAsStateWithLifecycle()
     val subtitleHeight by container.playerPrefs.subtitleHeight.collectAsStateWithLifecycle()
+    val episodeGrid by container.playerPrefs.episodeGrid.collectAsStateWithLifecycle()
+    val pipEnabled by container.playerPrefs.pipEnabled.collectAsStateWithLifecycle()
     val subtitleColor by container.playerPrefs.subtitleColor.collectAsStateWithLifecycle()
     val subtitleBgColor by container.playerPrefs.subtitleBgColor.collectAsStateWithLifecycle()
     val subtitleBgOpacity by container.playerPrefs.subtitleBgOpacity.collectAsStateWithLifecycle()
@@ -158,6 +167,45 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         if (panel == PlayerPanel.SOURCES || sheet == PlayerSheet.SOURCES) viewModel.measurePings()
     }
     BackHandler(enabled = panel != null) { panel = null }
+
+    // Picture-in-picture: whether the app is currently shrunk into the floating window.
+    var inPip by remember { mutableStateOf(false) }
+    DisposableEffect(activity) {
+        val owner = activity as? ComponentActivity
+        val listener = Consumer<PictureInPictureModeChangedInfo> { info -> inPip = info.isInPictureInPictureMode }
+        owner?.addOnPictureInPictureModeChangedListener(listener)
+        onDispose { owner?.removeOnPictureInPictureModeChangedListener(listener) }
+    }
+    // The floating window shows the bare video: close panels and sheets.
+    LaunchedEffect(inPip) {
+        if (inPip) {
+            panel = null
+            sheet = null
+        }
+    }
+    // Home / the gesture enters picture-in-picture only while a video is actually playing and the setting is on.
+    val pipEligible = pipEnabled && state.isPlaying && state.error == null
+    DisposableEffect(pipEligible, state.isPlaying) {
+        (activity as? MainActivity)?.setPipState(pipEligible, state.isPlaying)
+        onDispose { (activity as? MainActivity)?.setPipState(false, false) }
+    }
+    // The floating window's play/pause button.
+    DisposableEffect(activity) {
+        (activity as? MainActivity)?.pipToggle = { viewModel.togglePlayPause() }
+        onDispose { (activity as? MainActivity)?.pipToggle = null }
+    }
+    // Leaving the app (Home, switching apps, locking the screen) must not leave the video playing unheard in the
+    // background. Picture-in-picture is the one way out that keeps playing, because its window is still visible.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, activity) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP && activity?.isInPictureInPictureMode != true) {
+                viewModel.player.pause()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // The fullscreen layout is the main one, so the player opens in landscape; the rotate button
     // switches to the portrait layout (player on top, episode info and list below).
@@ -253,7 +301,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         onSubs = { if (isLandscape) panel = PlayerPanel.SUBS else sheet = PlayerSheet.SUBS },
         onAudio = { if (isLandscape) panel = PlayerPanel.AUDIO else sheet = PlayerSheet.AUDIO },
         onSources = { if (isLandscape) panel = PlayerPanel.SOURCES else sheet = PlayerSheet.SOURCES },
-        onEpisodes = { sheet = PlayerSheet.EPISODES },
+        onEpisodes = { if (isLandscape) panel = PlayerPanel.EPISODES else sheet = PlayerSheet.EPISODES },
         onSettings = { sheet = PlayerSheet.SETTINGS },
         onSkipOutro = viewModel::skipCurrentSegment,
         seekSeconds = skipSeconds,
@@ -282,7 +330,9 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 panelWidth = panelWidth,
                 panelProgress = { panelProgress.value },
             ) {
-                if (locked) {
+                if (inPip) {
+                    Unit
+                } else if (locked) {
                     LockedOverlay(onUnlock = { locked = false }, isBuffering = state.isBuffering)
                 } else {
                     PlayerControlsOverlay(
@@ -320,7 +370,9 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     subtitleBgColor = subtitleBgColor,
                     subtitleBgOpacity = subtitleBgOpacity,
                 ) {
-                    if (locked) {
+                    if (inPip) {
+                        Unit
+                    } else if (locked) {
                         LockedOverlay(onUnlock = { locked = false }, isBuffering = state.isBuffering)
                     } else {
                         PlayerControlsCompact(
@@ -334,11 +386,13 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                         )
                     }
                 }
-                EpisodeInfoPane(
-                    state = state,
-                    onPlayEpisode = viewModel::playEpisode,
-                    modifier = Modifier.weight(1f),
-                )
+                if (!inPip) {
+                    EpisodeInfoPane(
+                        state = state,
+                        onPlayEpisode = viewModel::playEpisode,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
 
@@ -374,6 +428,18 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     onTextColor = container.playerPrefs::setSubtitleColor,
                     onBgColor = container.playerPrefs::setSubtitleBgColor,
                     onBgOpacity = container.playerPrefs::setSubtitleBgOpacity,
+                    onClose = close,
+                    modifier = panelModifier,
+                )
+                PlayerPanel.EPISODES -> EpisodesPanel(
+                    state = state,
+                    progress = progress,
+                    grid = episodeGrid,
+                    onGridChange = container.playerPrefs::setEpisodeGrid,
+                    onPlayEpisode = {
+                        viewModel.playEpisode(it)
+                        panel = null
+                    },
                     onClose = close,
                     modifier = panelModifier,
                 )

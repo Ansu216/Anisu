@@ -21,6 +21,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.ansu.anime.ui.components.ContinueWatchingActionTarget
+import com.ansu.anime.ui.components.ContinueWatchingActionOverlay
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -87,124 +92,158 @@ fun HomeScreen(
     }
 
     val backdrop = rememberBackdropState()
-    Scaffold(
-        containerColor = AnsuColors.Background,
-        bottomBar = { AppBottomBar(navController, Dest.HOME, backdrop) },
-    ) { padding ->
-        if (state.isLoading && trending.isEmpty() && state.shelves.isEmpty()) {
-            Column(
+    var actionTarget by remember { mutableStateOf<ContinueWatchingActionTarget?>(null) }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            containerColor = AnsuColors.Background,
+            bottomBar = { AppBottomBar(navController, Dest.HOME, backdrop) },
+        ) { padding ->
+            if (state.isLoading && trending.isEmpty() && state.shelves.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = padding.calculateTopPadding())
+                        .background(AnsuColors.Background),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    CircularProgressIndicator(color = AnsuColors.Accent, modifier = Modifier.padding(top = 80.dp))
+                }
+                return@Scaffold
+            }
+
+            LazyColumn(
+                // No top padding: the hero banner runs behind the status bar, edge to edge.
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = padding.calculateTopPadding())
+                    .backdropSource(backdrop)
                     .background(AnsuColors.Background),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                // Content runs behind the floating bar; the padding lets the last row scroll clear of it.
+                contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 24.dp),
             ) {
-                CircularProgressIndicator(color = AnsuColors.Accent, modifier = Modifier.padding(top = 80.dp))
-            }
-            return@Scaffold
-        }
-
-        LazyColumn(
-            // No top padding: the hero banner runs behind the status bar, edge to edge.
-            modifier = Modifier
-                .fillMaxSize()
-                .backdropSource(backdrop)
-                .background(AnsuColors.Background),
-            // Content runs behind the floating bar; the padding lets the last row scroll clear of it.
-            contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 24.dp),
-        ) {
-            // The hero mirrors what's airing/trending right now; if AniList is
-            // unreachable it falls back to the first catalogue shelf.
-            val heroSource = trending.ifEmpty { state.shelves.firstOrNull()?.items.orEmpty() }
-            if (heroSource.isNotEmpty()) {
-                item {
-                    HeroCarousel(
-                        items = heroSource,
-                        onClick = selectAnime,
-                        logoFor = logoLookup,
-                        onToggleFavourite = { anime ->
-                            anime.anilistId?.let { id ->
-                                scope.launch {
-                                    if (container.aniListRepository.isLoggedIn.value) {
-                                        container.aniListRepository.toggleFavourite(id)
-                                    } else {
-                                        // Signed out: keep the favourite on this device.
-                                        container.localListRepository.toggleFavourite(anime)
+                // The hero mirrors what's airing/trending right now; if AniList is
+                // unreachable it falls back to the first catalogue shelf.
+                val heroSource = trending.ifEmpty { state.shelves.firstOrNull()?.items.orEmpty() }
+                if (heroSource.isNotEmpty()) {
+                    item {
+                        HeroCarousel(
+                            items = heroSource,
+                            onClick = selectAnime,
+                            logoFor = logoLookup,
+                            onToggleFavourite = { anime ->
+                                anime.anilistId?.let { id ->
+                                    scope.launch {
+                                        if (container.aniListRepository.isLoggedIn.value) {
+                                            container.aniListRepository.toggleFavourite(id)
+                                        } else {
+                                            // Signed out: keep the favourite on this device.
+                                            container.localListRepository.toggleFavourite(anime)
+                                        }
                                     }
                                 }
-                            }
-                        },
+                            },
+                        )
+                    }
+                }
+
+                if (state.continueWatching.isNotEmpty()) {
+                    item { ShelfHeader("Continue Watching") }
+                    item {
+                        ContinueWatchingRow(
+                            entries = state.continueWatching,
+                            hiddenId = actionTarget?.entry?.anilistId,
+                            onLongPress = { entry, bounds -> actionTarget = ContinueWatchingActionTarget(entry, bounds) },
+                        hiddenId = actionTarget?.entry?.anilistId,
+                        onLongPress = { entry, bounds -> actionTarget = ContinueWatchingActionTarget(entry, bounds) },
+                            onClick = { entry ->
+                                val origin = com.ansu.anime.core.model.MediaOrigin.Extension(
+                                    sourceId = entry.originExtensionSourceId ?: 1L,
+                                    urlPath = entry.anilistId.toString(),
+                                )
+                                val anime = SAnime(
+                                    id = entry.anilistId.toString(),
+                                    title = entry.title,
+                                    posterUrl = entry.posterUrl,
+                                    bannerUrl = entry.bannerUrl,
+                                    anilistId = entry.anilistId,
+                                    origin = origin,
+                                )
+                                val episode = com.ansu.anime.core.model.SEpisode(
+                                    id = entry.episodeId,
+                                    name = entry.episodeName,
+                                    episodeNumber = entry.episodeNumber,
+                                )
+                                container.selectionHolder.selectAnime(anime)
+                                container.selectionHolder.selectEpisode(episode)
+                                navController.navigate(Dest.PLAYER)
+                            },
+                        )
+                    }
+                }
+
+                item(key = "feed:${AniListFeed.TRENDING_NOW.name}") {
+                    FeedShelf(
+                        row = state.feed(AniListFeed.TRENDING_NOW),
+                        onLoadMore = { viewModel.loadMore(AniListFeed.TRENDING_NOW) },
+                        onClick = selectAnime,
                     )
                 }
-            }
 
-            if (state.continueWatching.isNotEmpty()) {
-                item { ShelfHeader("Continue Watching") }
-                item {
-                    ContinueWatchingRow(
-                        entries = state.continueWatching,
-                        onClick = { entry ->
-                            val origin = com.ansu.anime.core.model.MediaOrigin.Extension(
-                                sourceId = entry.originExtensionSourceId ?: 1L,
-                                urlPath = entry.anilistId.toString(),
-                            )
-                            val anime = SAnime(
+                // Every other endless row loads its first page when it scrolls into view.
+                items(
+                    items = state.feeds.filter { it.feed != AniListFeed.TRENDING_NOW },
+                    key = { "feed:${it.feed.name}" },
+                ) { row ->
+                    FeedShelf(
+                        row = row,
+                        onLoadMore = { viewModel.loadMore(row.feed) },
+                        onClick = selectAnime,
+                    )
+                }
+
+                // Two shelves can share a title (two sources with the same name), so the key is the title plus its position.
+                itemsIndexed(state.shelves, key = { index, shelf -> "${shelf.title}#$index" }) { _, shelf ->
+                    Column {
+                        ShelfHeader(shelf.title)
+                        PosterRow(items = shelf.items, onClick = selectAnime)
+                    }
+                }
+
+                state.error?.let { error ->
+                    item {
+                        Text(
+                            text = "Some sources didn't load: $error",
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(16.dp),
+                        )
+                    }
+                }
+            }
+        }
+
+        actionTarget?.let { target ->
+            key(target.entry.anilistId) {
+                ContinueWatchingActionOverlay(
+                    target = target,
+                    backdrop = backdrop,
+                    onGoToDetails = { entry ->
+                        actionTarget = null
+                        selectAnime(
+                            SAnime(
                                 id = entry.anilistId.toString(),
                                 title = entry.title,
                                 posterUrl = entry.posterUrl,
                                 bannerUrl = entry.bannerUrl,
                                 anilistId = entry.anilistId,
-                                origin = origin,
-                            )
-                            val episode = com.ansu.anime.core.model.SEpisode(
-                                id = entry.episodeId,
-                                name = entry.episodeName,
-                                episodeNumber = entry.episodeNumber,
-                            )
-                            container.selectionHolder.selectAnime(anime)
-                            container.selectionHolder.selectEpisode(episode)
-                            navController.navigate(Dest.PLAYER)
-                        },
-                    )
-                }
-            }
-
-            item(key = "feed:${AniListFeed.TRENDING_NOW.name}") {
-                FeedShelf(
-                    row = state.feed(AniListFeed.TRENDING_NOW),
-                    onLoadMore = { viewModel.loadMore(AniListFeed.TRENDING_NOW) },
-                    onClick = selectAnime,
+                                origin = com.ansu.anime.core.model.MediaOrigin.Extension(
+                                    sourceId = entry.originExtensionSourceId ?: 1L,
+                                    urlPath = entry.anilistId.toString(),
+                                ),
+                            ),
+                        )
+                    },
+                    onRemove = { entry -> viewModel.removeContinueWatching(entry.anilistId) },
+                    onFinished = { actionTarget = null },
                 )
-            }
-
-            // Every other endless row loads its first page when it scrolls into view.
-            items(
-                items = state.feeds.filter { it.feed != AniListFeed.TRENDING_NOW },
-                key = { "feed:${it.feed.name}" },
-            ) { row ->
-                FeedShelf(
-                    row = row,
-                    onLoadMore = { viewModel.loadMore(row.feed) },
-                    onClick = selectAnime,
-                )
-            }
-
-            // Two shelves can share a title (two sources with the same name), so the key is the title plus its position.
-            itemsIndexed(state.shelves, key = { index, shelf -> "${shelf.title}#$index" }) { _, shelf ->
-                Column {
-                    ShelfHeader(shelf.title)
-                    PosterRow(items = shelf.items, onClick = selectAnime)
-                }
-            }
-
-            state.error?.let { error ->
-                item {
-                    Text(
-                        text = "Some sources didn't load: $error",
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(16.dp),
-                    )
-                }
             }
         }
     }

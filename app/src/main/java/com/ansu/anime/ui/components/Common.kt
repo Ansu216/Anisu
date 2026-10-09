@@ -1,6 +1,15 @@
 package com.ansu.anime.ui.components
 
 import androidx.compose.foundation.Image
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -265,43 +274,102 @@ fun PosterGlassLabel(text: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** Wide frosted-look continue-watching card: thumbnail with a burned-in progress bar. */
+/**
+ * The picture part of a continue-watching card: thumbnail, play glyph and burned-in progress bar.
+ * [scale] sizes the glyph and the bar, so the enlarged copy shown by the long-press menu
+ * (laid out bigger and scaled down to meet the real card) looks the same as the card it came from.
+ * The caller supplies the clip shape and size.
+ */
 @Composable
-fun ContinueWatchingCard(entry: ContinueWatchingEntity, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.width(220.dp).clickable(onClick = onClick)) {
+fun ContinueWatchingThumbnail(entry: ContinueWatchingEntity, modifier: Modifier = Modifier, scale: Float = 1f) {
+    // One fixed decode size for every copy of this thumbnail, so the card and its enlarged twin share
+    // a memory-cache entry and the twin appears on its first frame instead of loading in.
+    val context = LocalContext.current
+    val url = entry.bannerUrl ?: entry.posterUrl
+    val request = remember(url) {
+        ImageRequest.Builder(context).data(url).size(coil.size.Size(720, 405)).build()
+    }
+    Box(modifier = modifier.background(AnsuColors.BackgroundElevated)) {
+        AsyncImage(
+            model = request,
+            contentDescription = entry.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
         Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)))),
+        )
+        Icon(
+            imageVector = Icons.Filled.PlayArrow,
+            contentDescription = "Resume",
+            tint = AnsuColors.TextPrimary,
+            modifier = Modifier.align(Alignment.Center).size(36.dp * scale),
+        )
+        Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp * scale).background(AnsuColors.TextPrimary.copy(alpha = 0.2f)))
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth(progressFraction(entry.positionSeconds, entry.durationSeconds))
+                .height(3.dp * scale)
+                .background(AnsuColors.Accent),
+        )
+    }
+}
+
+private class CardCoordinates { var value: LayoutCoordinates? = null }
+
+/**
+ * Wide frosted-look continue-watching card. A tap resumes; a press-and-hold (when [onLongPress] is given)
+ * hands the thumbnail's on-screen rectangle to the caller, which floats the card into the action menu.
+ * While [hidden] the card keeps its place in the row but is invisible, because its twin is in the air.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ContinueWatchingCard(
+    entry: ContinueWatchingEntity,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    hidden: Boolean = false,
+    onLongPress: ((Rect) -> Unit)? = null,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    // A gentle squeeze while the finger is down tells the person the hold is being read.
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed && onLongPress != null) 0.96f else 1f,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 600f),
+        label = "continueCardPress",
+    )
+    val coords = remember { CardCoordinates() }
+    Column(
+        modifier = modifier
+            .width(220.dp)
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+                alpha = if (hidden) 0f else 1f
+            }
+            .combinedClickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick,
+                onLongClick = onLongPress?.let { callback ->
+                    {
+                        coords.value?.takeIf { it.isAttached }?.let { callback(it.boundsInRoot()) }
+                    }
+                },
+            ),
+    ) {
+        ContinueWatchingThumbnail(
+            entry = entry,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
                 .clip(RoundedCornerShape(14.dp))
-                .background(AnsuColors.BackgroundElevated),
-        ) {
-            AsyncImage(
-                model = entry.bannerUrl ?: entry.posterUrl,
-                contentDescription = entry.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)))),
-            )
-            Icon(
-                imageVector = Icons.Filled.PlayArrow,
-                contentDescription = "Resume",
-                tint = AnsuColors.TextPrimary,
-                modifier = Modifier.align(Alignment.Center).size(36.dp),
-            )
-            Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(AnsuColors.TextPrimary.copy(alpha = 0.2f)))
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth(progressFraction(entry.positionSeconds, entry.durationSeconds))
-                    .height(3.dp)
-                    .background(AnsuColors.Accent),
-            )
-        }
+                .onGloballyPositioned { coords.value = it },
+        )
         Text(
             text = entry.title,
             style = MaterialTheme.typography.bodyMedium,
@@ -319,14 +387,28 @@ fun ContinueWatchingCard(entry: ContinueWatchingEntity, onClick: () -> Unit, mod
 }
 
 @Composable
-fun ContinueWatchingRow(entries: List<ContinueWatchingEntity>, onClick: (ContinueWatchingEntity) -> Unit, modifier: Modifier = Modifier) {
+fun ContinueWatchingRow(
+    entries: List<ContinueWatchingEntity>,
+    onClick: (ContinueWatchingEntity) -> Unit,
+    modifier: Modifier = Modifier,
+    /** The entry whose card is currently floating in the action menu; its slot stays but draws nothing. */
+    hiddenId: Int? = null,
+    onLongPress: (ContinueWatchingEntity, Rect) -> Unit = { _, _ -> },
+) {
     LazyRow(
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(entries, key = { it.anilistId }) { entry ->
-            ContinueWatchingCard(entry = entry, onClick = { onClick(entry) })
+            ContinueWatchingCard(
+                entry = entry,
+                onClick = { onClick(entry) },
+                // Neighbours glide together when a card is removed, instead of jumping.
+                modifier = Modifier.animateItem(),
+                hidden = entry.anilistId == hiddenId,
+                onLongPress = { bounds -> onLongPress(entry, bounds) },
+            )
         }
     }
 }

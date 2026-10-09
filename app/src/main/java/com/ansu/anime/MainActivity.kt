@@ -2,7 +2,15 @@ package com.ansu.anime
 
 import android.Manifest
 import android.content.Intent
+import android.app.PendingIntent
+import android.app.PictureInPictureParams
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.graphics.drawable.Icon
 import android.content.pm.PackageManager
+import android.util.Rational
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -134,6 +142,69 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** True while the player is on screen, playing, and picture-in-picture is switched on in Settings. */
+    @Volatile
+    private var pipEligible = false
+    private var pipPlaying = false
+
+    /** Set by the player screen: what the floating window's play/pause button does. */
+    var pipToggle: (() -> Unit)? = null
+
+    private val pipReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_PIP_TOGGLE) pipToggle?.invoke()
+        }
+    }
+
+    fun setPipState(eligible: Boolean, playing: Boolean) {
+        pipEligible = eligible
+        pipPlaying = playing
+        // Keeps the window's play/pause icon right, and (Android 12+) lets Home enter it by itself.
+        runCatching { setPictureInPictureParams(pipParams(autoEnter = eligible)) }
+    }
+
+    private fun pipParams(autoEnter: Boolean): PictureInPictureParams {
+        val toggle = RemoteAction(
+            Icon.createWithResource(
+                this,
+                if (pipPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
+            ),
+            if (pipPlaying) "Pause" else "Play",
+            if (pipPlaying) "Pause" else "Play",
+            PendingIntent.getBroadcast(
+                this,
+                0,
+                Intent(ACTION_PIP_TOGGLE).setPackage(packageName),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            ),
+        )
+        val builder = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(16, 9))
+            .setActions(listOf(toggle))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setAutoEnterEnabled(autoEnter).setSeamlessResizeEnabled(true)
+        }
+        return builder.build()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        ContextCompat.registerReceiver(this, pipReceiver, IntentFilter(ACTION_PIP_TOGGLE), ContextCompat.RECEIVER_NOT_EXPORTED)
+    }
+
+    override fun onStop() {
+        runCatching { unregisterReceiver(pipReceiver) }
+        super.onStop()
+    }
+
+    // Android 8-11 have no auto-enter, so pressing Home enters picture-in-picture from here.
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (pipEligible && Build.VERSION.SDK_INT < Build.VERSION_CODES.S && !isInPictureInPictureMode) {
+            runCatching { enterPictureInPictureMode(pipParams(autoEnter = false)) }
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -162,6 +233,8 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val ACTION_PIP_TOGGLE = "com.ansu.anime.action.PIP_TOGGLE"
+
         /** Intent extra set by [com.ansu.anime.data.update.UpdateNotifier] when its notification is tapped. */
         const val EXTRA_OPEN_UPDATES = "com.ansu.anime.extra.OPEN_UPDATES"
 

@@ -53,6 +53,26 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putInt(KEY_SKIP_SECONDS, value).apply()
     }
 
+    private val _pipEnabled = MutableStateFlow(prefs.getBoolean(KEY_PIP, true))
+
+    /** Picture-in-picture: leaving the app (Home) while a video plays shrinks it into a floating window. */
+    val pipEnabled: StateFlow<Boolean> = _pipEnabled
+
+    fun setPipEnabled(value: Boolean) {
+        _pipEnabled.value = value
+        prefs.edit().putBoolean(KEY_PIP, value).apply()
+    }
+
+    private val _episodeGrid = MutableStateFlow(prefs.getBoolean(KEY_EPISODE_GRID, false))
+
+    /** The landscape Episodes panel's style: false = list of cards, true = grid of numbered tiles. */
+    val episodeGrid: StateFlow<Boolean> = _episodeGrid
+
+    fun setEpisodeGrid(value: Boolean) {
+        _episodeGrid.value = value
+        prefs.edit().putBoolean(KEY_EPISODE_GRID, value).apply()
+    }
+
     private val _subtitleSize = MutableStateFlow(prefs.getInt(KEY_SUBTITLE_SIZE, DEFAULT_SUBTITLE_SIZE).coerceIn(SUBTITLE_SIZE_RANGE))
 
     /** Subtitle text size in sp (player side panel > Subtitles). */
@@ -149,6 +169,8 @@ class PlayerPrefs(context: Context) {
         private const val KEY_DOUBLE_TAP = "double_tap_seek"
         private const val KEY_BRIGHTNESS = "brightness_gesture"
         private const val KEY_VOLUME = "volume_gesture"
+        private const val KEY_PIP = "pip_enabled"
+        private const val KEY_EPISODE_GRID = "episode_grid"
         private const val KEY_SKIP_SECONDS = "skip_seconds"
         private const val KEY_SOURCE_PRIORITY = "source_priority"
         private const val KEY_SUBTITLE_SIZE = "subtitle_size"

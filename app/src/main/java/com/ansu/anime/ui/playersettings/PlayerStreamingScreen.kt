@@ -74,6 +74,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val brightness by prefs.brightnessGesture.collectAsStateWithLifecycle()
     val volume by prefs.volumeGesture.collectAsStateWithLifecycle()
     val skipSeconds by prefs.skipSeconds.collectAsStateWithLifecycle()
+    val pip by prefs.pipEnabled.collectAsStateWithLifecycle()
     val subSize by prefs.subtitleSize.collectAsStateWithLifecycle()
     val subHeight by prefs.subtitleHeight.collectAsStateWithLifecycle()
     val subColor by prefs.subtitleColor.collectAsStateWithLifecycle()
@@ -134,6 +135,19 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                         checked = volume,
                         onChange = prefs::setVolumeGesture,
                     )
+                }
+            }
+
+            // ===== PICTURE IN PICTURE BOX =====
+            SettingsBox(title = "Picture in picture") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ToggleRow(
+                        title = "Picture in picture",
+                        subtitle = "Keep the video playing in a small floating window when you leave the app",
+                        checked = pip,
+                        onChange = prefs::setPipEnabled,
+                    )
+                    Hint("When this is off, the video pauses as soon as you leave the app.")
                 }
             }
 

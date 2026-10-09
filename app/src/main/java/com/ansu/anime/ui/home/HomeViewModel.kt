@@ -73,6 +73,10 @@ class HomeViewModel(
             .launchIn(viewModelScope)
     }
 
+    fun removeContinueWatching(anilistId: Int) {
+        viewModelScope.launch { continueWatchingRepository.remove(anilistId) }
+    }
+
     fun refresh() {
         viewModelScope.launch {
             _uiState.update {
