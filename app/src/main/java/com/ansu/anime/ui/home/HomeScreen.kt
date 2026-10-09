@@ -152,8 +152,6 @@ fun HomeScreen(
                             entries = state.continueWatching,
                             hiddenId = actionTarget?.entry?.anilistId,
                             onLongPress = { entry, bounds -> actionTarget = ContinueWatchingActionTarget(entry, bounds) },
-                        hiddenId = actionTarget?.entry?.anilistId,
-                        onLongPress = { entry, bounds -> actionTarget = ContinueWatchingActionTarget(entry, bounds) },
                             onClick = { entry ->
                                 val origin = com.ansu.anime.core.model.MediaOrigin.Extension(
                                     sourceId = entry.originExtensionSourceId ?: 1L,
