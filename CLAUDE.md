@@ -72,6 +72,7 @@ Source root: `app/src/main/java/com/ansu/anime/`
 | `ui/components/Common.kt` | Shared composables (hero carousel, shelves, cards, chips, `PersonCard`) |
 | `ui/components/GlassSurface.kt` | `FrostedGlassCard` / `BottomScrim` glass surfaces |
 | `ui/components/AppBottomBar.kt` | Frosted bottom navigation bar (`AppBottomBar`, `NavBarSurface`) |
+| `ui/search/SearchSession.kt` | Search tab state (query, filters, results, scroll) kept for the life of the app so it survives opening a result |
 | `ui/components/Backdrop.kt` | Content-behind-the-bar blur: `backdropSource` on a tab's content, `frostedBackdrop` on the bar |
 | `ui/home` | Home screen + view model (continue watching, trending, season picks, shelves) |
 | `ui/schedule` | Schedule **and** News tab, its view model and UI models |

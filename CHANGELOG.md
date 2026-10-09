@@ -49,11 +49,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Search history, with the search bar opening into a full-screen panel.** Tapping the search bar now grows a dark panel out of the bar, with rounded corners that square off, until it reaches the edges of the screen; the magnifier turns into a back arrow, the grid and filter buttons fold away so the bar takes the whole row, and the history fades in. Each entry has a clock icon, the search text, a cross to forget it and an arrow that copies it into the bar for editing; tapping the entry runs it, and "Clear all" empties the list. While you type the list narrows to matching entries. Searches are remembered when you press the keyboard's search key, tap a history entry, or open a result from a search (newest first, 30 at most, a repeat moves to the top). The back arrow, the system back gesture or running a search folds the panel back into the bar the same way it opened.
+
 - **Bottom navigation bar has a real frosted blur, with a switch in Appearance.** The old Blur slider only softened the bar's own flat tint, so it was invisible. Each tab screen now records its content into a layer (`Backdrop.kt`), and the bar draws a blurred copy of the part of the screen behind it, with a thinner tint on top so the blur shows. Appearance has a "Frosted blur" toggle (on by default) that also drives the live preview; the Frostiness slider still sets the tint. **Constraint:** the blur needs Android 12 or newer; on Android 8-11 the toggle has no effect and the bar keeps its plain frosted glass. The old blur slider value is not carried over.
 
 - **My Space cards show how far through a show you are.** Every card in My List now has "11/12" and a thin progress bar at the bottom (just "Ep 11" when the episode total is unknown). When you are signed in the progress is the one on AniList; otherwise it is the on-device record kept as you watch, and the Liked tab borrows it from whichever list the show also sits in.
 
+### Fixed
+
+- **Backing out of a result's details no longer empties the Search tab.** The query, filters, results, paging and scroll position were plain screen state, so opening a result threw them away and the tab came back as the trending list. They now live in `SearchSession`, held by the app, and a returning screen that finds the same search keeps its results and exactly where you had scrolled to (it only reloads when the query, filters or title language really changed, or on Retry). **Constraint:** this survives navigation and rotation but not the app process being killed. The build could not be run in this environment, so compile it once before release.
+
 ### Changed
+
+- **The player's play/pause button turns into the loading spinner.** Buffering and source loading used to show a stock circular spinner on top of the controls. Now the two pause bars squeeze thin, curl into the two halves of a ring and spin; when loading ends the ring slows to upright while it unrolls, and the bars spring back to full width with a small puff. With the controls hidden the same glyph shows on its own and fades out after it has puffed back. **Constraint:** the build could not be run in this environment, so compile it once before release.
 
 - **The nav bar's selection pill stretches and squeezes like a drop of glass when it moves.** The pill used to slide as one rigid block. Its two edges now move on separate springs: the edge facing the new tab is pushed out quickly and overshoots slightly, the trailing edge is pulled along more slowly, so the pill elongates toward the destination, bulges a little taller, brightens and magnifies its icon mid-move, then settles back to one slot. It also does this when a new screen's bar takes over the pill from the previous one, and after a drag is released.
 

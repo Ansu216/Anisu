@@ -55,6 +55,8 @@ class AppContainer(context: Context) {
     val aniListAuthManager: AniListAuthManager = AniListAuthManager(appContext)
     val appearancePrefs: AppearancePrefs = AppearancePrefs(appContext)
     val playerPrefs: com.ansu.anime.data.prefs.PlayerPrefs = com.ansu.anime.data.prefs.PlayerPrefs(appContext)
+    val searchHistory: com.ansu.anime.data.prefs.SearchHistoryPrefs = com.ansu.anime.data.prefs.SearchHistoryPrefs(appContext)
+    val searchSession: com.ansu.anime.ui.search.SearchSession = com.ansu.anime.ui.search.SearchSession()
 
     val aniListApi: AniListApi = AniListApi(okHttpClient, aniListAuthManager) { appearancePrefs.titleLanguage.value }
     val aniListRepository: AniListRepository = AniListRepository(aniListApi, aniListAuthManager, apiErrorHandler)

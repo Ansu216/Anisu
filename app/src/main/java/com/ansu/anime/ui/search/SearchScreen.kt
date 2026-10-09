@@ -3,6 +3,38 @@
 package com.ansu.anime.ui.search
 
 import androidx.compose.foundation.background
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.NorthWest
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.util.lerp
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -97,18 +129,20 @@ fun SearchScreen(
     navController: NavHostController,
     onAnimeSelected: (SAnime) -> Unit,
 ) {
-    var query by remember { mutableStateOf("") }
-    var filters by remember { mutableStateOf(AniListSearchFilters()) }
+    // Held by the app rather than the screen, so opening a result and backing out finds everything as it was.
+    val session = container.searchSession
+    var query by session::query
+    var filters by session::filters
     val isGrid by container.appearancePrefs.searchGrid.collectAsStateWithLifecycle()
     var showFilters by remember { mutableStateOf(false) }
 
-    var results by remember { mutableStateOf<List<SAnime>>(emptyList()) }
+    var results by session::results
     // The query and filters that produced [results]; "load more" must page through those, not
     // through whatever has been typed since.
-    var activeQuery by remember { mutableStateOf("") }
-    var activeFilters by remember { mutableStateOf(AniListSearchFilters()) }
-    var page by remember { mutableIntStateOf(1) }
-    var hasNext by remember { mutableStateOf(false) }
+    var activeQuery by session::activeQuery
+    var activeFilters by session::activeFilters
+    var page by session::page
+    var hasNext by session::hasNext
     var isLoading by remember { mutableStateOf(false) }
     var isLoadingMore by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
@@ -117,8 +151,8 @@ fun SearchScreen(
     val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
 
     val focusManager = LocalFocusManager.current
-    val gridState = rememberLazyGridState()
-    val listState = rememberLazyListState()
+    val gridState = session.gridState
+    val listState = session.listState
     // With no text and no filters the screen shows trending anime instead of an empty prompt.
     val isTrending = query.trim().length < 2 && !filters.isActive
 
@@ -127,6 +161,9 @@ fun SearchScreen(
     // the query resolves to AniList's trending list (30 titles per page).
     LaunchedEffect(query, filters, retryTick, titleLanguage) {
         val text = query.trim().takeIf { it.length >= 2 }.orEmpty()
+        val key = Triple(text, filters, titleLanguage)
+        // Coming back to the same search (after a details page, say): keep the results and the scroll position.
+        if (retryTick == 0 && session.loadedKey == key) return@LaunchedEffect
         if (text.isNotEmpty()) delay(400) // debounce
         isLoading = true
         failed = false
@@ -135,6 +172,7 @@ fun SearchScreen(
         results = result?.items.orEmpty().distinctBy { it.resultKey() }
         hasNext = result?.hasNextPage == true
         failed = result == null
+        session.loadedKey = if (result == null) null else key
         activeQuery = text
         activeFilters = filters
         page = 1
@@ -174,38 +212,52 @@ fun SearchScreen(
         }
     }
 
+    // ---- Search history and the expanding search panel ----
+    val history by container.searchHistory.items.collectAsStateWithLifecycle()
+    // True while the search bar is open: the dark panel has grown out of it to the screen's edges and shows the history.
+    var searching by remember { mutableStateOf(false) }
+    val expand = remember { Animatable(0f) }
+    LaunchedEffect(searching) {
+        if (searching) {
+            expand.animateTo(1f, tween(420, easing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)))
+        } else {
+            expand.animateTo(0f, tween(320, easing = FastOutSlowInEasing))
+        }
+    }
+    val panelVisible by remember { derivedStateOf { expand.value > 0.001f } }
+    // Where the bar sits when closed, and where the area it grows into sits, both in window coordinates.
+    var barBounds by remember { mutableStateOf(Rect.Zero) }
+    var areaBounds by remember { mutableStateOf(Rect.Zero) }
+
+    fun closeSearch() {
+        focusManager.clearFocus()
+        searching = false
+    }
+
+    // Runs a search for [text] (default: what is typed): remembers it and folds the panel back into the bar.
+    fun submit(text: String = query) {
+        if (text != query) query = text
+        container.searchHistory.add(text)
+        closeSearch()
+    }
+    BackHandler(enabled = searching) { closeSearch() }
+
+    val openResult: (SAnime) -> Unit = { anime ->
+        container.searchHistory.add(query)
+        onAnimeSelected(anime)
+    }
+
     val backdrop = rememberBackdropState()
     Scaffold(bottomBar = { AppBottomBar(navController, Dest.SEARCH, backdrop) }) { padding ->
-        Column(modifier = Modifier.fillMaxSize().backdropSource(backdrop).padding(top = padding.calculateTopPadding())) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SearchField(
-                    value = query,
-                    onValueChange = { query = it },
-                    onClear = { query = "" },
-                    onSearch = { focusManager.clearFocus() },
-                    modifier = Modifier.weight(1f).height(52.dp),
-                )
-                // The icon shows the view you will switch TO: a grid while in list view, and vice versa.
-                GlassIconButton(
-                    icon = if (isGrid) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
-                    contentDescription = if (isGrid) "Switch to list view" else "Switch to grid view",
-                    onClick = { container.appearancePrefs.setSearchGrid(!isGrid) },
-                )
-                GlassIconButton(
-                    icon = Icons.Filled.Tune,
-                    contentDescription = "Filters",
-                    badgeCount = filters.activeCount,
-                    onClick = {
-                        focusManager.clearFocus()
-                        showFilters = true
-                    },
-                )
-            }
-
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .backdropSource(backdrop)
+                .padding(top = padding.calculateTopPadding())
+                .onGloballyPositioned { areaBounds = it.boundsInRoot() },
+        ) {
+          // Filter chips and results sit under the bar row, which is drawn last so the panel can slide beneath it.
+          Column(modifier = Modifier.fillMaxSize().padding(top = SearchBarRowHeight)) {
             val chips = activeFilterChips(filters)
             if (chips.isNotEmpty()) {
                 LazyRow(
@@ -260,7 +312,7 @@ fun SearchScreen(
                             ResultsHeader(isTrending)
                         }
                         items(results, key = { it.resultKey() }) { anime ->
-                            SearchGridCard(anime = anime, onClick = { onAnimeSelected(anime) })
+                            SearchGridCard(anime = anime, onClick = { openResult(anime) })
                         }
                         if (hasNext || moreFailed) {
                             item(span = { GridItemSpan(maxLineSpan) }) {
@@ -276,7 +328,7 @@ fun SearchScreen(
                     ) {
                         item(key = "header") { ResultsHeader(isTrending) }
                         items(results, key = { it.resultKey() }) { anime ->
-                            SearchListItem(anime = anime, onClick = { onAnimeSelected(anime) })
+                            SearchListItem(anime = anime, onClick = { openResult(anime) })
                         }
                         if (hasNext || moreFailed) {
                             item {
@@ -286,6 +338,74 @@ fun SearchScreen(
                     }
                 }
             }
+          }
+
+          if (panelVisible) {
+              SearchPanel(
+                  expand = { expand.value },
+                  barBounds = { barBounds },
+                  areaBounds = { areaBounds },
+                  history = history,
+                  filter = query.trim(),
+                  bottomPadding = padding.calculateBottomPadding(),
+                  onPick = { submit(it) },
+                  onFill = { query = it },
+                  onRemove = container.searchHistory::remove,
+                  onClearAll = container.searchHistory::clear,
+              )
+          }
+
+          Row(
+              modifier = Modifier
+                  .fillMaxWidth()
+                  .height(SearchBarRowHeight)
+                  .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 10.dp),
+              verticalAlignment = Alignment.CenterVertically,
+          ) {
+              SearchField(
+                  value = query,
+                  onValueChange = { query = it },
+                  onClear = { query = "" },
+                  onSearch = { submit() },
+                  searching = searching,
+                  onBack = { closeSearch() },
+                  onFocused = { searching = true },
+                  modifier = Modifier
+                      .weight(1f)
+                      .height(52.dp)
+                      .onGloballyPositioned { if (!searching && expand.value == 0f) barBounds = it.boundsInRoot() },
+              )
+              // While the bar is open it takes the whole row; the two buttons fold away and come back with it.
+              AnimatedVisibility(
+                  visible = !searching,
+                  enter = fadeIn() + expandHorizontally(),
+                  exit = fadeOut() + shrinkHorizontally(),
+              ) {
+                  // The icon shows the view you will switch TO: a grid while in list view, and vice versa.
+                  GlassIconButton(
+                      icon = if (isGrid) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
+                      contentDescription = if (isGrid) "Switch to list view" else "Switch to grid view",
+                      onClick = { container.appearancePrefs.setSearchGrid(!isGrid) },
+                      modifier = Modifier.padding(start = 10.dp),
+                  )
+              }
+              AnimatedVisibility(
+                  visible = !searching,
+                  enter = fadeIn() + expandHorizontally(),
+                  exit = fadeOut() + shrinkHorizontally(),
+              ) {
+                  GlassIconButton(
+                      icon = Icons.Filled.Tune,
+                      contentDescription = "Filters",
+                      badgeCount = filters.activeCount,
+                      onClick = {
+                          focusManager.clearFocus()
+                          showFilters = true
+                      },
+                      modifier = Modifier.padding(start = 10.dp),
+                  )
+              }
+          }
         }
     }
 
@@ -320,6 +440,9 @@ private fun SearchField(
     onValueChange: (String) -> Unit,
     onClear: () -> Unit,
     onSearch: () -> Unit,
+    searching: Boolean,
+    onBack: () -> Unit,
+    onFocused: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     BasicTextField(
@@ -330,21 +453,37 @@ private fun SearchField(
         cursorBrush = SolidColor(AnsuColors.Accent),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { onSearch() }),
-        modifier = modifier,
+        modifier = modifier.onFocusChanged { if (it.isFocused) onFocused() },
         decorationBox = { innerTextField ->
             FrostedGlassCard(modifier = Modifier.fillMaxSize(), shape = CircleShape, tintAlpha = 0.55f) {
                 Row(
-                    modifier = Modifier.fillMaxSize().padding(start = 16.dp, end = 6.dp),
+                    modifier = Modifier.fillMaxSize().padding(start = 8.dp, end = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Search,
-                        contentDescription = null,
-                        tint = AnsuColors.TextSecondary,
-                        modifier = Modifier.size(20.dp),
-                    )
+                    // The magnifier turns into a back arrow while the bar is open.
+                    Crossfade(targetState = searching, label = "searchLeadingIcon") { open ->
+                        if (open) {
+                            IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Close search",
+                                    tint = AnsuColors.TextPrimary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        } else {
+                            Box(modifier = Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Search,
+                                    contentDescription = null,
+                                    tint = AnsuColors.TextSecondary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                    }
                     Box(
-                        modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
+                        modifier = Modifier.weight(1f).padding(start = 2.dp, end = 10.dp),
                         contentAlignment = Alignment.CenterStart,
                     ) {
                         if (value.isEmpty()) {
@@ -371,6 +510,153 @@ private fun SearchField(
             }
         },
     )
+}
+
+/** The height of the bar row: 12dp above the 52dp bar and 10dp below it. */
+private val SearchBarRowHeight = 74.dp
+
+/** Clips whatever it is applied to to [rect] with rounded corners, so a full-size panel can be revealed from a small one. */
+private class RevealShape(private val rect: Rect, private val radius: Float) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
+        Outline.Rounded(RoundRect(rect, CornerRadius(radius)))
+}
+
+/**
+ * The dark panel that grows out of the search bar to the edges of the screen, with the search history inside.
+ * It is laid out at full size the whole time and only the clip grows (from the bar's rectangle and rounded corners
+ * to the whole area with square corners), so the list never reflows mid-animation; it fades in as the panel opens.
+ */
+@Composable
+private fun SearchPanel(
+    expand: () -> Float,
+    barBounds: () -> Rect,
+    areaBounds: () -> Rect,
+    history: List<String>,
+    filter: String,
+    bottomPadding: Dp,
+    onPick: (String) -> Unit,
+    onFill: (String) -> Unit,
+    onRemove: (String) -> Unit,
+    onClearAll: () -> Unit,
+) {
+    // While something is typed the history narrows to the matching entries.
+    val shown = if (filter.isEmpty()) history else history.filter { it.contains(filter, ignoreCase = true) }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                val p = expand()
+                val area = areaBounds()
+                val from = barBounds().translate(-area.topLeft)
+                val rect = Rect(
+                    left = lerp(from.left, 0f, p),
+                    top = lerp(from.top, 0f, p),
+                    right = lerp(from.right, size.width, p),
+                    bottom = lerp(from.bottom, size.height, p),
+                )
+                shape = RevealShape(rect, lerp(26.dp.toPx(), 0f, p))
+                clip = true
+            }
+            .drawBehind {
+                // Fully dark almost at once, so the see-through bar never shows a dark patch under it at the start.
+                drawRect(AnsuColors.Background.copy(alpha = (expand() * 8f).coerceAtMost(1f)))
+            }
+            // Taps on the empty part of the panel must not reach the results underneath.
+            .pointerInput(Unit) { detectTapGestures { } },
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+                .graphicsLayer {
+                    val p = expand()
+                    alpha = ((p - 0.25f) / 0.6f).coerceIn(0f, 1f)
+                    translationY = (1f - p) * 24.dp.toPx()
+                },
+            contentPadding = PaddingValues(top = SearchBarRowHeight + 4.dp, bottom = 12.dp + bottomPadding),
+        ) {
+            if (shown.isEmpty()) {
+                item(key = "empty") {
+                    Text(
+                        text = if (history.isEmpty()) "Your searches will show up here." else "No matching searches.",
+                        color = AnsuColors.TextTertiary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            } else {
+                item(key = "header") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Search history",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = AnsuColors.TextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (filter.isEmpty()) {
+                            TextButton(onClick = onClearAll) { Text("Clear all", color = AnsuColors.TextSecondary) }
+                        }
+                    }
+                }
+                items(shown, key = { it }) { entry ->
+                    SearchHistoryRow(
+                        text = entry,
+                        onPick = { onPick(entry) },
+                        onFill = { onFill(entry) },
+                        onRemove = { onRemove(entry) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One remembered search: tap to run it, the arrow to copy it into the bar for editing, the cross to forget it. */
+@Composable
+private fun SearchHistoryRow(text: String, onPick: () -> Unit, onFill: () -> Unit, onRemove: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onPick)
+            .padding(start = 20.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.History,
+            contentDescription = null,
+            tint = AnsuColors.TextTertiary,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = text,
+            color = AnsuColors.TextPrimary,
+            style = MaterialTheme.typography.bodyLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(horizontal = 16.dp, vertical = 14.dp),
+        )
+        IconButton(onClick = onRemove, modifier = Modifier.size(40.dp)) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = "Remove from history",
+                tint = AnsuColors.TextSecondary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        IconButton(onClick = onFill, modifier = Modifier.size(40.dp)) {
+            Icon(
+                imageVector = Icons.Filled.NorthWest,
+                contentDescription = "Use in search bar",
+                tint = AnsuColors.TextSecondary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
 }
 
 /** A rounded-square glass button; [badgeCount] above zero adds a small white count badge. */

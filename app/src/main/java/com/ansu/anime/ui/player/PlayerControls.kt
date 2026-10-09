@@ -3,6 +3,7 @@
 package com.ansu.anime.ui.player
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -174,6 +175,7 @@ fun PlayerControlsOverlay(
 
         TransportRow(
             isPlaying = state.isPlaying,
+            isBuffering = state.isBuffering,
             actions = actions,
             hasPrev = hasPrev,
             hasNext = hasNext,
@@ -249,8 +251,9 @@ private fun Modifier.growVertically(progress: () -> Float): Modifier = layout { 
 
 /** Shown instead of the controls while the player is locked: only a way to unlock. */
 @Composable
-fun LockedOverlay(onUnlock: () -> Unit, modifier: Modifier = Modifier) {
+fun LockedOverlay(onUnlock: () -> Unit, isBuffering: Boolean = false, modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxSize()) {
+        BufferingIndicator(buffering = isBuffering, modifier = Modifier.align(Alignment.Center))
         IconButton(onClick = onUnlock, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
             Icon(Icons.Rounded.Lock, contentDescription = "Unlock controls", tint = Color.White, modifier = Modifier.size(26.dp))
         }
@@ -260,6 +263,7 @@ fun LockedOverlay(onUnlock: () -> Unit, modifier: Modifier = Modifier) {
 @Composable
 private fun TransportRow(
     isPlaying: Boolean,
+    isBuffering: Boolean,
     actions: PlayerActions,
     hasPrev: Boolean,
     hasNext: Boolean,
@@ -273,7 +277,7 @@ private fun TransportRow(
     ) {
         EpisodeSkipButton(Icons.Rounded.SkipPrevious, "Previous episode", hasPrev, iconScale, actions.onPrevEpisode)
         SeekGlyph(forward = false, seconds = actions.seekSeconds, scale = iconScale, onClick = { actions.onSeekBy(-actions.seekSeconds * 1000L) })
-        PlayPauseGlyph(isPlaying = isPlaying, scale = iconScale, onClick = actions.onPlayPause)
+        PlayPauseGlyph(isPlaying = isPlaying, isBuffering = isBuffering, scale = iconScale, onClick = actions.onPlayPause)
         SeekGlyph(forward = true, seconds = actions.seekSeconds, scale = iconScale, onClick = { actions.onSeekBy(actions.seekSeconds * 1000L) })
         EpisodeSkipButton(Icons.Rounded.SkipNext, "Next episode", hasNext, iconScale, actions.onNextEpisode)
     }
@@ -310,21 +314,16 @@ private fun SeekGlyph(forward: Boolean, seconds: Int, scale: Float, onClick: () 
 
 /** Two rounded bars for pause (as in the reference), a rounded triangle for play. */
 @Composable
-private fun PlayPauseGlyph(isPlaying: Boolean, scale: Float, onClick: () -> Unit) {
+private fun PlayPauseGlyph(isPlaying: Boolean, isBuffering: Boolean, scale: Float, onClick: () -> Unit) {
+    val morph = rememberBufferingMorph(isBuffering)
     Box(
         modifier = Modifier.size((64 * scale).dp).clip(CircleShape).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        if (isPlaying) {
-            Row(horizontalArrangement = Arrangement.spacedBy((8 * scale).dp)) {
-                repeat(2) {
-                    Box(
-                        modifier = Modifier
-                            .size((13 * scale).dp, (40 * scale).dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(AnsuColors.Accent),
-                    )
-                }
+        // While it buffers the bars squeeze, curl into a spinner and spring back (see BufferingGlyph.kt).
+        if (isPlaying || isBuffering || morph.active) {
+            Canvas(modifier = Modifier.size((64 * scale).dp)) {
+                drawBufferingMorph(morph, scale, AnsuColors.Accent)
             }
         } else {
             Icon(Icons.Rounded.PlayArrow, contentDescription = "Play", tint = AnsuColors.Accent, modifier = Modifier.size((64 * scale).dp))
@@ -429,6 +428,7 @@ fun PlayerControlsCompact(
 
         TransportRow(
             isPlaying = state.isPlaying,
+            isBuffering = state.isBuffering,
             actions = actions,
             hasPrev = hasPrev,
             hasNext = hasNext,

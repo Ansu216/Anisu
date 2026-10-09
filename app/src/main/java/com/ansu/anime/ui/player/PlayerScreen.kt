@@ -283,7 +283,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 panelProgress = { panelProgress.value },
             ) {
                 if (locked) {
-                    LockedOverlay(onUnlock = { locked = false })
+                    LockedOverlay(onUnlock = { locked = false }, isBuffering = state.isBuffering)
                 } else {
                     PlayerControlsOverlay(
                         state = state,
@@ -321,7 +321,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     subtitleBgOpacity = subtitleBgOpacity,
                 ) {
                     if (locked) {
-                        LockedOverlay(onUnlock = { locked = false })
+                        LockedOverlay(onUnlock = { locked = false }, isBuffering = state.isBuffering)
                     } else {
                         PlayerControlsCompact(
                             state = state,
@@ -549,7 +549,7 @@ private fun PlayerSurface(
             PlayerGestureLayer(config = gestures, onTap = onTap, onSeekBy = onSeekBy)
 
             when {
-                state.isLoadingSources -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                state.isLoadingSources -> BufferingIndicator(buffering = true, modifier = Modifier.align(Alignment.Center))
                 state.error != null -> Text(
                     text = state.error.orEmpty(),
                     color = MaterialTheme.colorScheme.error,
@@ -572,8 +572,9 @@ private fun PlayerSurface(
                 }
             }
 
-            if (state.isBuffering && state.error == null && !state.isLoadingSources) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            // With the controls up, the play/pause button itself turns into the spinner instead.
+            if (!state.showControls && state.error == null && !state.isLoadingSources) {
+                BufferingIndicator(buffering = state.isBuffering, modifier = Modifier.align(Alignment.Center))
             }
         }
     }
