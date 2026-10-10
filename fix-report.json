@@ -1,0 +1,62 @@
+{
+  "type": "fix-zip",
+  "apkBuiltFromFix": true,
+  "commit": {
+    "sha": "40b83bbec87f33820b582a560f840b846aa17ce4",
+    "short": "40b83bb",
+    "message": "extract fix.zip and updated the app",
+    "author": {
+      "name": "github-actions[bot]",
+      "email": "41898282+github-actions[bot]@users.noreply.github.com"
+    },
+    "authoredAt": "2026-10-09T10:11:51Z",
+    "committedBy": {
+      "name": "github-actions[bot]",
+      "email": "41898282+github-actions[bot]@users.noreply.github.com"
+    },
+    "committedAt": "2026-10-09T10:11:51Z",
+    "url": "https://github.com/Ansu216/Anisu/commit/40b83bbec87f33820b582a560f840b846aa17ce4"
+  },
+  "fixZipCommit": {
+    "sha": "eaafe692a9a9525bf11383926cf5ecae2c150670",
+    "short": "eaafe69",
+    "message": "Maygodblastyou",
+    "author": {
+      "name": "Ansuman sahu",
+      "email": "ansumansahu216@gmail.com"
+    },
+    "authoredAt": "2026-10-09T15:41:40+05:30",
+    "committedBy": {
+      "name": "GitHub",
+      "email": "noreply@github.com"
+    },
+    "committedAt": "2026-10-09T15:41:40+05:30",
+    "url": "https://github.com/Ansu216/Anisu/commit/eaafe692a9a9525bf11383926cf5ecae2c150670"
+  },
+  "changes": {
+    "fileCount": 1,
+    "additions": 0,
+    "deletions": 2,
+    "files": [
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/home/HomeScreen.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 0,
+        "deletions": 2
+      }
+    ]
+  },
+  "build": {
+    "runId": "38066091611",
+    "runUrl": "https://github.com/Ansu216/Anisu/actions/runs/38066091611",
+    "workflow": "apk-nightly.yml",
+    "versionName": "2026.10.10.1603",
+    "versionCode": "2026101016",
+    "variant": "debug",
+    "apk": [
+      "Ansu-nightly-debug.apk"
+    ],
+    "publishedAt": "2026-10-10T16:03:20Z"
+  }
+}
