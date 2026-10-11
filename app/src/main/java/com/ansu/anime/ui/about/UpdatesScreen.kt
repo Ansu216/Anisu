@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -49,7 +50,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,11 +71,10 @@ import com.ansu.anime.ui.theme.AnsuColors
 import kotlin.math.roundToInt
 
 /**
- * Updates: the app's own store page. Each concern (installed build, channel, automatic checks and the
- * current status) is its own card, so the page reads top to bottom instead of as one long list. It shows
- * the installed build, lets the user pick a channel (stable Releases or the hourly Nightly branch),
- * checks what the project publishes on GitHub and downloads + installs the APK in one tap. The download
- * is written to a `.part` file first and only becomes an installable APK when it completes.
+ * Updates: the app's store page, rebuilt from scratch. A header card leads with the installed build and
+ * the channel, then the channel picker, the automatic-check options and the live status each get their
+ * own black-glass card. It shows what the project publishes on GitHub and downloads + installs the APK
+ * in one tap, through a resumable `.part` file that only becomes installable when it completes.
  */
 @Composable
 fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
@@ -80,14 +82,13 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
     val channel by container.updateManager.prefs.channel.collectAsStateWithLifecycle()
     val autoCheck by container.updateManager.prefs.autoCheck.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    // Result of the last "send me a test notification" tap; nothing until it is pressed.
     var testResult by remember { mutableStateOf<String?>(null) }
-    // Only when the system is the reason nothing was posted is there a setting to go and change.
     var offerNotificationSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { container.updateManager.check() }
 
     Scaffold(
+        containerColor = AnsuColors.Background,
         topBar = {
             TopAppBar(
                 title = { Text("Updates") },
@@ -115,7 +116,7 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            SectionCard("Installed build") { InstalledVersionRow() }
+            InstalledHeader()
 
             SectionCard("Channel") {
                 ChannelSelector(channel = channel, onChannelChange = { container.updateManager.prefs.setChannel(it) })
@@ -127,13 +128,12 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "Look for a new build on open and every 12 hours",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = AnsuColors.TextSecondary,
-                        )
-                    }
+                    Text(
+                        "Look for a new build on open and every 12 hours",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AnsuColors.TextSecondary,
+                        modifier = Modifier.weight(1f),
+                    )
                     Switch(
                         checked = autoCheck,
                         onCheckedChange = { container.updateManager.setAutoCheck(it) },
@@ -182,7 +182,42 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
     }
 }
 
-/** A frosted card with a heading, so every block on the page reads as its own little section. */
+/** The header card: what is installed, which channel it came from, over a soft accent glow. */
+@Composable
+private fun InstalledHeader() {
+    val channel = BuildConfig.RELEASE_CHANNEL.replaceFirstChar { it.uppercase() }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(AnsuColors.Accent.copy(alpha = 0.20f), AnsuColors.BackgroundElevated),
+                ),
+            )
+            .padding(20.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.SystemUpdate, contentDescription = null, tint = AnsuColors.TextPrimary, modifier = Modifier.size(34.dp))
+            Column(modifier = Modifier.padding(start = 16.dp).weight(1f)) {
+                Text(
+                    text = "Anisu ${BuildConfig.VERSION_NAME}",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = AnsuColors.TextPrimary,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+                Text(
+                    text = "Build ${BuildConfig.VERSION_CODE} · $channel channel",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = AnsuColors.TextSecondary,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+    }
+}
+
+/** A black-glass card with a heading, so every block on the page reads as its own little section. */
 @Composable
 private fun SectionCard(title: String, content: @Composable () -> Unit) {
     FrostedGlassCard(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, tintAlpha = 0.4f) {
@@ -190,23 +225,12 @@ private fun SectionCard(title: String, content: @Composable () -> Unit) {
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleSmall,
-                color = AnsuColors.TextPrimary,
-                fontWeight = FontWeight.Bold,
-            )
+            Text(title, style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary, fontWeight = FontWeight.Bold)
             content()
         }
     }
 }
 
-/**
- * A real system notification on demand, so the user can check on their own device that Anisu alerts
- * arrive without waiting for a new build to be published. When nothing is posted, the reason the
- * system gave is shown, together with a way straight into the setting that would fix it — a missing
- * permission or a switched-off notification channel cannot be fixed from inside the app.
- */
 @Composable
 private fun TestNotificationRow(result: String?, onSend: () -> Unit, onOpenSettings: (() -> Unit)?) {
     Row(
@@ -227,11 +251,7 @@ private fun TestNotificationRow(result: String?, onSend: () -> Unit, onOpenSetti
                     contentPadding = PaddingValues(0.dp),
                     modifier = Modifier.padding(top = 2.dp),
                 ) {
-                    Text(
-                        text = "Open Anisu's notification settings",
-                        color = AnsuColors.Accent,
-                        fontWeight = FontWeight.Bold,
-                    )
+                    Text("Open Anisu's notification settings", color = AnsuColors.Accent, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -242,42 +262,14 @@ private fun TestNotificationRow(result: String?, onSend: () -> Unit, onOpenSetti
 }
 
 /**
- * Opens Ansu's own notification screen, which is where the runtime permission's switch and the
- * "App updates" channel both live. `ACTION_APP_NOTIFICATION_SETTINGS` exists since Android 8, which
- * is this app's `minSdk`, so no older fallback is needed.
+ * Opens Ansu's own notification screen, where the runtime permission's switch and the "App updates"
+ * channel both live. `ACTION_APP_NOTIFICATION_SETTINGS` exists since Android 8, this app's `minSdk`.
  */
 private fun openNotificationSettings(context: Context) {
     val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
         .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     runCatching { context.startActivity(intent) }
-}
-
-@Composable
-private fun InstalledVersionRow() {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = BuildConfig.VERSION_NAME,
-                style = MaterialTheme.typography.titleMedium,
-                color = AnsuColors.TextPrimary,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "Build ${BuildConfig.VERSION_CODE} · ${BuildConfig.RELEASE_CHANNEL} channel",
-                style = MaterialTheme.typography.labelSmall,
-                color = AnsuColors.TextTertiary,
-            )
-        }
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
-                .background(AnsuColors.AccentSoft)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-        ) {
-            Text("Anisu", color = AnsuColors.TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-        }
-    }
 }
 
 @Composable
@@ -355,11 +347,7 @@ private fun StatusSection(state: UpdateState, onCheck: () -> Unit, onInstall: ()
                 text = "Anisu is up to date (${result.latestVersionName}).",
                 tint = AnsuColors.ScoreGreen,
             )
-            is UpdateCheckResult.Failed -> StatusLine(
-                icon = Icons.Filled.Warning,
-                text = result.message,
-                tint = AnsuColors.Error,
-            )
+            is UpdateCheckResult.Failed -> StatusLine(icon = Icons.Filled.Warning, text = result.message, tint = AnsuColors.Error)
             is UpdateCheckResult.Available -> AvailableUpdateCard(
                 update = result.update,
                 state = state,
@@ -385,12 +373,7 @@ private fun StatusSection(state: UpdateState, onCheck: () -> Unit, onInstall: ()
 }
 
 @Composable
-private fun AvailableUpdateCard(
-    update: AvailableUpdate,
-    state: UpdateState,
-    onInstall: () -> Unit,
-    onRecheck: () -> Unit,
-) {
+private fun AvailableUpdateCard(update: AvailableUpdate, state: UpdateState, onInstall: () -> Unit, onRecheck: () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = "Anisu ${update.versionName} is available",
@@ -449,7 +432,7 @@ private fun AvailableUpdateCard(
 }
 
 @Composable
-private fun StatusLine(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, tint: Color) {
+private fun StatusLine(icon: ImageVector, text: String, tint: Color) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
         Text(

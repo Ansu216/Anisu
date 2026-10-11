@@ -10,7 +10,9 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +30,7 @@ import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -46,9 +49,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.di.AppContainer
@@ -58,9 +64,10 @@ import java.io.File
 import kotlinx.coroutines.delay
 
 /**
- * Settings → System. It holds the diagnostics tooling — exporting every crash, playback, click,
- * navigation and network event as a single text report the user can share **or** save to their own
- * storage — plus a full backup and restore of the app's settings and library as an `.anisu` file.
+ * Settings → System, rebuilt from scratch: a header, then one black-glass card for the diagnostics
+ * tooling and one for backup and restore. Diagnostics can be shared or saved to the device; the
+ * `.anisu` archive holds every setting and the library, and restoring one relaunches the app so
+ * everything applies at once.
  */
 @Composable
 fun SystemScreen(container: AppContainer, navController: NavHostController) {
@@ -69,7 +76,7 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
     var refresh by remember { mutableIntStateOf(0) }
     var backupMessage by remember { mutableStateOf<String?>(null) }
     // A restored backup has to be re-read from disk, and both the SharedPreferences and the Room
-    // database are cached in memory for the life of the process, so the app relaunches itself.
+    // database are cached for the life of the process, so the app relaunches itself.
     var restartPending by remember { mutableStateOf(false) }
     LaunchedEffect(restartPending) {
         if (restartPending) {
@@ -105,16 +112,12 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
             return@rememberLauncherForActivityResult
         }
         val saved = writeFileTo(context, uri, file)
-        backupMessage = if (saved) {
-            "Backup saved (${file.length() / 1024} KB)."
-        } else {
-            "Could not save the backup."
-        }
+        backupMessage = if (saved) "Backup saved (${file.length() / 1024} KB)." else "Could not save the backup."
         if (saved) diagnostics.log(LogCategory.CLICK, "Settings backup saved (${file.length()} bytes)")
         refresh++
     }
 
-    // Restore an .anisu archive.
+    // Restore an .anisu archive, then relaunch so every setting is re-read.
     val restoreLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
@@ -137,6 +140,7 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
     }
 
     Scaffold(
+        containerColor = AnsuColors.Background,
         topBar = {
             TopAppBar(
                 title = { Text("System") },
@@ -156,123 +160,143 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Diagnostics", style = MaterialTheme.typography.titleMedium, color = AnsuColors.TextPrimary)
-            Text(
-                text = "Anisu keeps a local log of crashes, playback, taps, navigation and network errors. " +
-                    "Nothing is ever uploaded: the report is written on this device, and you choose whether " +
-                    "to share it or save it yourself.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = AnsuColors.TextSecondary,
-            )
-
-            DiagnosticsCard(
+            HeaderCard(
                 sessionCount = diagnostics.sessionEntries().size,
                 sizeBytes = diagnostics.logSizeBytes(),
                 lastCrashAt = diagnostics.lastCrashAt,
                 refreshKey = refresh,
             )
 
-            Button(
-                onClick = {
-                    val file = diagnostics.buildExportFile()
-                    if (file == null) {
-                        toast(context, "Could not build the diagnostics report")
-                        return@Button
-                    }
-                    val intent = diagnostics.exportIntent(file)
-                    if (intent == null) {
-                        toast(context, "No app available to share the report")
-                        return@Button
-                    }
-                    diagnostics.log(LogCategory.CLICK, "Export logs shared (${file.length()} bytes)")
-                    runCatching { context.startActivity(android.content.Intent.createChooser(intent, "Export Anisu logs")) }
-                    refresh++
-                },
-                shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text("Share logs", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
+            SectionCard("Diagnostics") {
+                Text(
+                    text = "Anisu keeps a local log of crashes, playback, taps, navigation and network " +
+                        "errors. Nothing is ever uploaded: the report is written on this device, and you " +
+                        "choose whether to share it or save it yourself.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AnsuColors.TextSecondary,
+                )
+                Button(
+                    onClick = {
+                        val file = diagnostics.buildExportFile()
+                        if (file == null) {
+                            toast(context, "Could not build the diagnostics report")
+                            return@Button
+                        }
+                        val intent = diagnostics.exportIntent(file)
+                        if (intent == null) {
+                            toast(context, "No app available to share the report")
+                            return@Button
+                        }
+                        diagnostics.log(LogCategory.CLICK, "Export logs shared (${file.length()} bytes)")
+                        runCatching { context.startActivity(Intent.createChooser(intent, "Export Anisu logs")) }
+                        refresh++
+                    },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text("Share logs", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
+                }
+                OutlinedButton(
+                    onClick = { saveLogsLauncher.launch("Anisu-diagnostics-${timestampName()}.txt") },
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text("Save logs to device", modifier = Modifier.padding(start = 8.dp))
+                }
+                OutlinedButton(
+                    onClick = {
+                        container.diagnostics.clear()
+                        container.diagnostics.log(LogCategory.CLICK, "Diagnostics log cleared by the user")
+                        refresh++
+                    },
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text("Clear logs", modifier = Modifier.padding(start = 8.dp))
+                }
             }
 
-            OutlinedButton(
-                onClick = { saveLogsLauncher.launch("Anisu-diagnostics-${timestampName()}.txt") },
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text("Save logs to device", modifier = Modifier.padding(start = 8.dp))
-            }
-
-            OutlinedButton(
-                onClick = {
-                    container.diagnostics.clear()
-                    container.diagnostics.log(LogCategory.CLICK, "Diagnostics log cleared by the user")
-                    refresh++
-                },
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text("Clear logs", modifier = Modifier.padding(start = 8.dp))
-            }
-
-            Text("Backup", style = MaterialTheme.typography.titleMedium, color = AnsuColors.TextPrimary, modifier = Modifier.padding(top = 8.dp))
-            Text(
-                text = "Back up your settings, your watch progress and your local library into a single " +
-                    ".anisu file you keep yourself. Restoring it brings everything back and Anisu restarts " +
-                    "itself to apply it; the AniList sign-in is the only thing left out, because it is tied " +
-                    "to this device.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = AnsuColors.TextSecondary,
-            )
-
-            Button(
-                onClick = { backupLauncher.launch("Anisu-backup-${timestampName()}.anisu") },
-                shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Filled.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text("Create backup (.anisu)", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
-            }
-
-            OutlinedButton(
-                onClick = { restoreLauncher.launch(arrayOf("*/*")) },
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Filled.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text("Restore from backup", modifier = Modifier.padding(start = 8.dp))
-            }
-
-            backupMessage?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = AnsuColors.TextSecondary)
+            SectionCard("Backup & restore") {
+                Text(
+                    text = "Back up your settings, your watch progress and your local library into a single " +
+                        ".anisu file you keep yourself. Restoring it brings everything back and Anisu restarts " +
+                        "itself to apply it; the AniList sign-in is the only thing left out, because it is tied " +
+                        "to this device.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AnsuColors.TextSecondary,
+                )
+                Button(
+                    onClick = { backupLauncher.launch("Anisu-backup-${timestampName()}.anisu") },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Filled.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text("Create backup (.anisu)", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
+                }
+                OutlinedButton(
+                    onClick = { restoreLauncher.launch(arrayOf("*/*")) },
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Filled.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text("Restore from backup", modifier = Modifier.padding(start = 8.dp))
+                }
+                backupMessage?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = AnsuColors.TextSecondary)
+                }
             }
         }
     }
 }
 
+/** Header card: what the diagnostics log currently holds, over a soft accent glow. */
 @Composable
-private fun DiagnosticsCard(sessionCount: Int, sizeBytes: Long, lastCrashAt: Long, refreshKey: Int) {
-    // refreshKey is read so the card recomposes after an export/clear without a full screen reload.
+private fun HeaderCard(sessionCount: Int, sizeBytes: Long, lastCrashAt: Long, refreshKey: Int) {
     val stamp = remember(refreshKey) { System.currentTimeMillis() }
-    FrostedGlassCard(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, tintAlpha = 0.4f) {
-        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(AnsuColors.Accent.copy(alpha = 0.18f), AnsuColors.BackgroundElevated),
+                ),
+            )
+            .padding(20.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.BugReport, contentDescription = null, tint = AnsuColors.TextSecondary, modifier = Modifier.size(18.dp))
+                Icon(Icons.Filled.Shield, contentDescription = null, tint = AnsuColors.TextPrimary, modifier = Modifier.size(28.dp))
                 Text(
-                    "Log status",
-                    style = MaterialTheme.typography.titleSmall,
+                    "Private by design",
+                    style = MaterialTheme.typography.titleLarge,
                     color = AnsuColors.TextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 8.dp),
+                    fontWeight = FontWeight.ExtraBold,
+                    modifier = Modifier.padding(start = 12.dp),
                 )
             }
             InfoLine("Entries this session", sessionCount.toString())
             InfoLine("On-disk log size", formatBytes(sizeBytes))
             InfoLine("Last captured crash", if (lastCrashAt > 0L) relativeStamp(lastCrashAt, stamp) else "None")
+        }
+    }
+}
+
+/** A black-glass card with a heading. */
+@Composable
+private fun SectionCard(title: String, content: @Composable () -> Unit) {
+    FrostedGlassCard(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, tintAlpha = 0.4f) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary, fontWeight = FontWeight.Bold)
+            content()
         }
     }
 }

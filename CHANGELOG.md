@@ -128,6 +128,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **System, Updates and About are rebuilt from scratch with a leading header and grouped cards.** Each now opens with a header that leads with the identity or the installed build over a soft accent glow, then puts the diagnostics, the updater and the links in their own black-glass cards, so the page reads top to bottom instead of as one long list.
+
 - **The bottom bar's selection pill no longer stutters when you change tab.** The bar read the pill's spring values while it composed itself, so the whole bar rebuilt on every animation frame; those values are now read only while drawing, which keeps the move smooth.
 
 - **Playback now holds a big window in RAM, the way Netflix does.** Up to about five minutes ahead and five behind are kept in memory, bounded by a memory cap, so seeking back and resuming are instant instead of re-loading from the source.

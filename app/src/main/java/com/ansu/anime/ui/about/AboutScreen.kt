@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -63,9 +64,9 @@ private const val DEVELOPER_HANDLE = "Ansu216"
 private const val REPO_URL = "https://github.com/Ansu216/Anisu"
 
 /**
- * About: who Ansu is, what build is installed, and the ways out of the app — the updater, the people
- * behind it, the repository and the issue tracker. Rebuilt in the app's dark glass language, split from
- * the updater so each screen does one thing well.
+ * About: a big identity header, then grouped black-glass cards — quick actions, the lead developer,
+ * the ways out of the app and the credits. Rebuilt from scratch so the header leads and everything
+ * else is grouped by what it is, rather than listed flat.
  */
 @Composable
 fun AboutScreen(container: AppContainer, navController: NavHostController) {
@@ -74,6 +75,7 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
     val context = LocalContext.current
 
     Scaffold(
+        containerColor = AnsuColors.Background,
         topBar = {
             TopAppBar(
                 title = { Text("About") },
@@ -93,18 +95,16 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            IdentityCard()
+            HeroCard()
 
+            Text("Get started", style = MaterialTheme.typography.titleMedium, color = AnsuColors.TextPrimary)
             ActionRow(
                 icon = Icons.Filled.SystemUpdate,
                 title = "Updates",
                 subtitle = if (updateAvailable) "A new build is ready to install" else "Channel, automatic checks and install",
                 badge = updateAvailable,
                 onClick = {
-                    container.diagnostics.log(
-                        com.ansu.anime.core.diagnostics.LogCategory.CLICK,
-                        "About → Updates opened",
-                    )
+                    container.diagnostics.log(com.ansu.anime.core.diagnostics.LogCategory.CLICK, "About → Updates opened")
                     navController.navigate(Dest.UPDATES)
                 },
             )
@@ -113,28 +113,27 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                 title = "Contributors",
                 subtitle = "The people who build and test Anisu",
                 onClick = {
-                    container.diagnostics.log(
-                        com.ansu.anime.core.diagnostics.LogCategory.CLICK,
-                        "About → Contributors opened",
-                    )
+                    container.diagnostics.log(com.ansu.anime.core.diagnostics.LogCategory.CLICK, "About → Contributors opened")
                     navController.navigate(Dest.CONTRIBUTORS)
                 },
             )
 
-            SectionTitle("Lead developer")
+            Text("The developer", style = MaterialTheme.typography.titleMedium, color = AnsuColors.TextPrimary)
             DeveloperCard()
 
-            SectionTitle("Links")
-            LinkRow("GitHub profile", "https://github.com/$DEVELOPER_HANDLE", context)
-            LinkRow("Repository", REPO_URL, context)
-            LinkRow("Report an issue", "$REPO_URL/issues", context)
-            LinkRow("Releases", "$REPO_URL/releases", context)
+            Text("Links", style = MaterialTheme.typography.titleMedium, color = AnsuColors.TextPrimary)
+            GroupCard {
+                LinkRow("GitHub profile", "https://github.com/$DEVELOPER_HANDLE", context)
+                LinkRow("Repository", REPO_URL, context)
+                LinkRow("Report an issue", "$REPO_URL/issues", context)
+                LinkRow("Releases", "$REPO_URL/releases", context)
+            }
 
-            SectionTitle("Credits")
+            Text("Credits", style = MaterialTheme.typography.titleMedium, color = AnsuColors.TextPrimary)
             Text(
                 text = "Anisu aggregates metadata from the public AniList API and plays media through " +
-                    "third-party sources and extensions. It is not affiliated with, " +
-                    "endorsed by or sponsored by AniList or by any provider you connect.",
+                    "third-party sources and extensions. It is not affiliated with, endorsed by or " +
+                    "sponsored by AniList or by any provider you connect.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = AnsuColors.TextSecondary,
             )
@@ -147,20 +146,27 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
     }
 }
 
+/** The identity header: logo, name, tagline and the installed build, over a soft accent glow. */
 @Composable
-private fun IdentityCard() {
-    FrostedGlassCard(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, tintAlpha = 0.4f) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+private fun HeroCard() {
+    val channel = BuildConfig.RELEASE_CHANNEL.replaceFirstChar { it.uppercase() }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(28.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(AnsuColors.Accent.copy(alpha = 0.22f), AnsuColors.BackgroundElevated),
+                ),
+            )
+            .padding(24.dp),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
             Box(
-                modifier = Modifier.size(88.dp).clip(CircleShape).background(AnsuColors.BackgroundElevated),
+                modifier = Modifier.size(96.dp).clip(RoundedCornerShape(24.dp)).background(AnsuColors.Background),
                 contentAlignment = Alignment.Center,
             ) {
-                // The launcher logo is a full-colour raster, so it is drawn with Image and
-                // never tinted: `Icon` applies a single-colour tint over the whole bitmap,
-                // which turned the opaque square into a solid block (the "white square").
+                // A full-colour raster, so drawn with Image (a tint would paint it a single colour).
                 Image(
                     painter = painterResource(R.drawable.ic_launcher_foreground),
                     contentDescription = stringResource(R.string.app_name),
@@ -171,30 +177,42 @@ private fun IdentityCard() {
             Text(
                 text = stringResource(R.string.app_name),
                 color = AnsuColors.TextPrimary,
-                fontSize = 26.sp,
+                fontSize = 30.sp,
                 fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.padding(top = 12.dp),
+                modifier = Modifier.padding(top = 14.dp),
             )
             Text(
                 text = stringResource(R.string.app_tagline),
                 style = MaterialTheme.typography.bodyMedium,
                 color = AnsuColors.TextSecondary,
             )
-            Box(
-                modifier = Modifier
-                    .padding(top = 12.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(AnsuColors.AccentSoft)
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
+            Row(
+                modifier = Modifier.padding(top = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(
-                    text = "Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = AnsuColors.TextPrimary,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                Pill("Version ${BuildConfig.VERSION_NAME}")
+                Pill("${BuildConfig.VERSION_CODE} · $channel")
             }
         }
+    }
+}
+
+@Composable
+private fun Pill(text: String) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(AnsuColors.AccentSoft)
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+    ) {
+        Text(text, style = MaterialTheme.typography.labelSmall, color = AnsuColors.TextPrimary, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun GroupCard(content: @Composable () -> Unit) {
+    FrostedGlassCard(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, tintAlpha = 0.4f) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) { content() }
     }
 }
 
@@ -277,11 +295,6 @@ private fun LinkRow(title: String, url: String, context: Context) {
         }
         Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = AnsuColors.TextTertiary)
     }
-}
-
-@Composable
-private fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleMedium, color = AnsuColors.TextPrimary)
 }
 
 private fun openUrl(context: Context, url: String) {
