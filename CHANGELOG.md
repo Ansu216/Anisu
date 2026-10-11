@@ -55,6 +55,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The video no longer keeps playing after you leave the app.** Pressing Home, switching apps or locking the screen left the stream playing in the background. The player now pauses when the app stops being visible; the only exception is the picture-in-picture window, which is visible. It stays paused when you come back.
 
+- **The nightly APK is built and published again.** The `plan` job of `apk-nightly.yml` read `version.txt` without checking the repository out first, so every run since the version file landed died on `version.txt: No such file or directory` before a single APK was built. The job now checks the tree out, and it reads the version, the version code and the channel out of `version.txt` instead of computing them from the clock.
+
+- **Installing a new APK no longer fails with "invalid package".** Two causes: the version code could go *down* (a locally built APK carried `1` and a tagged release carried the workflow run number, both far below the date-coded `2026101113` the nightly workflow published, and Android refuses to install over a higher code), and a download that was cut off mid-transfer was still renamed to `.apk` and handed to the installer. The version code now comes from `version.txt` and can only ever increase — the build fails outright if it drops below `2026101113` — the release workflow uses that same counter as the nightlies, and an incomplete download is reported and left resumable instead of installed. **Constraint:** a device that already carries a build with one of the old date-based codes needs this build or a later one to update again; from here the code never decreases.
+
+- **The English title logo, the TMDB banner and the TMDB poster now load.** ani.zip reports the TMDB id as a *string* (`"37854"`), and the lookup read it as a number, so it was null for every show and TMDB was never asked at all: no English title logo, no textless backdrop and no TMDB poster ever appeared. The id is now read as text too, and the details hero, the English title lettering and the home carousel pick their TMDB art up again.
+
+- **The details title is never missing.** The plain title was drawn only once the artwork lookup had finished, so a title logo that was slow, stalled or rejected left the hero with no title at all. The title is now drawn whenever no logo is on screen, and a logo that does arrive replaces it.
+
+### Changed
+
+- **The four tabs now slide with the movement instead of against it.** Going right (Home → Search → Schedule → My Space) the new screen comes in from the left and the old one leaves to the right, and going left everything mirrors, so the page follows the direction of the swipe or of the dragged pill. A tab change pushes *or* pops (the bar navigates with `popUpTo`), and the two used opposite offsets, so the same move could animate in two different directions; one rule now covers both, including the leaving screen on a pop, which used to fade out without moving at all.
+
+- **The version, the version code and the channel all come from `version.txt` now.** The file carries three value lines in the same shape as vivi-music-de — line 1 version, line 2 version code, line 3 channel, with `#` lines ignored — and `app/build.gradle.kts`, `apk-nightly.yml` and `release-apk.yml` all read it as their single source: the channel decides how a build is named (`nightly` gives `<version>-nightly-<YYYY.MM.DD.HHMM>`, anything else the plain `<version>`), and the version code is one monotonic counter shared by both channels instead of being derived from the clock or the run number. The base version is 0.1.1. The build's own channel is shown on the Updates screen next to its version code.
+
 ### Added
 
 - **Picture in picture, with a switch in Settings → Player and streaming.** With the switch on (the default), pressing Home or using the gesture while an episode is playing shrinks the video into a floating window that keeps playing; the controls and panels are hidden there, and the window has its own play/pause button. Paused videos do not enter it.

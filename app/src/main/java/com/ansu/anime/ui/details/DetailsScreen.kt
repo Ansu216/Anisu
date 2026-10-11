@@ -47,10 +47,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -157,9 +155,6 @@ fun DetailsScreen(
                 // movies and specials use their own banner/cover so they no longer all look the same.
                 // The title comes from AniList's details in the chosen language once they have loaded.
                 val shownTitle = details?.title ?: anime?.title.orEmpty()
-                // The text title must never wait on a slow or failed artwork lookup: with no TMDB key there is
-                // nothing to wait for in English mode, and otherwise the wait is capped at a few seconds.
-                val lookupTimedOut by produceState(false) { delay(4000); value = true }
                 DetailsHero(
                     title = shownTitle,
                     imageUrl = pickHeroImage(
@@ -175,8 +170,6 @@ fun DetailsScreen(
                         artwork = state.artwork,
                     ),
                     logoUrl = state.artwork.logoFor(titleLanguage),
-                    lookupDone = state.artworkLoaded || lookupTimedOut ||
-                        (titleLanguage == TitleLanguage.ENGLISH && com.ansu.anime.BuildConfig.TMDB_API_KEY.isBlank()),
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -396,7 +389,7 @@ fun DetailsScreen(
  * one exists and plain text otherwise.
  */
 @Composable
-private fun DetailsHero(title: String, imageUrl: String?, logoUrl: String?, lookupDone: Boolean, onBack: () -> Unit) {
+private fun DetailsHero(title: String, imageUrl: String?, logoUrl: String?, onBack: () -> Unit) {
     // Taller than the art's 16:9 so the fade has room; the banner melts into the page like the home hero.
     Box(modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f)) {
         AsyncImage(
@@ -439,7 +432,6 @@ private fun DetailsHero(title: String, imageUrl: String?, logoUrl: String?, look
         TitleLogo(
             title = title,
             logoUrl = logoUrl,
-            lookupDone = lookupDone,
             alignment = Alignment.CenterStart,
             textAlign = TextAlign.Start,
             fontSize = 24.sp,

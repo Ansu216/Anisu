@@ -1,3 +1,7 @@
+import java.time.LocalDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -6,18 +10,46 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-// version.txt in the repository root is the single source of truth for the base version. The
-// command line / CI can still override it, e.g.
-//   ./gradlew assembleRelease -PversionCode=42 -PversionName=1.2.3
-// A nightly build passes -PversionName=<base>-nightly-<stamp> (see .github/workflows/apk-nightly.yml).
-val baseVersion = rootProject.file("version.txt")
-    .takeIf { it.exists() }
-    ?.readText()
-    ?.trim()
-    ?.ifBlank { null }
-    ?: "0.1.0"
-val ciVersionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
-val ciVersionName = (project.findProperty("versionName") as String?) ?: baseVersion
+// version.txt in the repository root is the single source of truth for the version, the version
+// code and the channel (see CLAUDE.md section 7). It carries three value lines and "#" comments:
+//
+//   line 1 = version    line 2 = version code    line 3 = channel
+//
+// The channel decides how the build is named: a `nightly` build is
+// `<version>-nightly-<stamp>`, anything else is the plain `<version>`. CI overrides all of it on
+// the command line, so the two legs of one run carry the same stamp, e.g.
+//   ./gradlew assembleRelease -PversionCode=42 -PversionName=1.2.3-nightly-2026.10.11.0930
+val versionValues = rootProject.file("version.txt")
+    .takeIf { it.isFile }
+    ?.readLines()
+    ?.map { it.trim() }
+    ?.filter { it.isNotEmpty() && !it.startsWith("#") }
+    .orEmpty()
+
+fun versionValue(index: Int, name: String): String =
+    versionValues.getOrNull(index)?.takeIf { it.isNotBlank() }
+        ?: error("version.txt must carry three value lines ($name is missing): version, version code, channel")
+
+val baseVersion = versionValue(0, "version")
+val baseVersionCode = versionValue(1, "version code").toIntOrNull()
+    ?: error("version.txt line 2 (version code) is not an integer: '${versionValues.getOrNull(1)}'")
+val baseChannel = versionValue(2, "channel").lowercase()
+
+// The install is refused as an "invalid package" when the APK's version code is lower than the
+// installed one, and the earlier workflows published date-based codes up to 2026101113. Failing
+// here is deliberate: lowering it silently breaks every device that already has the app.
+require(baseVersionCode > 2026101113) {
+    "version.txt line 2 (version code) is $baseVersionCode, but it has to stay above 2026101113 - " +
+        "Android refuses to install an APK over one that carries a higher version code."
+}
+
+// A local build stamps itself; CI passes -PversionName so every leg of a run shares one stamp.
+val localStamp = LocalDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyy.MM.dd.HHmm"))
+val channel = (project.findProperty("channel") as String?)?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+    ?: baseChannel
+val ciVersionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: baseVersionCode
+val ciVersionName = (project.findProperty("versionName") as String?)
+    ?: if (channel == "nightly") "$baseVersion-nightly-$localStamp" else baseVersion
 
 // Your AniList client id (https://anilist.co/settings/developer). Set it without editing
 // this file via gradle.properties / local command line: -PANILIST_CLIENT_ID=12345
@@ -44,6 +76,8 @@ android {
         buildConfigField("String", "ANILIST_CLIENT_ID", "\"$aniListClientId\"")
         buildConfigField("String", "TMDB_API_KEY", "\"$tmdbApiKey\"")
         buildConfigField("String", "ANILIST_REDIRECT_URI", "\"ansu://anilist-auth\"")
+        // The channel from version.txt, so the running build can say which channel it came from.
+        buildConfigField("String", "RELEASE_CHANNEL", "\"$channel\"")
     }
 
     // A keystore is committed at keystore/anisu.jks so that local builds and CI

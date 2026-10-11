@@ -264,7 +264,7 @@ private fun InstalledVersionRow() {
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Build ${BuildConfig.VERSION_CODE}",
+                text = "Build ${BuildConfig.VERSION_CODE} · ${BuildConfig.RELEASE_CHANNEL} channel",
                 style = MaterialTheme.typography.labelSmall,
                 color = AnsuColors.TextTertiary,
             )

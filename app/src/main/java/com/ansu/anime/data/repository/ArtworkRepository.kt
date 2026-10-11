@@ -278,7 +278,11 @@ class ArtworkRepository(
         }
 
         val mappings = json.parseToJsonElement(text).jsonObject["mappings"] as? JsonObject
-        val tmdbId = (mappings?.get("themoviedb_id") as? JsonPrimitive)?.intOrNull
+        // ani.zip reports the TMDB id as a *string* ("37854"), not as a number. Reading it with
+        // `intOrNull` alone therefore answered null for every show, so TMDB was never asked at all
+        // and neither the English title logo nor the TMDB backdrop/poster ever appeared.
+        val tmdbId = (mappings?.get("themoviedb_id") as? JsonPrimitive)
+            ?.let { it.intOrNull ?: it.contentOrNull?.toIntOrNull() }
         val isMovie = (mappings?.get("type") as? JsonPrimitive)?.contentOrNull.equals("MOVIE", ignoreCase = true)
 
         AnimeArtwork(

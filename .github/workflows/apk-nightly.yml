@@ -62,9 +62,16 @@ jobs:
       base_version: ${{ steps.stamp.outputs.base_version }}
       version_name: ${{ steps.stamp.outputs.version_name }}
       version_code: ${{ steps.stamp.outputs.version_code }}
+      channel: ${{ steps.stamp.outputs.channel }}
       iso: ${{ steps.stamp.outputs.iso }}
 
     steps:
+      # version.txt lives in the repository, so the job has to check it out before it can read it:
+      # without this the step below died on "version.txt: No such file or directory", which failed
+      # every run before a single APK was built.
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Compute the build stamp and the variant matrix
         id: stamp
         run: |
@@ -79,24 +86,39 @@ jobs:
             *) echo "::error::Unknown variant '$VARIANT'"; exit 1 ;;
           esac
 
-          # version.txt in the repository root is the single source of truth for the base version.
-          # A nightly is that base with the `-nightly-<stamp>` suffix, so it is always clear which
-          # release the build was cut from (e.g. 0.1.0-nightly-2026.10.11.0930).
-          BASE="$(tr -d '[:space:]' < version.txt)"
-          if [ -z "$BASE" ]; then
-            echo "::error::version.txt is missing or empty — it is the single source of the version."
+          # version.txt is the single source of truth (line 1 = version, line 2 = version code,
+          # line 3 = channel), exactly as app/build.gradle.kts reads it: "#" lines are comments and
+          # are dropped. The channel decides the name - a nightly is <version>-nightly-<stamp>
+          # (e.g. 0.1.1-nightly-2026.10.11.0930), anything else is the plain <version>.
+          VALUES="$(grep -v '^[[:space:]]*#' version.txt | sed -e 's/[[:space:]]//g' -e '/^$/d')"
+          VERSION="$(printf '%s\n' "$VALUES" | sed -n '1p')"
+          VERSION_CODE="$(printf '%s\n' "$VALUES" | sed -n '2p')"
+          CHANNEL="$(printf '%s\n' "$VALUES" | sed -n '3p' | tr '[:upper:]' '[:lower:]')"
+          if [ -z "$VERSION" ] || [ -z "$VERSION_CODE" ] || [ -z "$CHANNEL" ]; then
+            echo "::error::version.txt is missing one of its three value lines (version, version code, channel) - it is the single source of them."
             exit 1
           fi
+          case "$VERSION_CODE" in
+            ''|*[!0-9]*) echo "::error::version.txt line 2 (version code) is not an integer: '$VERSION_CODE'"; exit 1 ;;
+          esac
           STAMP="$(date -u +'%Y.%m.%d.%H%M')"
+          case "$CHANNEL" in
+            nightly) VERSION_NAME="${VERSION}-nightly-${STAMP}" ;;
+            *)       VERSION_NAME="$VERSION" ;;
+          esac
 
-          echo "variant=$VARIANT"          >> "$GITHUB_OUTPUT"
-          echo "variants=$VARIANTS"        >> "$GITHUB_OUTPUT"
-          echo "base_version=$BASE"        >> "$GITHUB_OUTPUT"
-          echo "version_name=${BASE}-nightly-${STAMP}" >> "$GITHUB_OUTPUT"
-          echo "version_code=$(date -u +'%Y%m%d%H')"      >> "$GITHUB_OUTPUT"
+          echo "variant=$VARIANT"           >> "$GITHUB_OUTPUT"
+          echo "variants=$VARIANTS"         >> "$GITHUB_OUTPUT"
+          echo "base_version=$VERSION"      >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          # The version code comes from version.txt and is never derived from the clock again: it has
+          # to stay above every code already published, or Android refuses the install with
+          # "invalid package".
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL"           >> "$GITHUB_OUTPUT"
           echo "iso=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"     >> "$GITHUB_OUTPUT"
 
-          echo "Publishing variant(s): $VARIANT (base $BASE)"
+          echo "Publishing variant(s): $VARIANT ($VERSION_NAME, code $VERSION_CODE, channel $CHANNEL)"
 
   # ---------------------------------------------------------------------------
   # 2) The variants build in parallel. `fail-fast: false` keeps the other leg

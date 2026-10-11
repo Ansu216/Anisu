@@ -59,17 +59,21 @@ class UpdateInstaller(
                 response = client.newCall(baseRequest(update.apkUrl)).execute()
             }
 
+            // How many bytes the finished file has to have; -1 when the server did not say.
+            var expectedTotal = -1L
+            var copied = 0L
             response.use { res ->
                 if (!res.isSuccessful) error("Download failed: HTTP ${res.code}")
                 val body = res.body
                 val length = body.contentLength()
                 val total = if (length > 0) resumeFrom + length else -1L
+                expectedTotal = total
 
                 val append = resumeFrom > 0L && res.code == 206
                 body.byteStream().use { input ->
                     java.io.FileOutputStream(partialFile, append).use { output ->
                         val buffer = ByteArray(64 * 1024)
-                        var copied = resumeFrom
+                        copied = resumeFrom
                         while (true) {
                             val read = input.read(buffer)
                             if (read < 0) break
@@ -80,6 +84,14 @@ class UpdateInstaller(
                         output.flush()
                     }
                 }
+            }
+
+            // A truncated body used to be renamed to .apk and handed to the installer anyway, and
+            // Android answers that with "invalid package" — the download has to be complete first.
+            // The partial file is kept so the next attempt can resume it with a Range request.
+            if (expectedTotal > 0 && copied != expectedTotal) {
+                diagnostics?.log(LogCategory.UPDATE, "Update ${update.versionName} incomplete: $copied of $expectedTotal bytes")
+                error("Download incomplete ($copied of $expectedTotal bytes) — tap install again to resume it")
             }
 
             // Only a complete download may become an .apk.

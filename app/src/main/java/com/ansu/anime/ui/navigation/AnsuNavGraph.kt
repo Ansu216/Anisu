@@ -81,8 +81,11 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         LocalNavBarBackdropBlur provides navBarBackdropBlur,
     ) {
     // Screen transitions are about half the platform default, which makes the whole app feel snappier.
-    // Switching between the four bottom-bar tabs additionally slides the new screen in from the side it
-    // sits on (Home -> Cerca -> Schedule -> Account), so the move has a direction instead of a plain fade.
+    // Switching between the four bottom-bar tabs slides the screens *with* the move instead of against
+    // it: going right (Home -> Search -> Schedule -> My Space) the new screen comes in from the left and
+    // the old one leaves to the right, so the page travels the way the finger - or the dragged pill -
+    // went, and going left everything mirrors. The same direction is used whether the move pushes or
+    // pops (tab changes do both, through `popUpTo`), so the two can never disagree.
     NavHost(
         navController = navController,
         startDestination = Dest.HOME,
@@ -91,7 +94,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
             val from = bottomNavDestinations.indexOf(initialState.destination.route)
             if (to >= 0 && from >= 0 && to != from) {
                 val direction = if (to > from) 1 else -1
-                slideInHorizontally(animationSpec = tween(durationMillis = 260)) { width -> direction * width / 6 } +
+                slideInHorizontally(animationSpec = tween(durationMillis = 260)) { width -> -direction * width / 6 } +
                     fadeIn(animationSpec = tween(durationMillis = 260))
             } else {
                 fadeIn(animationSpec = tween(durationMillis = 175))
@@ -107,7 +110,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
                     fadeOut(targetAlpha = 0.55f, animationSpec = tween(durationMillis = PosterTransition.OPEN_MILLIS))
                 to >= 0 && from >= 0 && to != from -> {
                     val direction = if (to > from) 1 else -1
-                    slideOutHorizontally(animationSpec = tween(durationMillis = 260)) { width -> -direction * width / 6 } +
+                    slideOutHorizontally(animationSpec = tween(durationMillis = 260)) { width -> direction * width / 6 } +
                         fadeOut(animationSpec = tween(durationMillis = 260))
                 }
                 else -> fadeOut(animationSpec = tween(durationMillis = 150))
@@ -127,7 +130,19 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
                 else -> fadeIn(animationSpec = tween(durationMillis = 150))
             }
         },
-        popExitTransition = { fadeOut(animationSpec = tween(durationMillis = 150)) },
+        // A tab move can pop (see `popUpTo` in the bar), so the leaving screen has to slide the same way
+        // the entering one does; everything else keeps the plain quick fade.
+        popExitTransition = {
+            val to = bottomNavDestinations.indexOf(targetState.destination.route)
+            val from = bottomNavDestinations.indexOf(initialState.destination.route)
+            if (to >= 0 && from >= 0 && to != from) {
+                val direction = if (to > from) 1 else -1
+                slideOutHorizontally(animationSpec = tween(durationMillis = 260)) { width -> direction * width / 6 } +
+                    fadeOut(animationSpec = tween(durationMillis = 260))
+            } else {
+                fadeOut(animationSpec = tween(durationMillis = 150))
+            }
+        },
     ) {
         composable(Dest.HOME) {
             HomeScreen(

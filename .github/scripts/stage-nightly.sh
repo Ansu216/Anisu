@@ -9,10 +9,13 @@
 #
 # Because a single leg knows nothing about the other one, this script first reads
 # the branch as it stands. When the branch already carries a build with the *same*
-# `versionCode` (i.e. the sibling variant of this very run), its APK is carried over
-# so publishing one leg never drops the other. A branch carrying a build from an
-# older run is replaced wholesale instead, so the two APKs can never belong to
-# different runs.
+# `versionName` (i.e. the sibling variant of this very run — the two legs share the
+# stamp the `plan` job computed), its APK is carried over so publishing one leg never
+# drops the other. A branch carrying a build from an older run is replaced wholesale
+# instead, so the two APKs can never belong to different runs. The version *name* is
+# what identifies the run, not the version code: the code comes from version.txt and
+# is deliberately the same on every nightly (it only ever goes up with a release), so
+# comparing it would carry a stale sibling over from an older run.
 #
 # Usage: stage-nightly.sh <output-directory>
 #
@@ -57,17 +60,17 @@ EXISTING="$(mktemp -d)"
 if git clone --quiet --depth 1 --branch apk-nightly \
     "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
     "$EXISTING" 2>/dev/null; then
-  EXISTING_CODE="$(python3 - "$EXISTING/nightly.json" <<'PY' 2>/dev/null || true
+  EXISTING_NAME="$(python3 - "$EXISTING/nightly.json" <<'PY' 2>/dev/null || true
 import json
 import sys
 
 try:
-    print(json.load(open(sys.argv[1], encoding="utf-8")).get("versionCode", ""))
+    print(json.load(open(sys.argv[1], encoding="utf-8")).get("versionName", ""))
 except Exception:
     pass
 PY
 )"
-  if [ "$EXISTING_CODE" = "$VERSION_CODE" ] && [ -f "$EXISTING/$SIBLING" ]; then
+  if [ "$EXISTING_NAME" = "$VERSION_NAME" ] && [ -f "$EXISTING/$SIBLING" ]; then
     cp "$EXISTING/$SIBLING" "$STAGE/$SIBLING"
     echo "Carried over the sibling variant $SIBLING from the same run."
   fi
@@ -121,7 +124,7 @@ APK are published independently, as soon as their own build succeeds.
 | `Ansu-nightly-debug.apk` | Signed **debug** build (easier to read stack traces). |
 | `nightly.json` | Version / build metadata for this run. |
 | `CHANGELOG.md` | The changelog at this build's commit — what changed, newest first. |
-| `version.txt` | The base version this nightly was cut from. |
+| `version.txt` | The version, version code and channel this nightly was cut from. |
 | `fix-report.json` | What the last `fix.zip` changed (commit, author, files). |
 | `fix-report.md` | The same report, readable on this page. |
 

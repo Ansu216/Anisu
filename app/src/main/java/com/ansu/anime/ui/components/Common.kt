@@ -520,8 +520,6 @@ fun HeroCarousel(
                         TitleLogo(
                             title = anime.title,
                             logoUrl = anime.anilistId?.let { logos[it] },
-                            // Wait for the lookup before falling back to text, so the lettering does not flash.
-                            lookupDone = anime.anilistId == null || logos.containsKey(anime.anilistId),
                             alignment = Alignment.Center,
                             textAlign = TextAlign.Center,
                             fontSize = 27.sp,
@@ -708,15 +706,16 @@ private fun trimLogo(source: Bitmap): Bitmap? {
 /**
  * The show's title in its own poster lettering ([logoUrl], a transparent logo image). The logo is
  * trimmed of empty margins and scaled to fill [maxLogoWidth] x [maxLogoHeight] as far as its shape
- * allows, so wide and tall logos both read at a good size. Falls back to the plain text [title] when
- * there is no logo, when it is not a real (transparent) logo, when it fails to load, or - once
- * [lookupDone] - when the lookup found none. While the lookup is still running nothing is drawn.
+ * allows, so wide and tall logos both read at a good size. Falls back to the plain text [title]
+ * whenever no logo is on screen: the show has none, the image is not a real (transparent) logo, it
+ * failed to load, or it is still on its way. A logo that never arrives used to leave the hero with
+ * no title at all, and an empty hero is worse than a title that swaps to the lettering a moment
+ * later.
  */
 @Composable
 fun TitleLogo(
     title: String,
     logoUrl: String?,
-    lookupDone: Boolean,
     alignment: Alignment,
     textAlign: TextAlign,
     fontSize: TextUnit,
@@ -745,7 +744,8 @@ fun TitleLogo(
                 modifier = modifier.size(width = width.dp, height = height.dp),
             )
         }
-        logo is LogoState.Unusable && (lookupDone || logoUrl != null) -> Text(
+        // Anything but a ready logo: show the title, so the hero is never blank.
+        else -> Text(
             text = if (uppercase) title.uppercase() else title,
             color = AnsuColors.TextPrimary,
             fontSize = fontSize,
