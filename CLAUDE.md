@@ -36,8 +36,12 @@ extensions).
 - **Network**: OkHttp + `kotlinx.serialization`.
 - **Playback**: Media3 / ExoPlayer.
 - **SDK levels**: `minSdk 26` (Android 8.0), `targetSdk`/`compileSdk` 35.
-- **Version**: see `CHANGELOG.md`. The build defaults to `versionCode 1` /
-  `versionName 0.1.0`, overridden per build (see §4).
+- **Version**: the base version lives in `version.txt` in the repository root — the
+  single source of truth. The build defaults to `versionCode 1` / the `version.txt`
+  value, overridden per build (see §4). A **nightly** build is
+  `<base>-nightly-<stamp>` (e.g. `0.1.0-nightly-2026.10.11.0930`), computed by
+  `apk-nightly.yml`; releases use the pushed tag. Release notes are extracted from
+  `CHANGELOG.md` (see §7).
 
 ### Do not bump the toolchain
 
@@ -517,7 +521,8 @@ folder, described below:
 - `how-to-compile.md`;
 - `local.properties`;
 - `README.md`;
-- `settings.gradle.kts`.
+- `settings.gradle.kts`;
+- `version.txt` (the single source of the base version).
 
 Rules:
 

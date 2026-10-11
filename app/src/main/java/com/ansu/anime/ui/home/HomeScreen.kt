@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ansu.anime.data.repository.heroPosterFor
 import com.ansu.anime.data.repository.logoFor
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -84,6 +85,12 @@ fun HomeScreen(
     val logoLookup: suspend (Int) -> String? = remember(titleLanguage) {
         { id -> container.artworkRepository.get(id).logoFor(titleLanguage) }
     }
+    // TMDB's portrait poster for a slide when there is one (it needs the TMDB key); AniList's cover otherwise.
+    val posterLookup: suspend (SAnime) -> String? = remember {
+        { anime ->
+            anime.anilistId?.let { id -> container.artworkRepository.get(id).heroPosterFor(anime.title, anime.format) }
+        }
+    }
     val trending = state.feed(AniListFeed.TRENDING_NOW).items
     // Every way into a title goes through here, so one tap line is logged instead of five.
     val selectAnime: (SAnime) -> Unit = { anime ->
@@ -129,6 +136,7 @@ fun HomeScreen(
                             items = heroSource,
                             onClick = selectAnime,
                             logoFor = logoLookup,
+                            posterFor = posterLookup,
                             onToggleFavourite = { anime ->
                                 anime.anilistId?.let { id ->
                                     scope.launch {

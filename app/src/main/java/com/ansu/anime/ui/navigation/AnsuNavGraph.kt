@@ -5,6 +5,8 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -79,24 +81,50 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         LocalNavBarBackdropBlur provides navBarBackdropBlur,
     ) {
     // Screen transitions are about half the platform default, which makes the whole app feel snappier.
+    // Switching between the four bottom-bar tabs additionally slides the new screen in from the side it
+    // sits on (Home -> Cerca -> Schedule -> Account), so the move has a direction instead of a plain fade.
     NavHost(
         navController = navController,
         startDestination = Dest.HOME,
-        enterTransition = { fadeIn(animationSpec = tween(durationMillis = 175)) },
+        enterTransition = {
+            val to = bottomNavDestinations.indexOf(targetState.destination.route)
+            val from = bottomNavDestinations.indexOf(initialState.destination.route)
+            if (to >= 0 && from >= 0 && to != from) {
+                val direction = if (to > from) 1 else -1
+                slideInHorizontally(animationSpec = tween(durationMillis = 260)) { width -> direction * width / 6 } +
+                    fadeIn(animationSpec = tween(durationMillis = 260))
+            } else {
+                fadeIn(animationSpec = tween(durationMillis = 175))
+            }
+        },
         // The page under a details page stays put (only dimmed) while the details page grows out of the
         // tapped poster and shrinks back into it, so the poster has something to grow out of.
         exitTransition = {
-            if (targetState.destination.route == Dest.DETAILS) {
-                fadeOut(targetAlpha = 0.55f, animationSpec = tween(durationMillis = PosterTransition.OPEN_MILLIS))
-            } else {
-                fadeOut(animationSpec = tween(durationMillis = 150))
+            val to = bottomNavDestinations.indexOf(targetState.destination.route)
+            val from = bottomNavDestinations.indexOf(initialState.destination.route)
+            when {
+                targetState.destination.route == Dest.DETAILS ->
+                    fadeOut(targetAlpha = 0.55f, animationSpec = tween(durationMillis = PosterTransition.OPEN_MILLIS))
+                to >= 0 && from >= 0 && to != from -> {
+                    val direction = if (to > from) 1 else -1
+                    slideOutHorizontally(animationSpec = tween(durationMillis = 260)) { width -> -direction * width / 6 } +
+                        fadeOut(animationSpec = tween(durationMillis = 260))
+                }
+                else -> fadeOut(animationSpec = tween(durationMillis = 150))
             }
         },
         popEnterTransition = {
-            if (initialState.destination.route == Dest.DETAILS) {
-                fadeIn(initialAlpha = 0.55f, animationSpec = tween(durationMillis = PosterTransition.CLOSE_MILLIS))
-            } else {
-                fadeIn(animationSpec = tween(durationMillis = 150))
+            val to = bottomNavDestinations.indexOf(targetState.destination.route)
+            val from = bottomNavDestinations.indexOf(initialState.destination.route)
+            when {
+                initialState.destination.route == Dest.DETAILS ->
+                    fadeIn(initialAlpha = 0.55f, animationSpec = tween(durationMillis = PosterTransition.CLOSE_MILLIS))
+                to >= 0 && from >= 0 && to != from -> {
+                    val direction = if (to > from) 1 else -1
+                    slideInHorizontally(animationSpec = tween(durationMillis = 260)) { width -> -direction * width / 6 } +
+                        fadeIn(animationSpec = tween(durationMillis = 260))
+                }
+                else -> fadeIn(animationSpec = tween(durationMillis = 150))
             }
         },
         popExitTransition = { fadeOut(animationSpec = tween(durationMillis = 150)) },

@@ -99,6 +99,11 @@ with open(os.path.join(stage, "nightly.json"), "w", encoding="utf-8", newline="\
     handle.write(json.dumps(manifest, indent=2) + "\n")
 PY
 
+# The changelog and the base version ship with every nightly, so anyone downloading
+# the branch can see exactly what changed and which release this build came from.
+cp CHANGELOG.md "$STAGE/CHANGELOG.md"
+cp version.txt "$STAGE/version.txt"
+
 cat > "$STAGE/README.md" <<'MD'
 # Anisu — nightly APK
 
@@ -115,6 +120,8 @@ APK are published independently, as soon as their own build succeeds.
 | `Ansu-nightly.apk` | Signed **release** build (smaller, minified, R8). |
 | `Ansu-nightly-debug.apk` | Signed **debug** build (easier to read stack traces). |
 | `nightly.json` | Version / build metadata for this run. |
+| `CHANGELOG.md` | The changelog at this build's commit — what changed, newest first. |
+| `version.txt` | The base version this nightly was cut from. |
 | `fix-report.json` | What the last `fix.zip` changed (commit, author, files). |
 | `fix-report.md` | The same report, readable on this page. |
 

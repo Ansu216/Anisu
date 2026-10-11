@@ -332,7 +332,10 @@ class PlayerViewModel(
                 // to find every possible stream.
                 val enrichedEpisode = if (episode.alternates.isEmpty() && episode.id.isNotBlank()) {
                     try {
-                        val allEpisodes = extensionManager.findEpisodesByTitle(anime, emptyList())
+                        val allEpisodes = extensionManager.findEpisodesByTitle(
+                            anime,
+                            extraTitlesProvider = { anime.anilistId?.let { id -> aniListRepository?.getAllTitles(id) }.orEmpty() },
+                        )
                         // Find the matching episode by number
                         val matched = allEpisodes.firstOrNull { it.episodeNumber == episode.episodeNumber }
                         matched ?: episode

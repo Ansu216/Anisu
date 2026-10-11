@@ -59,6 +59,7 @@ jobs:
     outputs:
       variant: ${{ steps.stamp.outputs.variant }}
       variants: ${{ steps.stamp.outputs.variants }}
+      base_version: ${{ steps.stamp.outputs.base_version }}
       version_name: ${{ steps.stamp.outputs.version_name }}
       version_code: ${{ steps.stamp.outputs.version_code }}
       iso: ${{ steps.stamp.outputs.iso }}
@@ -78,13 +79,24 @@ jobs:
             *) echo "::error::Unknown variant '$VARIANT'"; exit 1 ;;
           esac
 
-          echo "variant=$VARIANT"       >> "$GITHUB_OUTPUT"
-          echo "variants=$VARIANTS"     >> "$GITHUB_OUTPUT"
-          echo "version_name=$(date -u +'%Y.%m.%d.%H%M')" >> "$GITHUB_OUTPUT"
+          # version.txt in the repository root is the single source of truth for the base version.
+          # A nightly is that base with the `-nightly-<stamp>` suffix, so it is always clear which
+          # release the build was cut from (e.g. 0.1.0-nightly-2026.10.11.0930).
+          BASE="$(tr -d '[:space:]' < version.txt)"
+          if [ -z "$BASE" ]; then
+            echo "::error::version.txt is missing or empty — it is the single source of the version."
+            exit 1
+          fi
+          STAMP="$(date -u +'%Y.%m.%d.%H%M')"
+
+          echo "variant=$VARIANT"          >> "$GITHUB_OUTPUT"
+          echo "variants=$VARIANTS"        >> "$GITHUB_OUTPUT"
+          echo "base_version=$BASE"        >> "$GITHUB_OUTPUT"
+          echo "version_name=${BASE}-nightly-${STAMP}" >> "$GITHUB_OUTPUT"
           echo "version_code=$(date -u +'%Y%m%d%H')"      >> "$GITHUB_OUTPUT"
           echo "iso=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"     >> "$GITHUB_OUTPUT"
 
-          echo "Publishing variant(s): $VARIANT"
+          echo "Publishing variant(s): $VARIANT (base $BASE)"
 
   # ---------------------------------------------------------------------------
   # 2) The variants build in parallel. `fail-fast: false` keeps the other leg
@@ -131,7 +143,8 @@ jobs:
 
       - name: Assemble the ${{ matrix.variant }} APK
         env:
-           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          # Optional repository secret; empty means English mode falls back to the plain text title.
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: |
           set -euo pipefail
           case "${{ matrix.variant }}" in

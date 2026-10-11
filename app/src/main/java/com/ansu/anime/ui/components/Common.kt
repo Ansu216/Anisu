@@ -430,6 +430,8 @@ fun HeroCarousel(
     modifier: Modifier = Modifier,
     /** Resolves the title-logo image URL for an AniList id; null (or no logo) shows the plain text title. */
     logoFor: suspend (Int) -> String? = { null },
+    /** A better portrait picture for a slide (TMDB's poster); null keeps the show's own AniList cover. */
+    posterFor: suspend (SAnime) -> String? = { null },
 ) {
     if (items.isEmpty()) return
     val shown = items.take(8)
@@ -437,6 +439,7 @@ fun HeroCarousel(
     val likedIds = remember { mutableStateMapOf<String, Boolean>() }
     // AniList id -> logo URL. A key with a null value means "looked up, no logo", so it is not asked twice.
     val logos = remember(logoFor) { mutableStateMapOf<Int, String?>() }
+    val posters = remember(posterFor) { mutableStateMapOf<Int, String?>() }
     
     // Auto-rotate: the timer restarts after every settled page (so a manual swipe gets a full pause)
     // and never fires while a finger is on the pager.
@@ -448,9 +451,10 @@ fun HeroCarousel(
         }
     }
 
-    LaunchedEffect(shown, logoFor) {
+    LaunchedEffect(shown, logoFor, posterFor) {
         shown.forEach { anime ->
             val id = anime.anilistId ?: return@forEach
+            if (!posters.containsKey(id)) launch { posters[id] = posterFor(anime) }
             if (!logos.containsKey(id)) launch { logos[id] = logoFor(id) }
         }
     }
@@ -471,12 +475,13 @@ fun HeroCarousel(
                 // 0 when this page is centred, -1/+1 when it is fully off to one side.
                 val offset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).coerceIn(-1f, 1f)
                 val isLiked = likedIds[anime.id] == true
-                Box(modifier = Modifier.fillMaxSize().posterTransitionOrigin(anime.posterUrl ?: anime.bannerUrl, 0.dp)) {
+                val heroImage = anime.anilistId?.let { posters[it] } ?: anime.posterUrl ?: anime.bannerUrl
+                Box(modifier = Modifier.fillMaxSize().posterTransitionOrigin(heroImage, 0.dp)) {
                     Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
                         // AniList's own portrait cover (extraLarge); the banner is only a fallback.
                         // Slightly oversized and shifted against the swipe, so the art trails the page (parallax).
                         AsyncImage(
-                            model = anime.posterUrl ?: anime.bannerUrl,
+                            model = heroImage,
                             contentDescription = anime.title,
                             contentScale = ContentScale.Crop,
                             colorFilter = HeroBrightness,

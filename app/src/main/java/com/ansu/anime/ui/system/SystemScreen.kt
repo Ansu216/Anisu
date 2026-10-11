@@ -2,7 +2,11 @@
 
 package com.ansu.anime.ui.system
 
+import android.content.Context
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,7 +21,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -30,6 +37,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -38,19 +46,78 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.theme.AnsuColors
+import java.io.File
 
 /**
- * Settings → System. Right now it holds the diagnostics tooling: exporting every crash, playback,
- * click, navigation and network event as a single shareable text report, and clearing the stored log.
+ * Settings → System. It holds the diagnostics tooling — exporting every crash, playback, click,
+ * navigation and network event as a single text report the user can share **or** save to their own
+ * storage — plus a full backup and restore of the app's settings and library as an `.anisu` file.
  */
 @Composable
 fun SystemScreen(container: AppContainer, navController: NavHostController) {
     val context = LocalContext.current
     val diagnostics = container.diagnostics
     var refresh by remember { mutableIntStateOf(0) }
+    var backupMessage by remember { mutableStateOf<String?>(null) }
+
+    // Save the diagnostics report to a location the user picks (Downloads, Drive, …), not only share it.
+    val saveLogsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain"),
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val file = diagnostics.buildExportFile()
+        if (file == null) {
+            toast(context, "Could not build the diagnostics report")
+            return@rememberLauncherForActivityResult
+        }
+        val saved = writeFileTo(context, uri, file)
+        toast(context, if (saved) "Report saved" else "Could not save the report")
+        if (saved) diagnostics.log(LogCategory.CLICK, "Diagnostics report saved to device (${file.length()} bytes)")
+        refresh++
+    }
+
+    // Back up settings + library into an .anisu archive.
+    val backupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream"),
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val file = container.backupManager.buildBackupFile()
+        if (file == null) {
+            backupMessage = "Could not build the backup."
+            return@rememberLauncherForActivityResult
+        }
+        val saved = writeFileTo(context, uri, file)
+        backupMessage = if (saved) {
+            "Backup saved (${file.length() / 1024} KB)."
+        } else {
+            "Could not save the backup."
+        }
+        if (saved) diagnostics.log(LogCategory.CLICK, "Settings backup saved (${file.length()} bytes)")
+        refresh++
+    }
+
+    // Restore an .anisu archive.
+    val restoreLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        // The database file is overwritten by the restore, so close it first.
+        runCatching { container.database.close() }
+        container.backupManager.restoreFrom(uri).fold(
+            onSuccess = { count ->
+                backupMessage = "Restored $count files. Restart Anisu to apply every setting."
+                diagnostics.log(LogCategory.CLICK, "Settings backup restored ($count files)")
+            },
+            onFailure = { error ->
+                backupMessage = "Restore failed: ${error.message ?: "unknown error"}"
+            },
+        )
+        refresh++
+    }
 
     Scaffold(
         topBar = {
@@ -75,7 +142,8 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
             Text("Diagnostics", style = MaterialTheme.typography.titleMedium, color = AnsuColors.TextPrimary)
             Text(
                 text = "Anisu keeps a local log of crashes, playback, taps, navigation and network errors. " +
-                    "Nothing is ever uploaded: the report is written on this device and only shared when you ask for it.",
+                    "Nothing is ever uploaded: the report is written on this device, and you choose whether " +
+                    "to share it or save it yourself.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = AnsuColors.TextSecondary,
             )
@@ -91,18 +159,15 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
                 onClick = {
                     val file = diagnostics.buildExportFile()
                     if (file == null) {
-                        Toast.makeText(context, "Could not build the diagnostics report", Toast.LENGTH_LONG).show()
+                        toast(context, "Could not build the diagnostics report")
                         return@Button
                     }
                     val intent = diagnostics.exportIntent(file)
                     if (intent == null) {
-                        Toast.makeText(context, "No app available to share the report", Toast.LENGTH_LONG).show()
+                        toast(context, "No app available to share the report")
                         return@Button
                     }
-                    container.diagnostics.log(
-                        com.ansu.anime.core.diagnostics.LogCategory.CLICK,
-                        "Export logs requested (${file.length()} bytes)",
-                    )
+                    diagnostics.log(LogCategory.CLICK, "Export logs shared (${file.length()} bytes)")
                     runCatching { context.startActivity(android.content.Intent.createChooser(intent, "Export Anisu logs")) }
                     refresh++
                 },
@@ -111,16 +176,22 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text("Export logs", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
+                Text("Share logs", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
+            }
+
+            OutlinedButton(
+                onClick = { saveLogsLauncher.launch("Anisu-diagnostics-${timestampName()}.txt") },
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text("Save logs to device", modifier = Modifier.padding(start = 8.dp))
             }
 
             OutlinedButton(
                 onClick = {
                     container.diagnostics.clear()
-                    container.diagnostics.log(
-                        com.ansu.anime.core.diagnostics.LogCategory.CLICK,
-                        "Diagnostics log cleared by the user",
-                    )
+                    container.diagnostics.log(LogCategory.CLICK, "Diagnostics log cleared by the user")
                     refresh++
                 },
                 shape = RoundedCornerShape(20.dp),
@@ -128,6 +199,38 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
             ) {
                 Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
                 Text("Clear logs", modifier = Modifier.padding(start = 8.dp))
+            }
+
+            Text("Backup", style = MaterialTheme.typography.titleMedium, color = AnsuColors.TextPrimary, modifier = Modifier.padding(top = 8.dp))
+            Text(
+                text = "Back up your settings, your watch progress and your local library into a single " +
+                    ".anisu file you keep yourself. Restoring it brings everything back; the AniList sign-in " +
+                    "is the only thing left out, because it is tied to this device.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = AnsuColors.TextSecondary,
+            )
+
+            Button(
+                onClick = { backupLauncher.launch("Anisu-backup-${timestampName()}.anisu") },
+                shape = RoundedCornerShape(20.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Filled.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text("Create backup (.anisu)", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
+            }
+
+            OutlinedButton(
+                onClick = { restoreLauncher.launch(arrayOf("*/*")) },
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Filled.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text("Restore from backup", modifier = Modifier.padding(start = 8.dp))
+            }
+
+            backupMessage?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = AnsuColors.TextSecondary)
             }
         }
     }
@@ -163,6 +266,21 @@ private fun InfoLine(label: String, value: String) {
         Text(value, style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextPrimary, fontWeight = FontWeight.SemiBold)
     }
 }
+
+/** Copies [source] into the document the user chose through the system file picker. */
+private fun writeFileTo(context: Context, uri: Uri, source: File): Boolean = runCatching {
+    context.contentResolver.openOutputStream(uri)?.use { output ->
+        source.inputStream().use { it.copyTo(output) }
+    } ?: error("The system returned no writable file")
+    true
+}.getOrDefault(false)
+
+private fun toast(context: Context, message: String) {
+    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+}
+
+private fun timestampName(): String =
+    java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())
 
 private fun formatBytes(bytes: Long): String = when {
     bytes <= 0L -> "0 KB"

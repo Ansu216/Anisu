@@ -157,17 +157,12 @@ fun DetailsScreen(
                 // movies and specials use their own banner/cover so they no longer all look the same.
                 // The title comes from AniList's details in the chosen language once they have loaded.
                 val shownTitle = details?.title ?: anime?.title.orEmpty()
-                // English without a TMDB English logo: AniList's own banner (else cover) as the picture, with the
-                // plain English text title drawn over it, since the app cannot tell whether the art has lettering.
                 // The text title must never wait on a slow or failed artwork lookup: with no TMDB key there is
                 // nothing to wait for in English mode, and otherwise the wait is capped at a few seconds.
                 val lookupTimedOut by produceState(false) { delay(4000); value = true }
-                val plainAniListArt = titleLanguage == TitleLanguage.ENGLISH && state.artwork.englishLogoUrl == null
                 DetailsHero(
                     title = shownTitle,
-                    imageUrl = if (plainAniListArt) {
-                        details?.bannerUrl ?: anime?.bannerUrl ?: details?.posterUrl ?: anime?.posterUrl
-                    } else pickHeroImage(
+                    imageUrl = pickHeroImage(
                         title = shownTitle,
                         format = details?.format ?: anime?.format,
                         hasPrequel = details?.hasPrequel == true,

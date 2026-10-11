@@ -145,6 +145,7 @@ jobs:
 
       - name: Assemble the ${{ matrix.variant }} APK
         env:
+          # Optional repository secret; empty means English mode falls back to the plain text title.
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: |
           set -euo pipefail

@@ -6,10 +6,18 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-// The version can be overridden from the command line / CI, e.g.
+// version.txt in the repository root is the single source of truth for the base version. The
+// command line / CI can still override it, e.g.
 //   ./gradlew assembleRelease -PversionCode=42 -PversionName=1.2.3
+// A nightly build passes -PversionName=<base>-nightly-<stamp> (see .github/workflows/apk-nightly.yml).
+val baseVersion = rootProject.file("version.txt")
+    .takeIf { it.exists() }
+    ?.readText()
+    ?.trim()
+    ?.ifBlank { null }
+    ?: "0.1.0"
 val ciVersionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
-val ciVersionName = (project.findProperty("versionName") as String?) ?: "0.1.0"
+val ciVersionName = (project.findProperty("versionName") as String?) ?: baseVersion
 
 // Your AniList client id (https://anilist.co/settings/developer). Set it without editing
 // this file via gradle.properties / local command line: -PANILIST_CLIENT_ID=12345

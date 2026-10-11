@@ -136,3 +136,10 @@ data class AniListStreamingEpisode(
     val title: String,
     val thumbnailUrl: String?,
 )
+
+/** The small per-show facts fetched together in one AniList request; see [AniListApi.getMediaCore]. */
+data class AniListMediaCore(
+    val malId: Int?,
+    val titles: List<String>,
+    val episodes: List<AniListStreamingEpisode>,
+)

@@ -18,7 +18,15 @@ private const val MIN_MATCH_SCORE = 0.5
 
 /** A title this similar, with episodes, is accepted straight away without waiting for the other searches. */
 private const val GOOD_MATCH_SCORE = 0.8
-private const val SOURCE_TIMEOUT_MS = 12_000L
+private const val SOURCE_TIMEOUT_MS = 8_000L
+
+/** Title variants searched at the same time in each source; the rest only run when these find nothing good. */
+private const val FIRST_STAGE_QUERIES = 2
+
+/** A source that timed out or errored is skipped for this long, so one dead site does not slow every title. */
+private const val FAILURE_COOLDOWN_MS = 10 * 60_000L
+
+private val recentFailures = java.util.concurrent.ConcurrentHashMap<Long, Long>()
 
 /**
  * Episode lists remembered in memory and on disk, so reopening a title (even after the app was closed)
@@ -123,7 +131,98 @@ object EpisodeListCache {
     )
 }
 
-private class SourceMatch(val source: AnimeCatalogueSource, val score: Double, val episodes: List<SEpisode>)
+/**
+ * Which page of each source was the right one for a title, remembered on disk. Reopening a title then needs
+ * one episode-list request per source instead of a whole search (several title variants and up to three list
+ * fetches each). An entry is dropped when its page no longer lists episodes.
+ */
+internal object SourceMatchMemory {
+    class Remembered(val animeId: String, val title: String, val urlPath: String, val score: Double, val at: Long)
+
+    private const val MAX_ENTRIES = 400
+    private const val MAX_AGE_MS = 30L * 24 * 60 * 60 * 1000
+
+    private val map = java.util.concurrent.ConcurrentHashMap<String, Remembered>()
+
+    @Volatile
+    private var file: java.io.File? = null
+
+    @Volatile
+    private var loaded = false
+
+    /** Call once at start-up with a writable cache folder. Without it matches are only remembered in memory. */
+    fun attach(cacheDir: java.io.File) {
+        file = java.io.File(cacheDir, "source-matches.json")
+    }
+
+    private fun key(titleKey: String, sourceId: Long) = "$titleKey:$sourceId"
+
+    private fun ensureLoaded() {
+        if (loaded) return
+        synchronized(this) {
+            if (loaded) return
+            runCatching {
+                val f = file?.takeIf { it.exists() } ?: return@runCatching
+                val root = org.json.JSONObject(f.readText())
+                val now = System.currentTimeMillis()
+                root.keys().forEach { k ->
+                    val o = root.getJSONObject(k)
+                    val at = o.getLong("at")
+                    if (now - at <= MAX_AGE_MS) {
+                        map[k] = Remembered(o.getString("id"), o.getString("t"), o.getString("p"), o.getDouble("s"), at)
+                    }
+                }
+            }
+            loaded = true
+        }
+    }
+
+    /** The first call reads the file, so it runs off the main thread. */
+    private suspend fun load() {
+        if (!loaded) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ensureLoaded() }
+    }
+
+    suspend fun get(titleKey: String, sourceId: Long): Remembered? {
+        load()
+        return map[key(titleKey, sourceId)]
+    }
+
+    suspend fun remember(titleKey: String, sourceId: Long, candidate: SAnime, score: Double) {
+        val origin = candidate.origin as? com.ansu.anime.core.model.MediaOrigin.Extension ?: return
+        load()
+        map[key(titleKey, sourceId)] =
+            Remembered(candidate.id, candidate.title, origin.urlPath, score, System.currentTimeMillis())
+        persist()
+    }
+
+    suspend fun forget(titleKey: String, sourceId: Long) {
+        load()
+        if (map.remove(key(titleKey, sourceId)) != null) persist()
+    }
+
+    private suspend fun persist(): Unit = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val f = file ?: return@withContext
+        runCatching {
+            if (map.size > MAX_ENTRIES) {
+                map.entries.sortedBy { it.value.at }.take(map.size - MAX_ENTRIES).forEach { map.remove(it.key) }
+            }
+            val root = org.json.JSONObject()
+            map.forEach { (k, v) ->
+                root.put(k, org.json.JSONObject().put("id", v.animeId).put("t", v.title).put("p", v.urlPath).put("s", v.score).put("at", v.at))
+            }
+            f.writeText(root.toString())
+        }
+        Unit
+    }
+}
+
+private class SourceMatch(
+    val source: AnimeCatalogueSource,
+    val score: Double,
+    val episodes: List<SEpisode>,
+    /** The page that matched, set only when it really listed episodes; this is what gets remembered. */
+    val candidate: SAnime? = null,
+)
 
 /**
  * Looks [anime] up by title in EVERY switched-on installed source (in parallel) and returns one merged
@@ -137,25 +236,43 @@ suspend fun ExtensionManager.findEpisodesByTitle(
     anime: SAnime,
     extraTitles: List<String> = emptyList(),
     onPartial: ((List<SEpisode>) -> Unit)? = null,
+    /**
+     * Alternate titles fetched while the search already runs. Sources that remember their page for this show
+     * never wait for it; the others wait up to a second for it before searching.
+     */
+    extraTitlesProvider: (suspend () -> List<String>)? = null,
 ): List<SEpisode> = coroutineScope {
-    val candidates = allSources().filter { it.id != BUILT_IN_SOURCE_ID }
-    if (candidates.isEmpty()) return@coroutineScope emptyList()
-    val allTitles = (listOf(anime.title) + extraTitles).distinct()
-    val queries = allTitles.flatMap { titleQueries(it) }.distinct().take(5)
+    val all = allSources().filter { it.id != BUILT_IN_SOURCE_ID }
+    if (all.isEmpty()) return@coroutineScope emptyList()
+    val now = System.currentTimeMillis()
+    // Skip sources that failed a moment ago, unless that would leave nothing to ask.
+    val candidates = all.filter { now - (recentFailures[it.id] ?: 0L) > FAILURE_COOLDOWN_MS }.ifEmpty { all }
+    val titleKey = (anime.anilistId ?: anime.id).toString()
+    val extrasDeferred = extraTitlesProvider?.let { provider ->
+        async { runCatching { withTimeoutOrNull(1_000L) { provider() } }.getOrNull().orEmpty() }
+    }
     val matches = mutableListOf<SourceMatch>()
     candidates
         .map { source ->
             async {
-                val match = withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
-                    try {
-                        matchIn(source, allTitles, queries)
-                    } catch (e: kotlinx.coroutines.CancellationException) {
-                        throw e
-                    } catch (e: Throwable) {
-                        android.util.Log.w("SourceMatching", "${source.name}: ${e::class.simpleName}: ${e.message}")
-                        null
+                // "Nothing found" is a normal answer; only an error or a timeout counts against the source.
+                var answered = false
+                val match = try {
+                    rememberedMatch(source, titleKey)?.also { answered = true } ?: withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
+                        val extras = extrasDeferred?.await() ?: extraTitles
+                        val allTitles = (listOf(anime.title) + extras).distinct()
+                        val queries = allTitles.flatMap { titleQueries(it) }.distinct().take(5)
+                        matchIn(source, allTitles, queries).also { answered = true }
+                    }?.also { found ->
+                        found.candidate?.let { SourceMatchMemory.remember(titleKey, source.id, it, found.score) }
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    android.util.Log.w("SourceMatching", "${source.name}: ${e::class.simpleName}: ${e.message}")
+                    null
                 }
+                if (answered) recentFailures.remove(source.id) else recentFailures[source.id] = System.currentTimeMillis()
                 // Publish as each source finishes so the fastest one shows episodes straight away.
                 if (match != null) synchronized(matches) {
                     matches += match
@@ -166,6 +283,32 @@ suspend fun ExtensionManager.findEpisodesByTitle(
         }
         .awaitAll()
     synchronized(matches) { mergeMatches(matches.sortedByDescending { it.score }) }
+}
+
+/**
+ * The episode list of the page this source matched for the show last time, fetched directly with no search.
+ * Null when nothing is remembered, the page now lists no episodes (it is forgotten) or the request failed or
+ * timed out (it is kept, and the caller falls back to a normal search).
+ */
+private suspend fun rememberedMatch(source: AnimeCatalogueSource, titleKey: String): SourceMatch? {
+    val saved = SourceMatchMemory.get(titleKey, source.id) ?: return null
+    val page = SAnime(
+        id = saved.animeId,
+        title = saved.title,
+        origin = com.ansu.anime.core.model.MediaOrigin.Extension(source.id, saved.urlPath),
+    )
+    val episodes = try {
+        withTimeoutOrNull(SOURCE_TIMEOUT_MS) { source.getEpisodeList(page) }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        null
+    } ?: return null
+    if (episodes.isEmpty()) {
+        SourceMatchMemory.forget(titleKey, source.id)
+        return null
+    }
+    return SourceMatch(source, saved.score, episodes, page)
 }
 
 /**
@@ -216,13 +359,25 @@ private fun mergeMatches(matches: List<SourceMatch>): List<SEpisode> {
 
 private class QueryResult(val match: SourceMatch, val hasEpisodes: Boolean)
 
+private class StageResult(val good: SourceMatch?, val results: List<QueryResult>)
+
 /**
- * Searches one source with every title variant at the same time. The first variant that finds a
- * well-matching title WITH episodes wins and the rest are cancelled; if none does, the best-scoring
- * result is used once all of them have finished.
+ * Searches one source in two stages. The first [FIRST_STAGE_QUERIES] title variants run at the same time and
+ * the first well-matching title WITH episodes wins at once (the rest are cancelled). Only when none did, the
+ * remaining variants run too; the best-scoring result is then used.
  */
-private suspend fun matchIn(source: AnimeCatalogueSource, titles: List<String>, queries: List<String>): SourceMatch? = coroutineScope {
-    if (queries.isEmpty()) return@coroutineScope null
+private suspend fun matchIn(source: AnimeCatalogueSource, titles: List<String>, queries: List<String>): SourceMatch? {
+    if (queries.isEmpty()) return null
+    val first = searchStage(source, titles, queries.take(FIRST_STAGE_QUERIES))
+    first.good?.let { return it }
+    val rest = queries.drop(FIRST_STAGE_QUERIES)
+    val second = if (rest.isEmpty()) null else searchStage(source, titles, rest)
+    second?.good?.let { return it }
+    val results = first.results + second?.results.orEmpty()
+    return (results.filter { it.hasEpisodes }.maxByOrNull { it.match.score } ?: results.maxByOrNull { it.match.score })?.match
+}
+
+private suspend fun searchStage(source: AnimeCatalogueSource, titles: List<String>, queries: List<String>): StageResult = coroutineScope {
     val winner = kotlinx.coroutines.CompletableDeferred<SourceMatch?>()
     val results = mutableListOf<QueryResult>()
     val jobs = queries.map { query ->
@@ -236,14 +391,11 @@ private suspend fun matchIn(source: AnimeCatalogueSource, titles: List<String>, 
     }
     launch {
         jobs.joinAll()
-        val best = synchronized(results) {
-            results.filter { it.hasEpisodes }.maxByOrNull { it.match.score } ?: results.maxByOrNull { it.match.score }
-        }
-        winner.complete(best?.match)
+        winner.complete(null)
     }
-    val result = winner.await()
+    val good = winner.await()
     coroutineContext.cancelChildren()
-    result
+    StageResult(good, synchronized(results) { results.toList() })
 }
 
 private suspend fun matchForQuery(source: AnimeCatalogueSource, titles: List<String>, query: String): QueryResult? {
@@ -281,7 +433,7 @@ private suspend fun matchForQuery(source: AnimeCatalogueSource, titles: List<Str
             val episodes = fetch.await()
             if (episodes.isNotEmpty()) {
                 fetches.forEach { it.cancel() }
-                return@coroutineScope QueryResult(SourceMatch(source, score, episodes), true)
+                return@coroutineScope QueryResult(SourceMatch(source, score, episodes, candidate), true)
             }
             if (fallback == null) {
                 // Movies / single-item entries: some sources return no episode list. Keep the entry playable.

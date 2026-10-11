@@ -17,6 +17,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -54,11 +56,18 @@ class AniListApi(
         )
     }
 
+    /**
+     * The entries on one of the signed-in user's lists ([status] is an AniList list status such as
+     * CURRENT). AniList's answer holds every list at once, so it is fetched once (in chunks of 500
+     * entries when the library is large) and shared by all of the status calls My Space makes.
+     */
     suspend fun getMediaListCollection(userId: Int, status: String = "CURRENT"): List<AniListMediaListEntry> {
         val query = """
-            query (${'$'}userId: Int, ${'$'}status: MediaListStatus) {
-              MediaListCollection(userId: ${'$'}userId, type: ANIME, status: ${'$'}status) {
+            query (${'$'}userId: Int, ${'$'}chunk: Int) {
+              MediaListCollection(userId: ${'$'}userId, type: ANIME, chunk: ${'$'}chunk, perChunk: 500) {
+                hasNextChunk
                 lists {
+                  isCustomList
                   entries {
                     progress
                     status
@@ -69,20 +78,33 @@ class AniListApi(
             }
             $MEDIA_FIELDS
         """.trimIndent()
-        val data = execute(query, mapOf("userId" to userId, "status" to status)) ?: return emptyList()
-        val lists = data["MediaListCollection"]?.jsonObject?.get("lists")?.jsonArray ?: return emptyList()
-        return lists.flatMap { list ->
-            list.jsonObject["entries"]?.jsonArray.orEmpty().mapNotNull { entry ->
-                val entryObj = entry.jsonObject
-                val media = entryObj["media"]?.jsonObject?.toMedia() ?: return@mapNotNull null
-                AniListMediaListEntry(
-                    mediaId = media.id,
-                    progress = entryObj["progress"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0,
-                    status = entryObj["status"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                    media = media,
-                )
+        val result = mutableListOf<AniListMediaListEntry>()
+        var chunk = 1
+        while (chunk <= MAX_LIST_CHUNKS) {
+            val data = execute(query, mapOf("userId" to userId, "chunk" to chunk), cacheTtlMs = LIST_TTL_MS)
+                ?: return result.takeIf { it.isNotEmpty() } ?: emptyList()
+            val collection = data["MediaListCollection"]?.jsonObject ?: break
+            collection["lists"]?.jsonArray.orEmpty().forEach { list ->
+                val listObj = list.jsonObject
+                // A custom list repeats entries that already sit on a status list.
+                if (listObj["isCustomList"]?.jsonPrimitive?.content == "true") return@forEach
+                listObj["entries"]?.jsonArray.orEmpty().forEach { entry ->
+                    val entryObj = entry.jsonObject
+                    val entryStatus = entryObj["status"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    if (entryStatus != status) return@forEach
+                    val media = entryObj["media"]?.jsonObject?.toMedia() ?: return@forEach
+                    result += AniListMediaListEntry(
+                        mediaId = media.id,
+                        progress = entryObj["progress"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0,
+                        status = entryStatus,
+                        media = media,
+                    )
+                }
             }
+            if (collection["hasNextChunk"]?.jsonPrimitive?.content != "true") break
+            chunk++
         }
+        return result
     }
 
     /** The signed-in user's favourited anime (the hearts), newest page of up to 50. */
@@ -99,7 +121,7 @@ class AniListApi(
             }
             $MEDIA_FIELDS
         """.trimIndent()
-        val data = execute(query, mapOf("userId" to userId)) ?: return emptyList()
+        val data = execute(query, mapOf("userId" to userId), cacheTtlMs = LIST_TTL_MS) ?: return emptyList()
         val nodes = data["User"]?.jsonObject
             ?.get("favourites")?.jsonObject
             ?.get("anime")?.jsonObject
@@ -117,7 +139,7 @@ class AniListApi(
             }
             $MEDIA_FIELDS
         """.trimIndent()
-        val data = execute(gql, mapOf("page" to page, "search" to query)) ?: return emptyList()
+        val data = execute(gql, mapOf("page" to page, "search" to query), cacheTtlMs = SEARCH_TTL_MS) ?: return emptyList()
         return data["Page"]?.jsonObject?.get("media")?.jsonArray.orEmpty().mapNotNull { it.jsonObject.toMedia() }
     }
 
@@ -172,7 +194,7 @@ class AniListApi(
             put("perPage", perPage)
             if (hasText) put("search", query)
         }
-        val data = execute(gql, variables) ?: return null
+        val data = execute(gql, variables, cacheTtlMs = SEARCH_TTL_MS) ?: return null
         val pageObj = data["Page"]?.jsonObject ?: return null
         return AniListMediaPage(
             media = pageObj["media"]?.jsonArray.orEmpty().mapNotNull { it.jsonObject.toMedia() },
@@ -193,7 +215,7 @@ class AniListApi(
             }
             $MEDIA_FIELDS
         """.trimIndent()
-        val data = execute(gql, mapOf("page" to page)) ?: return emptyList()
+        val data = execute(gql, mapOf("page" to page), cacheTtlMs = FEED_TTL_MS) ?: return emptyList()
         return data["Page"]?.jsonObject?.get("media")?.jsonArray.orEmpty().mapNotNull { it.jsonObject.toMedia() }
     }
 
@@ -207,7 +229,7 @@ class AniListApi(
             }
             $MEDIA_FIELDS
         """.trimIndent()
-        val data = execute(gql, mapOf("page" to page, "season" to season, "seasonYear" to seasonYear)) ?: return emptyList()
+        val data = execute(gql, mapOf("page" to page, "season" to season, "seasonYear" to seasonYear), cacheTtlMs = FEED_TTL_MS) ?: return emptyList()
         return data["Page"]?.jsonObject?.get("media")?.jsonArray.orEmpty().mapNotNull { it.jsonObject.toMedia() }
     }
 
@@ -240,7 +262,7 @@ class AniListApi(
             }
             $MEDIA_FIELDS
         """.trimIndent()
-        val data = execute(gql, mapOf("page" to page, "perPage" to perPage)) ?: return null
+        val data = execute(gql, mapOf("page" to page, "perPage" to perPage), cacheTtlMs = FEED_TTL_MS) ?: return null
         val pageObj = data["Page"]?.jsonObject ?: return null
         return AniListMediaPage(
             media = pageObj["media"]?.jsonArray.orEmpty().mapNotNull { it.jsonObject.toMedia() },
@@ -255,7 +277,7 @@ class AniListApi(
               SaveMediaListEntry(mediaId: ${'$'}mediaId, progress: ${'$'}progress) { id }
             }
         """.trimIndent()
-        return execute(mutation, mapOf("mediaId" to mediaId, "progress" to progress)) != null
+        return (execute(mutation, mapOf("mediaId" to mediaId, "progress" to progress)) != null).also { if (it) clearCache() }
     }
 
     /**
@@ -264,10 +286,40 @@ class AniListApi(
      * shows for the "More like this" row.
      */
     /** The MyAnimeList id AniList has for this entry (AniSkip is keyed by it), or null when it has none. */
-    suspend fun getMalId(mediaId: Int): Int? {
-        val gql = "query (${'$'}id: Int) { Media(id: ${'$'}id, type: ANIME) { idMal } }"
-        val data = execute(gql, mapOf("id" to mediaId)) ?: return null
-        return data["Media"]?.jsonObject?.get("idMal")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+    suspend fun getMalId(mediaId: Int): Int? = getMediaCore(mediaId)?.malId
+
+    /**
+     * The small facts several screens need about a show (MAL id, every title, episode titles and
+     * thumbnails) in ONE request. It stays apart from [getMediaDetails] on purpose: that query also
+     * carries characters, staff and recommendations, and the episode search must not wait for them.
+     */
+    suspend fun getMediaCore(mediaId: Int): AniListMediaCore? {
+        val gql = """
+            query (${'$'}id: Int) {
+              Media(id: ${'$'}id, type: ANIME) {
+                idMal
+                title { romaji english native userPreferred }
+                synonyms
+                streamingEpisodes { title thumbnail }
+              }
+            }
+        """.trimIndent()
+        val media = execute(gql, mapOf("id" to mediaId), cacheTtlMs = CORE_TTL_MS)?.get("Media") as? JsonObject ?: return null
+        val title = media["title"] as? JsonObject
+        val names = listOf("english", "romaji", "userPreferred", "native").mapNotNull {
+            (title?.get(it) as? JsonPrimitive)?.contentOrNull
+        }
+        val synonyms = media["synonyms"]?.jsonArray.orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+        val episodes = media["streamingEpisodes"]?.jsonArray.orEmpty().mapNotNull { element ->
+            val obj = element.jsonObject
+            val episodeTitle = obj["title"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            AniListStreamingEpisode(title = episodeTitle, thumbnailUrl = obj["thumbnail"]?.jsonPrimitive?.contentOrNull)
+        }
+        return AniListMediaCore(
+            malId = (media["idMal"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull(),
+            titles = (names + synonyms).map { it.trim() }.filter { it.length >= 2 }.distinct(),
+            episodes = episodes,
+        )
     }
 
     suspend fun getMediaDetails(mediaId: Int): AniListMediaDetails? {
@@ -317,43 +369,16 @@ class AniListApi(
               }
             }
         """.trimIndent()
-        val data = execute(gql, mapOf("id" to mediaId)) ?: return null
+        val data = execute(gql, mapOf("id" to mediaId), cacheTtlMs = DETAILS_TTL_MS) ?: return null
         val media = data["Media"]?.jsonObject ?: return null
         return media.toMediaDetails()
     }
 
     /** Every name AniList has for a show (romaji, English, native, synonyms), so sources can be searched under each. */
-    suspend fun getAllTitles(mediaId: Int): List<String> {
-        val gql = """
-            query (${'$'}id: Int) {
-              Media(id: ${'$'}id, type: ANIME) { title { romaji english native userPreferred } synonyms }
-            }
-        """.trimIndent()
-        val data = execute(gql, mapOf("id" to mediaId)) ?: return emptyList()
-        val media = data["Media"]?.jsonObject ?: return emptyList()
-        val title = media["title"] as? JsonObject
-        val names = listOf("english", "romaji", "userPreferred", "native").mapNotNull {
-            (title?.get(it) as? JsonPrimitive)?.contentOrNull
-        }
-        val synonyms = media["synonyms"]?.jsonArray.orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
-        return (names + synonyms).map { it.trim() }.filter { it.length >= 2 }.distinct()
-    }
+    suspend fun getAllTitles(mediaId: Int): List<String> = getMediaCore(mediaId)?.titles.orEmpty()
 
     /** Episode titles and thumbnails AniList knows about for a show; empty when it has none. */
-    suspend fun getStreamingEpisodes(mediaId: Int): List<AniListStreamingEpisode> {
-        val gql = """
-            query (${'$'}id: Int) {
-              Media(id: ${'$'}id, type: ANIME) { streamingEpisodes { title thumbnail } }
-            }
-        """.trimIndent()
-        val data = execute(gql, mapOf("id" to mediaId)) ?: return emptyList()
-        val entries = data["Media"]?.jsonObject?.get("streamingEpisodes")?.jsonArray.orEmpty()
-        return entries.mapNotNull { element ->
-            val obj = element.jsonObject
-            val title = obj["title"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-            AniListStreamingEpisode(title = title, thumbnailUrl = obj["thumbnail"]?.jsonPrimitive?.contentOrNull)
-        }
-    }
+    suspend fun getStreamingEpisodes(mediaId: Int): List<AniListStreamingEpisode> = getMediaCore(mediaId)?.episodes.orEmpty()
 
     /**
      * Episodes airing between [fromEpochSeconds] and [toEpochSeconds] — powers the Schedule tab.
@@ -381,6 +406,7 @@ class AniListApi(
                 execute(
                     gql,
                     mapOf("from" to fromEpochSeconds.toInt(), "to" to toEpochSeconds.toInt(), "page" to page),
+                    cacheTtlMs = SCHEDULE_TTL_MS,
                 )
             } catch (e: ApiException) {
                 // Keep the pages already fetched; only fail when there is nothing to show.
@@ -437,7 +463,7 @@ class AniListApi(
             put("status", status)
             if (progress != null) put("progress", progress)
         }
-        return execute(mutation, variables) != null
+        return (execute(mutation, variables) != null).also { if (it) clearCache() }
     }
 
     /** Removes the show from the user's list. Succeeds when it was not on the list to begin with. */
@@ -447,7 +473,7 @@ class AniListApi(
         val mutation = """
             mutation (${'$'}id: Int) { DeleteMediaListEntry(id: ${'$'}id) { deleted } }
         """.trimIndent()
-        return execute(mutation, mapOf("id" to entryId)) != null
+        return (execute(mutation, mapOf("id" to entryId)) != null).also { if (it) clearCache() }
     }
 
     /** Toggles the heart/favourite state on the signed-in user's AniList account for this show. */
@@ -455,7 +481,7 @@ class AniListApi(
         val mutation = """
             mutation (${'$'}id: Int) { ToggleFavourite(animeId: ${'$'}id) { anime { nodes { id } } } }
         """.trimIndent()
-        return execute(mutation, mapOf("id" to mediaId), idempotent = false) != null
+        return (execute(mutation, mapOf("id" to mediaId), idempotent = false) != null).also { if (it) clearCache() }
     }
 
     /**
@@ -468,6 +494,49 @@ class AniListApi(
      * repeat (a toggle): it is then only retried after a 429, where AniList refused it without acting.
      */
     private suspend fun execute(
+        query: String,
+        variables: Map<String, Any?>,
+        idempotent: Boolean = true,
+        cacheTtlMs: Long = 0L,
+    ): JsonObject? {
+        if (cacheTtlMs <= 0L) return executeUncached(query, variables, idempotent)
+        // The signed-in user is part of the key, so logging in or out never shows the other account's data.
+        val key = "${authManager.accessToken.value.orEmpty().hashCode()}|$query|${variables.entries.joinToString(",")}"
+        freshCached(key, cacheTtlMs)?.let { return it }
+        val lock = cacheLocks.getOrPut(key) { Mutex() }
+        // One request per key at a time: callers asking for the same thing together share its answer.
+        return lock.withLock {
+            freshCached(key, cacheTtlMs)?.let { return@withLock it }
+            val data = executeUncached(query, variables, idempotent)
+            if (data != null) storeCached(key, data)
+            data
+        }
+    }
+
+    private class CachedResponse(val data: JsonObject, val at: Long)
+
+    private val responseCache = java.util.concurrent.ConcurrentHashMap<String, CachedResponse>()
+    private val cacheLocks = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
+
+    private fun freshCached(key: String, ttlMs: Long): JsonObject? {
+        val hit = responseCache[key] ?: return null
+        return if (System.currentTimeMillis() - hit.at <= ttlMs) hit.data else null
+    }
+
+    private fun storeCached(key: String, data: JsonObject) {
+        if (responseCache.size >= MAX_CACHED_RESPONSES) {
+            // Drop the oldest quarter so the cache never grows without bound.
+            responseCache.entries.sortedBy { it.value.at }.take(MAX_CACHED_RESPONSES / 4).forEach { responseCache.remove(it.key) }
+        }
+        responseCache[key] = CachedResponse(data, System.currentTimeMillis())
+    }
+
+    /** Forgets every remembered response, so the next screen asks AniList again (after a change or a manual refresh). */
+    fun clearCache() {
+        responseCache.clear()
+    }
+
+    private suspend fun executeUncached(
         query: String,
         variables: Map<String, Any?>,
         idempotent: Boolean = true,
@@ -680,6 +749,18 @@ class AniListApi(
 
     companion object {
         private const val MAX_SCHEDULE_PAGES = 12
+
+        // How long a read answer is reused before AniList is asked again. Anything the user changes
+        // (list status, progress, favourite) clears the whole cache at once, so these only bound how
+        // stale data changed elsewhere (the AniList website) can look.
+        private const val FEED_TTL_MS = 10 * 60_000L
+        private const val SEARCH_TTL_MS = 5 * 60_000L
+        private const val DETAILS_TTL_MS = 10 * 60_000L
+        private const val CORE_TTL_MS = 30 * 60_000L
+        private const val LIST_TTL_MS = 2 * 60_000L
+        private const val SCHEDULE_TTL_MS = 15 * 60_000L
+        private const val MAX_CACHED_RESPONSES = 120
+        private const val MAX_LIST_CHUNKS = 6
 
         /** AniList relation types that belong to the same show/franchise, in display order. */
         private val FRANCHISE_RELATIONS = listOf(

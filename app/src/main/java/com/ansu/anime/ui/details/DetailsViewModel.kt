@@ -111,34 +111,80 @@ class DetailsViewModel(
                     remoteListStatus = details?.listStatus,
                     error = if (_uiState.value.episodes.isEmpty() && !_uiState.value.isLoading && details == null) "Couldn't load this title" else _uiState.value.error,
                 )
+                // A show AniList knows lists AniList's own episodes: no source is searched to build the page.
+                // Sources are asked only when an episode is played (the player matches them then); a quiet
+                // warm-up below makes that match quick. When AniList cannot say how many episodes there are,
+                // the sources' own lists are used as before.
+                if (current.anilistId != null) {
+                    val fromAniList = aniListEpisodes(current, details)
+                    if (fromAniList.isNotEmpty()) {
+                        rawEpisodes = fromAniList
+                        publishEpisodes(current, finished = true)
+                        warmSourceMatches(current)
+                    } else {
+                        loadSourceEpisodes(current)
+                    }
+                }
             }
-            viewModelScope.launch {
-                val cacheKey = "ep-${current.anilistId ?: current.id}"
-                // Show the last known list instantly (memory, then disk); re-fetch when it is older than 5 minutes.
-                val cached = EpisodeListCache.get(cacheKey)
-                if (cached != null) {
-                    rawEpisodes = cached
-                    publishEpisodes(current, finished = true)
-                    if (EpisodeListCache.ageMs(cacheKey) < 5 * 60_000L) return@launch
+            if (current.anilistId == null) viewModelScope.launch { loadSourceEpisodes(current) }
+        }
+    }
+
+    /** One placeholder episode per episode AniList says exists (or has aired); titles and thumbnails are filled in by [publishEpisodes]. */
+    private fun aniListEpisodes(current: SAnime, details: com.ansu.anime.anilist.AniListMediaDetails?): List<SEpisode> {
+        val format = details?.format ?: current.format
+        val total = details?.episodes ?: current.episodes
+        val aired = details?.nextAiringEpisode?.let { it - 1 }
+        val count = when {
+            format.equals("MOVIE", ignoreCase = true) -> 1
+            aired != null -> if (total != null) minOf(aired, total) else aired
+            details?.status == "NOT_YET_RELEASED" -> 0
+            total != null -> total
+            else -> episodeMeta.keys.maxOrNull() ?: 0
+        }
+        return (1..count).map { number ->
+            SEpisode(id = "${current.id}-al-$number", name = "Episode $number", episodeNumber = number.toFloat())
+        }
+    }
+
+    /** Quietly matches the installed sources in the background, so playing an episode finds its streams quickly. */
+    private fun warmSourceMatches(current: SAnime) {
+        viewModelScope.launch {
+            runCatching {
+                extensionManager.findEpisodesByTitle(
+                    current,
+                    extraTitlesProvider = { current.anilistId?.let { id -> aniListRepository.getAllTitles(id) }.orEmpty() },
+                )
+            }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+        }
+    }
+
+    /** The sources' own episode lists (shows AniList does not know, or has no episode count for), cached on disk. */
+    private suspend fun loadSourceEpisodes(current: SAnime) {
+        val cacheKey = "ep-${current.anilistId ?: current.id}"
+        // Show the last known list instantly (memory, then disk); re-fetch when it is older than 30 minutes.
+        val cached = EpisodeListCache.get(cacheKey)
+        if (cached != null) {
+            rawEpisodes = cached
+            publishEpisodes(current, finished = true)
+            if (EpisodeListCache.ageMs(cacheKey) < 30 * 60_000L) return
+        }
+        runCatching {
+            loadEpisodes(current) { partial ->
+                // With a cached list on screen, wait for the full result so the list never shrinks mid-refresh.
+                if (cached == null) {
+                    rawEpisodes = partial
+                    publishEpisodes(current, finished = false)
                 }
-                runCatching {
-                    loadEpisodes(current) { partial ->
-                        // With a cached list on screen, wait for the full result so the list never shrinks mid-refresh.
-                        if (cached == null) {
-                            rawEpisodes = partial
-                            publishEpisodes(current, finished = false)
-                        }
-                    }
-                }
-                    .onSuccess {
-                        rawEpisodes = it
-                        // A placeholder "episode 1" (nothing found) is not worth remembering.
-                        if (it.any { episode -> episode.sourceId != null }) EpisodeListCache.save(cacheKey, it)
-                    }
-                    .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
-                publishEpisodes(current, finished = true)
             }
         }
+            .onSuccess {
+                rawEpisodes = it
+                // A placeholder "episode 1" (nothing found) is not worth remembering.
+                if (it.any { episode -> episode.sourceId != null }) EpisodeListCache.save(cacheKey, it)
+            }
+            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+        publishEpisodes(current, finished = true)
     }
 
     /** Applies AniList episode info to the source episodes and shows the result. */
@@ -206,13 +252,15 @@ class DetailsViewModel(
                 var ownSoFar: List<SEpisode> = emptyList()
                 val foundDeferred = async {
                     runCatching {
-                        // Alternate titles only improve matching; never let a slow AniList call hold the search up.
-                        val extra = anime.anilistId?.let { id ->
-                            kotlinx.coroutines.withTimeoutOrNull(1_500) { aniListRepository.getAllTitles(id) }
-                        }.orEmpty()
-                        extensionManager.findEpisodesByTitle(anime, extraTitles = extra) { partial ->
-                            onPartial(com.ansu.anime.extension.foldOriginEpisodes(partial, origin.sourceId, ownSoFar))
-                        }
+                        // Alternate titles only improve matching: they are fetched while the search already runs, and
+                        // a source that remembers its page for this show never waits for them.
+                        extensionManager.findEpisodesByTitle(
+                            anime,
+                            onPartial = { partial ->
+                                onPartial(com.ansu.anime.extension.foldOriginEpisodes(partial, origin.sourceId, ownSoFar))
+                            },
+                            extraTitlesProvider = { anime.anilistId?.let { id -> aniListRepository.getAllTitles(id) }.orEmpty() },
+                        )
                     }.getOrDefault(emptyList())
                 }
                 val ownEpisodes = ownDeferred.await()

@@ -209,7 +209,11 @@ fun NavBarSurface(
         label = "navPillHold",
     )
 
-    LaunchedEffect(targetIndex) { pill.animateTo(targetIndex * slotPx) }
+    LaunchedEffect(targetIndex) {
+        // Only travel when the pill is not already parked on the target. Animating unconditionally re-ran
+        // the same run whenever this value and the pill already agreed, which made the pill replay its move.
+        if (abs(pill.left - targetIndex * slotPx) > 0.5f) pill.animateTo(targetIndex * slotPx)
+    }
     if (onItemClick != null) SideEffect { lastPillPx = pillLeft }
     val activeIndex = (((pillLeft + pillRight) / 2f) / slotPx).toInt().coerceIn(0, barItems.size - 1)
 
@@ -260,12 +264,15 @@ fun NavBarSurface(
                         held = false
                         val index = (lastX / slotPx).toInt().coerceIn(0, barItems.size - 1)
                         val from = dragLeft
+                        val route = barItems[index].route
                         scope.launch(start = CoroutineStart.UNDISPATCHED) {
                             if (from != null) pill.snapTo(from)
                             dragLeft = null
-                            pill.animateTo(index * slotPx)
+                            // A tab change is animated once by the incoming screen's bar (through lastPillPx);
+                            // animating here as well is what made the pill appear to travel twice.
+                            if (route == currentRoute) pill.animateTo(index * slotPx)
                         }
-                        if (barItems[index].route != currentRoute) onItemClick(barItems[index].route)
+                        if (route != currentRoute) onItemClick(route)
                     }
                 },
         ) {

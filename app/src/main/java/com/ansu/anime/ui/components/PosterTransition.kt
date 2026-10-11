@@ -224,6 +224,9 @@ fun AnimatedContentScope.PosterExpandContainer(
     val screenCornerPx = with(density) { 28.dp.toPx() }
     val posterCornerPx = with(density) { (origin?.cornerRadius ?: 0.dp).toPx() }
     val originBounds = origin?.bounds
+    // A poster image is what makes the morph look right: with no image to draw inside the window the
+    // close would only shrink a half-transparent page over the background. Those cases cross-fade.
+    val canCover = origin?.posterUrl != null && originBounds != null
     val container = remember { OffsetHolder() }
     // The poster cover is only needed until the page is fully open; dropping it then frees its layer.
     val coverVisible by remember { derivedStateOf { progress.value < 0.999f } }
@@ -237,7 +240,7 @@ fun AnimatedContentScope.PosterExpandContainer(
             .onGloballyPositioned { container.offset = it.positionInRoot() }
             .graphicsLayer {
                 val p = progress.value
-                if (originBounds == null) {
+                if (!canCover) {
                     // No poster to grow from: a plain fade, without an off-screen copy of the page.
                     alpha = (p * 2f).coerceIn(0f, 1f)
                     compositingStrategy = CompositingStrategy.ModulateAlpha
@@ -258,15 +261,17 @@ fun AnimatedContentScope.PosterExpandContainer(
                 boundsAt = { containerSize ->
                     windowBounds(origin.bounds, container.offset, containerSize, progress.value)
                 },
-                // Fully there until the page is open, then gone; played backwards on close.
-                alpha = { ((1f - progress.value) / 0.15f).coerceIn(0f, 1f) },
+                // Opaque while the window is near the poster, gone once the page fills it; played the other
+                // way on close. Keeping it opaque a little longer hides the shrinking page instead of
+                // leaving a half-transparent picture floating over the background.
+                alpha = { ((0.6f - progress.value) / 0.35f).coerceIn(0f, 1f) },
             )
         }
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    if (originBounds != null) {
+                    if (canCover) {
                         val p = progress.value
                         compositingStrategy = CompositingStrategy.ModulateAlpha
                         if (closing) {

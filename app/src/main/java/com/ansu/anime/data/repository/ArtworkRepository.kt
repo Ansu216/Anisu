@@ -42,6 +42,10 @@ data class AnimeArtwork(
     val season: Int? = null,
     /** TMDB's English-language title logo; null without a TMDB key or when TMDB has no English one. */
     val englishLogoUrl: String? = null,
+    /** TMDB's best textless 16:9 backdrop for the show (a series-wide picture for TV); null without a key or when TMDB has none. */
+    val tmdbBackdropUrl: String? = null,
+    /** TMDB's best portrait poster (textless when it has one, else English); series-wide for TV, so see [heroPosterFor]. */
+    val tmdbPosterUrl: String? = null,
     /** TMDB id and kind from ani.zip's mapping, used to look [englishLogoUrl] up. */
     val tmdbId: Int? = null,
     val tmdbIsMovie: Boolean = false,
@@ -78,13 +82,28 @@ fun seasonLabel(title: String, format: String?, hasPrequel: Boolean, aniZipSeaso
 }
 
 /**
+ * TMDB's portrait picture for a Home hero slide, or null when it should not be used. A movie has a poster of
+ * its own; a TMDB TV show has one for the whole series, so a later season, special or OVA (which would show
+ * the first season's picture) returns null and the caller keeps AniList's cover for that entry.
+ */
+fun AnimeArtwork.heroPosterFor(title: String, format: String?): String? {
+    val poster = tmdbPosterUrl ?: return null
+    if (tmdbIsMovie) return poster
+    val kind = format?.uppercase()
+    if (kind != null && !kind.startsWith("TV")) return null
+    val titleSeason = SEASON_IN_TITLE.findAll(title).any { match ->
+        match.groupValues.drop(1).firstOrNull { it.isNotEmpty() }?.toIntOrNull()?.let { it > 1 } == true
+    }
+    return if ((season ?: 1) > 1 || titleSeason) null else poster
+}
+
+/**
  * The hero picture for one details page, chosen per entry instead of per title.
  *
- * A first season (or a standalone show) keeps the sharp series backdrop. Later seasons, movies, OVAs
- * and specials are different AniList entries of the same series, and the series-wide backdrop would
- * be identical for all of them, so they use art of their own entry first: AniList's banner for that
- * entry, then the entry's own wide cover, and finally its poster. The series backdrop is not used
- * for them at all.
+ * TMDB's textless backdrop comes first, with AniList's banner as the fallback (then the other wide
+ * pictures, and finally the poster). A TMDB movie has a backdrop of its own, but a TMDB TV show has one
+ * for the whole series, which would be identical for every season, special and OVA, so for those entries
+ * AniList's art of that exact entry stays first and the series backdrop is not used at all.
  */
 fun pickHeroImage(
     title: String,
@@ -101,9 +120,9 @@ fun pickHeroImage(
             match.groupValues.drop(1).firstOrNull { it.isNotEmpty() }?.toIntOrNull()?.let { it > 1 } == true
         }
     return if (standaloneKind || laterSeason) {
-        entryBanner ?: artwork.entryCoverUrl ?: poster
+        (if (artwork.tmdbIsMovie) artwork.tmdbBackdropUrl else null) ?: entryBanner ?: artwork.entryCoverUrl ?: poster
     } else {
-        artwork.backdropUrl ?: entryBanner ?: artwork.bannerUrl ?: artwork.entryCoverUrl ?: poster
+        artwork.tmdbBackdropUrl ?: entryBanner ?: artwork.backdropUrl ?: artwork.bannerUrl ?: artwork.entryCoverUrl ?: poster
     }
 }
 
@@ -138,20 +157,23 @@ class ArtworkRepository(
     private suspend fun fetch(anilistId: Int): AnimeArtwork = coroutineScope {
         val cover = async { fetchEntryCover(anilistId) }
         val base = fetchAniZip(anilistId)
-        val englishLogo = base.tmdbId?.let { fetchTmdbEnglishLogo(it, base.tmdbIsMovie) }
-        base.copy(entryCoverUrl = cover.await(), englishLogoUrl = englishLogo)
+        val tmdb = base.tmdbId?.let { fetchTmdbImages(it, base.tmdbIsMovie) }
+        base.copy(entryCoverUrl = cover.await(), englishLogoUrl = tmdb?.logo, tmdbBackdropUrl = tmdb?.backdrop, tmdbPosterUrl = tmdb?.poster)
     }
 
+    private class TmdbImages(val logo: String?, val backdrop: String?, val poster: String?)
+
     /**
-     * The best English-language logo TMDB has for [tmdbId]; null with no key, no English logo or any
-     * failure (the UI then shows the plain English title). SVG logos are skipped, Coil cannot draw them here.
+     * The best English logo and the best textless backdrop TMDB has for [tmdbId], from one request; null with
+     * no key or on any failure (the UI then falls back to the plain title and AniList's art). SVG logos are
+     * skipped, Coil cannot draw them here, and a backdrop with lettering on it is never used.
      */
-    private suspend fun fetchTmdbEnglishLogo(tmdbId: Int, isMovie: Boolean): String? = withContext(Dispatchers.IO) {
+    private suspend fun fetchTmdbImages(tmdbId: Int, isMovie: Boolean): TmdbImages? = withContext(Dispatchers.IO) {
         if (tmdbApiKey.isBlank()) return@withContext null
         try {
             val kind = if (isMovie) "movie" else "tv"
             val builder = "https://api.themoviedb.org/3/$kind/$tmdbId/images".toHttpUrl().newBuilder()
-                .addQueryParameter("include_image_language", "en")
+                .addQueryParameter("include_image_language", "en,null")
             // A long "eyJ..." value is TMDB's v4 read token; the short hex one is the v3 key.
             val isToken = tmdbApiKey.startsWith("eyJ")
             if (!isToken) builder.addQueryParameter("api_key", tmdbApiKey)
@@ -163,18 +185,35 @@ class ArtworkRepository(
                 response.body.string()
             }
             if (text.isBlank()) return@withContext null
-            val logos = json.parseToJsonElement(text).jsonObject["logos"] as? JsonArray ?: return@withContext null
-            val best = logos.asSequence()
+            val root = json.parseToJsonElement(text).jsonObject
+
+            fun JsonObject.language() = (this["iso_639_1"] as? JsonPrimitive)?.contentOrNull
+            fun JsonObject.path() = (this["file_path"] as? JsonPrimitive)?.contentOrNull
+            fun JsonObject.votes() = (this["vote_average"] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull() ?: 0.0
+
+            val logo = (root["logos"] as? JsonArray).orEmpty().asSequence()
                 .mapNotNull { it as? JsonObject }
-                .filter { (it["iso_639_1"] as? JsonPrimitive)?.contentOrNull == "en" }
-                .filter { (it["file_path"] as? JsonPrimitive)?.contentOrNull?.endsWith(".svg", ignoreCase = true) == false }
-                .maxByOrNull { (it["vote_average"] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull() ?: 0.0 }
-                ?: return@withContext null
-            (best["file_path"] as? JsonPrimitive)?.contentOrNull?.let { "https://image.tmdb.org/t/p/w500$it" }
+                .filter { it.language() == "en" && it.path()?.endsWith(".svg", ignoreCase = true) == false }
+                .maxByOrNull { it.votes() }
+                ?.path()?.let { "https://image.tmdb.org/t/p/w500$it" }
+            // Textless backdrops have no language tag in TMDB.
+            val backdrop = (root["backdrops"] as? JsonArray).orEmpty().asSequence()
+                .mapNotNull { it as? JsonObject }
+                .filter { it["iso_639_1"] is kotlinx.serialization.json.JsonNull || it["iso_639_1"] == null }
+                .maxByOrNull { it.votes() }
+                ?.path()?.let { "https://image.tmdb.org/t/p/w1280$it" }
+            // TMDB has no portrait backdrops; its portrait pictures are posters. Textless ones first (the title is
+            // drawn over the hero anyway), then the English poster.
+            val posters = (root["posters"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+            val poster = (
+                posters.filter { it["iso_639_1"] is kotlinx.serialization.json.JsonNull || it["iso_639_1"] == null }.maxByOrNull { it.votes() }
+                    ?: posters.filter { it.language() == "en" }.maxByOrNull { it.votes() }
+                )?.path()?.let { "https://image.tmdb.org/t/p/w780$it" }
+            if (logo == null && backdrop == null && poster == null) null else TmdbImages(logo, backdrop, poster)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            null // Optional extra: without it the UI falls back to the plain English title.
+            null // Optional extra: without it the UI falls back to the plain title and AniList's art.
         }
     }
 

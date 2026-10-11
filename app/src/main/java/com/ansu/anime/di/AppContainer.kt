@@ -35,6 +35,7 @@ class AppContainer(context: Context) {
 
     init {
         com.ansu.anime.extension.EpisodeListCache.attach(appContext.cacheDir)
+        com.ansu.anime.extension.SourceMatchMemory.attach(appContext.filesDir)
     }
 
     /** Ansu's black box: every crash, navigation, tap, playback and network event. */
@@ -88,6 +89,9 @@ class AppContainer(context: Context) {
     val contributorsRepository: ContributorsRepository = ContributorsRepository(appContext, okHttpClient, apiErrorHandler)
 
     val updateManager: UpdateManager = UpdateManager(appContext, okHttpClient, diagnostics)
+
+    /** Full settings + library backup and restore, written as one `.anisu` archive. */
+    val backupManager: com.ansu.anime.data.backup.BackupManager = com.ansu.anime.data.backup.BackupManager(appContext)
 
     init {
         // Aniyomi/Keiyoushi extensions need the Injekt container filled in before they are instantiated.

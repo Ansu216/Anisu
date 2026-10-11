@@ -68,10 +68,11 @@ import com.ansu.anime.ui.theme.AnsuColors
 import kotlin.math.roundToInt
 
 /**
- * The Updates screen: the app's own store page. It shows the installed build, lets the user pick a
- * channel (stable Releases or the hourly Nightly branch), checks what the project publishes on GitHub
- * and downloads + installs the APK in one tap. The download is written to a `.part` file first and only
- * becomes an installable APK when it completes, so an interrupted download can be resumed.
+ * Updates: the app's own store page. Each concern (installed build, channel, automatic checks and the
+ * current status) is its own card, so the page reads top to bottom instead of as one long list. It shows
+ * the installed build, lets the user pick a channel (stable Releases or the hourly Nightly branch),
+ * checks what the project publishes on GitHub and downloads + installs the APK in one tap. The download
+ * is written to a `.part` file first and only becomes an installable APK when it completes.
  */
 @Composable
 fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
@@ -112,59 +113,63 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            InstalledVersionCard()
+            SectionCard("Installed build") { InstalledVersionRow() }
 
-            ChannelSelector(channel = channel, onChannelChange = { container.updateManager.prefs.setChannel(it) })
+            SectionCard("Channel") {
+                ChannelSelector(channel = channel, onChannelChange = { container.updateManager.prefs.setChannel(it) })
+            }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Automatic checks", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
-                    Text(
-                        text = "Look for a new build when the app opens and every 12 hours in the background",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = AnsuColors.TextSecondary,
+            SectionCard("Automatic checks") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Look for a new build on open and every 12 hours",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = AnsuColors.TextSecondary,
+                        )
+                    }
+                    Switch(
+                        checked = autoCheck,
+                        onCheckedChange = { container.updateManager.setAutoCheck(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = AnsuColors.OnAccent,
+                            checkedTrackColor = AnsuColors.Accent,
+                        ),
                     )
                 }
-                Switch(
-                    checked = autoCheck,
-                    onCheckedChange = { container.updateManager.setAutoCheck(it) },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = AnsuColors.OnAccent,
-                        checkedTrackColor = AnsuColors.Accent,
-                    ),
+                TestNotificationRow(
+                    result = testResult,
+                    onSend = {
+                        val sent = container.updateManager.notifyTest()
+                        val blocked = if (sent) null else container.updateManager.notificationBlockedReason()
+                        testResult = if (sent) {
+                            "Sent — it is in your notification shade like any other app's alert."
+                        } else {
+                            "Not sent: " + (blocked ?: "the system refused it.")
+                        }
+                        offerNotificationSettings = blocked != null
+                    },
+                    onOpenSettings = if (offerNotificationSettings) {
+                        { openNotificationSettings(context) }
+                    } else {
+                        null
+                    },
                 )
             }
 
-            TestNotificationRow(
-                result = testResult,
-                onSend = {
-                    val sent = container.updateManager.notifyTest()
-                    val blocked = if (sent) null else container.updateManager.notificationBlockedReason()
-                    testResult = if (sent) {
-                        "Sent — it is in your notification shade like any other app's alert."
-                    } else {
-                        "Not sent: " + (blocked ?: "the system refused it.")
-                    }
-                    offerNotificationSettings = blocked != null
-                },
-                onOpenSettings = if (offerNotificationSettings) {
-                    { openNotificationSettings(context) }
-                } else {
-                    null
-                },
-            )
-
-            StatusSection(
-                state = state,
-                onCheck = { container.updateManager.check() },
-                onInstall = { container.updateManager.downloadAndInstall() },
-            )
+            SectionCard("Status") {
+                StatusSection(
+                    state = state,
+                    onCheck = { container.updateManager.check() },
+                    onInstall = { container.updateManager.downloadAndInstall() },
+                )
+            }
 
             Text(
                 text = "Builds are published from the official Anisu repository " +
@@ -177,8 +182,27 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
     }
 }
 
+/** A frosted card with a heading, so every block on the page reads as its own little section. */
+@Composable
+private fun SectionCard(title: String, content: @Composable () -> Unit) {
+    FrostedGlassCard(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, tintAlpha = 0.4f) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                color = AnsuColors.TextPrimary,
+                fontWeight = FontWeight.Bold,
+            )
+            content()
+        }
+    }
+}
+
 /**
- * A real system notification on demand, so the user can check on their own device that Ansu alerts
+ * A real system notification on demand, so the user can check on their own device that Anisu alerts
  * arrive without waiting for a new build to be published. When nothing is posted, the reason the
  * system gave is shown, together with a way straight into the setting that would fix it — a missing
  * permission or a switched-off notification channel cannot be fixed from inside the app.
@@ -191,10 +215,10 @@ private fun TestNotificationRow(result: String?, onSend: () -> Unit, onOpenSetti
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text("Test notification", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
+            Text("Test notification", style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextPrimary)
             Text(
                 text = result ?: "Post a real system notification now",
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall,
                 color = if (result == null) AnsuColors.TextSecondary else AnsuColors.TextPrimary,
             )
             if (onOpenSettings != null) {
@@ -230,31 +254,28 @@ private fun openNotificationSettings(context: Context) {
 }
 
 @Composable
-private fun InstalledVersionCard() {
-    FrostedGlassCard(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, tintAlpha = 0.4f) {
-        Row(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Installed version", style = MaterialTheme.typography.labelSmall, color = AnsuColors.TextTertiary)
-                Text(
-                    text = BuildConfig.VERSION_NAME,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = AnsuColors.TextPrimary,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = "Build ${BuildConfig.VERSION_CODE}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = AnsuColors.TextTertiary,
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(AnsuColors.AccentSoft)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-            ) {
-                Text("Anisu", color = AnsuColors.TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-            }
+private fun InstalledVersionRow() {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = BuildConfig.VERSION_NAME,
+                style = MaterialTheme.typography.titleMedium,
+                color = AnsuColors.TextPrimary,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "Build ${BuildConfig.VERSION_CODE}",
+                style = MaterialTheme.typography.labelSmall,
+                color = AnsuColors.TextTertiary,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(AnsuColors.AccentSoft)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        ) {
+            Text("Anisu", color = AnsuColors.TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
         }
     }
 }
@@ -262,11 +283,10 @@ private fun InstalledVersionCard() {
 @Composable
 private fun ChannelSelector(channel: UpdateChannel, onChannelChange: (UpdateChannel) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Channel", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
         FrostedGlassCard(
             modifier = Modifier.fillMaxWidth().height(46.dp),
             shape = RoundedCornerShape(23.dp),
-            tintAlpha = 0.4f,
+            tintAlpha = 0.3f,
         ) {
             Row(modifier = Modifier.fillMaxSize().padding(4.dp)) {
                 ChannelSegment(
@@ -371,60 +391,58 @@ private fun AvailableUpdateCard(
     onInstall: () -> Unit,
     onRecheck: () -> Unit,
 ) {
-    FrostedGlassCard(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, tintAlpha = 0.4f) {
-        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "Anisu ${update.versionName} is available",
+            style = MaterialTheme.typography.titleSmall,
+            color = AnsuColors.TextPrimary,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = if (update.channel == UpdateChannel.NIGHTLY) "Nightly build" else "Stable release",
+            style = MaterialTheme.typography.labelSmall,
+            color = AnsuColors.TextTertiary,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+
+        update.notes?.let { notes ->
+            Spacer(Modifier.height(10.dp))
             Text(
-                text = "Anisu ${update.versionName} is available",
-                style = MaterialTheme.typography.titleSmall,
-                color = AnsuColors.TextPrimary,
-                fontWeight = FontWeight.Bold,
+                text = notes,
+                style = MaterialTheme.typography.bodyMedium,
+                color = AnsuColors.TextSecondary,
+                maxLines = 16,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        if (state.isDownloading) {
+            LinearProgressIndicator(
+                progress = { state.downloadProgress },
+                color = AnsuColors.Accent,
+                trackColor = AnsuColors.AccentSoft,
+                modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                text = if (update.channel == UpdateChannel.NIGHTLY) "Nightly build" else "Stable release",
+                text = "Downloading… ${(state.downloadProgress * 100).roundToInt()}%",
                 style = MaterialTheme.typography.labelSmall,
-                color = AnsuColors.TextTertiary,
-                modifier = Modifier.padding(top = 2.dp),
+                color = AnsuColors.TextSecondary,
+                modifier = Modifier.padding(top = 8.dp),
             )
-
-            update.notes?.let { notes ->
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = notes,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = AnsuColors.TextSecondary,
-                    maxLines = 16,
-                    overflow = TextOverflow.Ellipsis,
-                )
+        } else {
+            Button(
+                onClick = onInstall,
+                shape = RoundedCornerShape(20.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text("Download & install", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
             }
-
-            Spacer(Modifier.height(14.dp))
-
-            if (state.isDownloading) {
-                LinearProgressIndicator(
-                    progress = { state.downloadProgress },
-                    color = AnsuColors.Accent,
-                    trackColor = AnsuColors.AccentSoft,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    text = "Downloading… ${(state.downloadProgress * 100).roundToInt()}%",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = AnsuColors.TextSecondary,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            } else {
-                Button(
-                    onClick = onInstall,
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text("Download & install", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
-                }
-                androidx.compose.material3.TextButton(onClick = onRecheck, modifier = Modifier.align(Alignment.End)) {
-                    Text("Check again")
-                }
+            TextButton(onClick = onRecheck, modifier = Modifier.align(Alignment.End)) {
+                Text("Check again")
             }
         }
     }
