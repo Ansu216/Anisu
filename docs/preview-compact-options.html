@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Anisu · compact screens — more examples</title>
+<style>
+  :root{
+    --bg:#07080B; --glass:#1B1D27; --stroke:rgba(255,255,255,.08);
+    --t1:#F3F4F6; --t2:#A0A3B1; --t3:#6B6E7C;
+    --accent:#A78BFA; --accent-soft:rgba(167,139,250,.16);
+    --ok:#4CD137; --err:#E0605A;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px;background:#050609;color:var(--t1);
+       font-family:Inter,-apple-system,"Segoe UI",Roboto,sans-serif}
+  h1{font-size:21px;margin:0 0 6px}
+  h2{font-size:15px;margin:34px 0 4px;color:var(--t1)}
+  .sub{color:var(--t3);font-size:13px;margin:0 0 8px;max-width:900px;line-height:1.6}
+  .sub b{color:var(--t1)}
+  .sub code{color:var(--t2)}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;color:var(--t3);font-size:12px;margin:14px 0 22px}
+  .legend span{display:flex;align-items:center;gap:7px}
+  .legend i{width:9px;height:9px;border-radius:50%;background:var(--accent);display:block}
+  .row{display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap}
+  figure{margin:0}
+  figcaption{font-size:12.5px;color:var(--t3);margin-top:12px;max-width:392px;line-height:1.6}
+  figcaption b{color:var(--t1)}
+  figcaption .gain{color:var(--ok)}
+  figcaption .loss{color:#E0A05A}
+  .phone{width:392px;height:812px;background:var(--bg);border:1px solid #1d1f27;border-radius:30px;
+         overflow:hidden;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .status{height:26px;display:flex;justify-content:space-between;align-items:center;
+          padding:0 18px;font-size:11px;color:var(--t2)}
+  .bar{display:flex;align-items:center;gap:14px;padding:6px 14px 0}
+  .bar .ic{font-size:20px;color:var(--t1)}
+  .bar .act{font-size:17px;color:var(--t2)}
+  .bar .sp{flex:1}
+  .bar .title{font-size:18px;font-weight:700}
+  .content{padding:10px 16px 22px;overflow:hidden}
+  .content.scrollpad{padding-bottom:104px}
+  .page-title{font-size:28px;font-weight:800;letter-spacing:-.3px;margin:2px 0 14px 4px}
+  .card{background:linear-gradient(180deg,rgba(27,29,39,.5),rgba(27,29,39,.42));
+        border:1px solid var(--stroke);border-radius:20px;backdrop-filter:blur(14px);margin-bottom:14px}
+  .card.hero{background:linear-gradient(180deg,rgba(167,139,250,.20),rgba(15,16,21,.9));border-radius:24px}
+  .card.dense{border-radius:16px}
+  .pad{padding:16px}
+  .grp-label{font-size:11px;letter-spacing:.3px;font-weight:600;color:var(--t3);
+             text-transform:uppercase;margin:18px 0 8px 16px}
+  .grp-label:first-child{margin-top:0}
+  .r{display:flex;align-items:center;gap:14px;padding:15px 16px}
+  .r + .r{border-top:1px solid var(--stroke)}
+  .r.dense{gap:11px;padding:11px 14px}
+  .tile{width:40px;height:40px;border-radius:50%;background:var(--accent-soft);color:var(--accent);
+        display:flex;align-items:center;justify-content:center;font-size:17px;flex:none}
+  .tile.sm{width:30px;height:30px;font-size:14px}
+  .txt{flex:1;min-width:0}
+  .t{font-size:15px;font-weight:600;line-height:1.35}
+  .r.dense .t{font-size:14px}
+  .d{font-size:14px;color:var(--t2);line-height:1.45;margin-top:2px}
+  .r.dense .d{font-size:12.5px;margin-top:1px}
+  .d.ok{color:var(--ok)} .d.err{color:var(--err)} .d.acc{color:var(--accent)}
+  .trail{font-size:13px;color:var(--t2);flex:none;display:flex;align-items:center;gap:10px}
+  .trail.acc{color:var(--accent);font-weight:700}
+  .chev{color:var(--t3);font-size:16px}
+  .sw{width:46px;height:27px;border-radius:14px;background:var(--accent);position:relative;flex:none}
+  .sw.off{background:rgba(255,255,255,.16)}
+  .sw i{position:absolute;top:3px;right:3px;width:21px;height:21px;border-radius:50%;background:#fff;
+        color:var(--accent);font-size:12px;font-style:normal;display:flex;align-items:center;
+        justify-content:center;font-weight:800}
+  .sw.off i{left:3px;right:auto;color:var(--t3)}
+  .sw.sm{width:40px;height:24px;border-radius:12px}
+  .sw.sm i{width:18px;height:18px;font-size:11px}
+  .seg{display:flex;height:42px;border-radius:21px;background:rgba(27,29,39,.45);
+       border:1px solid var(--stroke);padding:4px;gap:4px}
+  .seg div{flex:1;display:flex;align-items:center;justify-content:center;border-radius:17px;
+           font-size:13px;color:var(--t2);font-weight:500}
+  .seg .on{background:var(--accent);color:#fff;font-weight:700}
+  .seg.sm{height:34px;border-radius:17px}
+  .seg.sm div{border-radius:13px;font-size:12px}
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;height:44px;border-radius:20px;
+       background:var(--accent);color:#fff;font-weight:700;font-size:14px}
+  .btn.ghost{background:transparent;border:1px solid var(--stroke);color:var(--t1);font-weight:500}
+  .btn.tiny{height:34px;border-radius:17px;font-size:12.5px}
+  .btn.flat{height:40px;border-radius:18px;font-size:13.5px}
+  .bars{height:6px;border-radius:3px;background:var(--accent-soft);margin-top:10px;position:relative}
+  .bars i{position:absolute;inset:0 62% 0 0;background:var(--accent);border-radius:3px}
+  .note{font-size:11px;color:var(--t3);margin-top:10px;line-height:1.5}
+  .state{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);border-radius:20px;
+         padding:6px 13px;font-size:11px;font-weight:700;color:var(--t1)}
+  .link{font-size:12.5px;color:var(--accent);font-weight:600}
+  .muted-line{display:flex;justify-content:space-between;font-size:12.5px;color:var(--t2);
+              padding:9px 0;border-top:1px solid var(--stroke)}
+  .muted-line:first-child{border-top:0}
+  .pill{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);border-radius:20px;
+        padding:5px 12px;font-size:11px;font-weight:600;color:var(--t1)}
+  /* the disclosure row of variant 2: closed it hides everything under it */
+  .fold{cursor:pointer}
+  .fold .chev{transition:transform .18s ease}
+  .fold-body{display:none}
+  .card.open .fold-body{display:block}
+  .card.open .fold .chev{transform:rotate(90deg)}
+  /* the fixed action bar of variant 4 */
+  .phone .footer{position:absolute;left:0;right:0;bottom:0;padding:10px 16px 16px;
+                 background:linear-gradient(180deg,rgba(7,8,11,0),rgba(7,8,11,.97) 42%)}
+  .cmp{max-width:900px;margin:34px 0 10px;padding:0;list-style:none}
+  .cmp li{font-size:13px;color:var(--t3);line-height:1.6;padding:12px 0;border-top:1px solid var(--stroke)}
+  .cmp li b{color:var(--t1)}
+  .cmp li:first-child{border-top:0}
+</style>
+</head>
+<body>
+  <h1>Anisu · compact screens — more examples</h1>
+  <p class="sub">
+    You picked the compact direction for <b>Updates</b>, so here are four ways to be compact, plus two more screens
+    compacted the same way so the direction can be judged beyond one page. These are <b>mockups drawn from the app's own
+    values</b>, not screenshots: background <code>#07080B</code>, glass <code>#1B1D27</code>, accent <code>#A78BFA</code>,
+    text <code>#F3F4F6</code> / <code>#A0A3B1</code> / <code>#6B6E7C</code>. The grouped-rows layout that ships today, and
+    the two other options you already saw, are in <code>preview-updates-options.html</code>; the compact one you liked is
+    variant 1 here, drawn with a little more room.
+  </p>
+  <div class="legend">
+    <span><i></i> every variant is drawn in the "a newer build is ready" state</span>
+    <span>with nothing to install the primary button reads "Check for updates"</span>
+    <span>the labels and values are the ones the screen really uses</span>
+  </div>
+
+  <h2>Updates, four ways to be compact</h2>
+  <div class="row">
+
+    <!-- ============ C1 — TIGHT LIST ============ -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>11:46</span><span>65%</span></div>
+        <div class="bar"><span class="ic">&#8592;</span><span class="sp"></span><span class="pill">Nightly · 2026101201</span></div>
+        <div class="content">
+          <div class="card dense" style="margin-top:12px">
+            <div class="r dense">
+              <div class="tile sm">&#8635;</div>
+              <div class="txt">
+                <div class="t">Anisu 0.3.0-nightly</div>
+                <div class="d acc">0.3.0-nightly is ready to install</div>
+              </div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#8646;</div>
+              <div class="txt"><div class="t">Channel</div></div>
+              <div class="seg sm" style="width:164px;flex:none"><div>Releases</div><div class="on">Nightly</div></div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#10003;</div>
+              <div class="txt"><div class="t">Check automatically</div></div>
+              <div class="sw sm"><i>&#10003;</i></div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#9993;</div>
+              <div class="txt"><div class="t">Notification settings</div></div>
+              <div class="trail">On</div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#8635;</div>
+              <div class="txt"><div class="t">Check for updates</div></div>
+              <div class="trail">a few minutes ago</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#9993;</div>
+              <div class="txt"><div class="t">Test notification</div></div>
+              <div class="trail acc">Send</div>
+            </div>
+          </div>
+
+          <div class="card dense">
+            <div class="pad" style="padding:14px">
+              <div class="state">&#8681; Update available</div>
+              <div style="height:12px"></div>
+              <div class="btn flat">Download &amp; install</div>
+              <div class="bars"><i></i></div>
+              <div class="note">Nightly build · 38% — the file resumes from where it stopped.</div>
+            </div>
+          </div>
+
+          <div class="pad" style="padding:2px 4px 0">
+            <div class="muted-line"><span>Update APKs in the cache</span><span class="link">Clear</span></div>
+            <div class="muted-line"><span>2 files · 41 MB</span><span class="link">Changelog</span></div>
+            <div class="muted-line"><span>Version code</span><span>2026101201</span></div>
+          </div>
+
+          <div class="note">
+            Builds are published from the official Anisu repository (github.com/Ansu216/Anisu). Android verifies the
+            signature before installing, so an update can only ever be Anisu itself.
+          </div>
+        </div>
+      </div>
+      <figcaption>
+        <b>1 · Tight list.</b> One dense card, 11dp rows, 30dp icon tiles and the diagnostics as three quiet lines, so
+        nothing scrolls and nothing is hidden.
+        <span class="gain">Optimises:</span> the whole screen in one look, with every control still a real row.
+        <span class="loss">Gives up:</span> the update notes have no home (they open in a sheet) and the tap targets are
+        smaller than the rest of the app's rows.
+      </figcaption>
+    </figure>
+
+    <!-- ============ C2 — STATUS NOW, SETTINGS FOLDED ============ -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>11:46</span><span>65%</span></div>
+        <div class="bar"><span class="ic">&#8592;</span><span class="title">Updates</span><span class="sp"></span><span class="act">&#8635;</span></div>
+        <div class="content">
+          <div class="card hero" style="margin-top:12px">
+            <div class="pad" style="padding:16px">
+              <div style="display:flex;align-items:center;gap:14px">
+                <div class="tile" style="width:42px;height:42px;font-size:19px">&#8681;</div>
+                <div class="txt">
+                  <div class="t" style="font-size:17px;font-weight:800">Anisu 0.3.0-nightly</div>
+                  <div class="d acc">A newer build is ready</div>
+                </div>
+              </div>
+              <div style="height:12px"></div>
+              <div class="btn flat">Download &amp; install</div>
+              <div class="bars"><i></i></div>
+              <div class="note">38% · Nightly build, from the apk-nightly branch.</div>
+            </div>
+          </div>
+
+          <div class="card dense open" id="c2">
+            <div class="r dense fold">
+              <div class="tile sm">&#9776;</div>
+              <div class="txt">
+                <div class="t">Options</div>
+                <div class="d">Channel, checks, notifications, storage</div>
+              </div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="fold-body">
+              <div class="r dense" style="border-top:1px solid var(--stroke)">
+                <div class="tile sm">&#8646;</div>
+                <div class="txt"><div class="t">Channel</div></div>
+                <div class="seg sm" style="width:164px;flex:none"><div>Releases</div><div class="on">Nightly</div></div>
+              </div>
+              <div class="r dense">
+                <div class="tile sm">&#10003;</div>
+                <div class="txt"><div class="t">Check automatically</div></div>
+                <div class="sw sm"><i>&#10003;</i></div>
+              </div>
+              <div class="r dense">
+                <div class="tile sm">&#9993;</div>
+                <div class="txt"><div class="t">Notifications</div></div>
+                <div class="trail">On</div>
+                <div class="chev">&#8250;</div>
+              </div>
+              <div class="r dense">
+                <div class="tile sm">&#8635;</div>
+                <div class="txt"><div class="t">Check for updates</div></div>
+                <div class="trail">a few minutes ago</div>
+              </div>
+              <div class="r dense">
+                <div class="tile sm">&#9993;</div>
+                <div class="txt"><div class="t">Test notification</div></div>
+                <div class="trail acc">Send</div>
+              </div>
+              <div class="r dense">
+                <div class="tile sm">&#128465;</div>
+                <div class="txt"><div class="t">Clear downloaded updates</div></div>
+                <div class="trail">2 in the cache</div>
+              </div>
+              <div class="r dense">
+                <div class="tile sm">&#9776;</div>
+                <div class="txt"><div class="t">Changelog</div></div>
+                <div class="chev">&#8250;</div>
+              </div>
+            </div>
+          </div>
+          <div class="note">Tap <b>Options</b> in the mockup above: closed, the screen is only the status, the button and that one row.</div>
+        </div>
+      </div>
+      <figcaption>
+        <b>2 · Status now, settings folded.</b> The status card and the button are always on screen and everything else
+        lives behind one "Options" row that opens in place, so the default view is three things.
+        <span class="gain">Optimises:</span> opening Updates to act on an update needs no scrolling at all.
+        <span class="loss">Gives up:</span> the settings are one tap further away, and a folded screen hides that the
+        screen has anything else.
+      </figcaption>
+    </figure>
+
+    <!-- ============ C3 — HEADER ACTIONS ============ -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>11:46</span><span>65%</span></div>
+        <div class="bar">
+          <span class="ic">&#8592;</span><span class="title">Updates</span><span class="sp"></span>
+          <span class="act">&#9776;</span><span class="act">&#128465;</span><span class="act">&#8635;</span>
+        </div>
+        <div class="content">
+          <div class="card dense" style="margin-top:12px">
+            <div class="r dense">
+              <div class="tile sm">&#8681;</div>
+              <div class="txt">
+                <div class="t">Anisu 0.3.0-nightly</div>
+                <div class="d acc">0.3.0-nightly is ready to install</div>
+              </div>
+              <div class="trail">2026101201</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#8646;</div>
+              <div class="txt"><div class="t">Channel</div></div>
+              <div class="seg sm" style="width:164px;flex:none"><div>Releases</div><div class="on">Nightly</div></div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#10003;</div>
+              <div class="txt"><div class="t">Check automatically</div></div>
+              <div class="sw sm"><i>&#10003;</i></div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#9993;</div>
+              <div class="txt">
+                <div class="t">Notifications</div>
+                <div class="d">Test it from the button on the right</div>
+              </div>
+              <div class="trail acc">Send</div>
+            </div>
+          </div>
+
+          <div class="card dense">
+            <div class="pad" style="padding:14px">
+              <div class="btn flat">&#8681;&nbsp; Download &amp; install</div>
+              <div class="bars"><i></i></div>
+              <div class="note">38% · the two icons in the top bar are Check for updates and Clear downloaded updates.</div>
+            </div>
+          </div>
+
+          <div class="note">
+            Three rows do the work of six: checking, clearing the cache and the changelog all moved into the top bar,
+            where a settings screen normally keeps its one refresh button anyway.
+          </div>
+        </div>
+      </div>
+      <figcaption>
+        <b>3 · Header actions.</b> One row per setting, with the actions promoted to top-bar icons — refresh to check,
+        trash to clear the cache, the list icon for the changelog — so no row is spent on an action.
+        <span class="gain">Optimises:</span> the fewest rows for the same screen, and the actions are always in the same
+        place whatever the result state is.
+        <span class="loss">Gives up:</span> icons without labels (a first-time user has to tap to find out), and the
+        top bar gets crowded next to the title.
+      </figcaption>
+    </figure>
+
+    <!-- ============ C4 — STICKY ACTION BAR ============ -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>11:46</span><span>65%</span></div>
+        <div class="bar"><span class="ic">&#8592;</span><span class="sp"></span><span class="pill">Nightly · 2026101201</span></div>
+        <div class="content scrollpad">
+          <div class="card dense" style="margin-top:12px">
+            <div class="r dense">
+              <div class="tile sm">&#8681;</div>
+              <div class="txt">
+                <div class="t">Anisu 0.3.0-nightly</div>
+                <div class="d acc">0.3.0-nightly is ready to install</div>
+              </div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#8646;</div>
+              <div class="txt"><div class="t">Channel</div></div>
+              <div class="seg sm" style="width:164px;flex:none"><div>Releases</div><div class="on">Nightly</div></div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#10003;</div>
+              <div class="txt"><div class="t">Check automatically</div></div>
+              <div class="sw sm"><i>&#10003;</i></div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#9993;</div>
+              <div class="txt"><div class="t">Notification settings</div></div>
+              <div class="trail">On</div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#8635;</div>
+              <div class="txt"><div class="t">Check for updates</div></div>
+              <div class="trail">a few minutes ago</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#9993;</div>
+              <div class="txt"><div class="t">Test notification</div></div>
+              <div class="trail acc">Send</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#128465;</div>
+              <div class="txt"><div class="t">Clear downloaded updates</div></div>
+              <div class="trail">2 in the cache</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#9776;</div>
+              <div class="txt"><div class="t">Changelog</div></div>
+              <div class="chev">&#8250;</div>
+            </div>
+          </div>
+          <div class="note">
+            The rows keep the app's normal height and scroll; the button below never moves, whatever you have scrolled to.
+          </div>
+        </div>
+        <div class="footer">
+          <div class="btn flat">&#8681;&nbsp; Download &amp; install · 38%</div>
+        </div>
+      </div>
+      <figcaption>
+        <b>4 · Sticky action bar.</b> A compact list that keeps the app's row size, with the primary button pinned to the
+        bottom of the screen so the thing you came for is always under your thumb.
+        <span class="gain">Optimises:</span> acting on an update without aiming, on a phone held one-handed.
+        <span class="loss">Gives up:</span> about 70dp of screen at all times, it covers the last row until you scroll,
+        and a permanently coloured bar competes with the floating navigation bar underneath.
+      </figcaption>
+    </figure>
+
+  </div>
+
+  <h2>Two more screens, compacted the same way</h2>
+  <div class="row">
+
+    <!-- ============ SETTINGS INDEX, COMPACT ============ -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>11:46</span><span>65%</span></div>
+        <div class="bar"><span class="ic">&#8592;</span><span class="title">Settings</span></div>
+        <div class="content">
+          <div class="card dense" style="margin-top:12px">
+            <div class="r dense">
+              <div class="tile sm" style="font-size:13px">&#9679;</div>
+              <div class="txt">
+                <div class="t">Ansu216</div>
+                <div class="d">AniList connected</div>
+              </div>
+              <div class="trail acc">Log out</div>
+            </div>
+          </div>
+          <div class="card dense">
+            <div class="r dense">
+              <div class="tile sm">&#9681;</div>
+              <div class="txt"><div class="t">Appearance</div><div class="d">Floating bar roundness, opacity and blur</div></div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#9654;</div>
+              <div class="txt"><div class="t">Player and streaming</div><div class="d">Double tap skip, brightness and volume gestures</div></div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#10022;</div>
+              <div class="txt"><div class="t">Extensions</div><div class="d">Manage installed anime source extensions</div></div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#8635;</div>
+              <div class="txt"><div class="t">Updates</div><div class="d">Channel, automatic checks and install</div></div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#8681;</div>
+              <div class="txt"><div class="t">Backup</div><div class="d">Save or restore your settings and library (.anisu)</div></div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#128027;</div>
+              <div class="txt"><div class="t">System</div><div class="d">Diagnostics and export logs</div></div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#8505;</div>
+              <div class="txt"><div class="t">About</div><div class="d">Version, credits and links</div></div>
+              <div class="chev">&#8250;</div>
+            </div>
+          </div>
+          <div class="note">
+            The same rows as today, in one continuous list: no uppercase group labels and no air between groups, so all
+            seven destinations are visible at once instead of four and a half.
+          </div>
+        </div>
+      </div>
+      <figcaption>
+        <b>Settings, compact.</b> One list instead of five labelled cards, with the account row kept first because it is
+        the only live-status row.
+        <span class="gain">Optimises:</span> every destination on one screen; nothing to scroll to find a setting.
+        <span class="loss">Gives up:</span> the labels that say what a group is for (Personalization, Content &amp; sources,
+        App, Info), so the grouping has to be felt from the order instead of read.
+      </figcaption>
+    </figure>
+
+    <!-- ============ BACKUP, COMPACT ============ -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>11:46</span><span>65%</span></div>
+        <div class="bar"><span class="ic">&#8592;</span><span class="title">Backup</span><span class="sp"></span><span class="act">&#8635;</span></div>
+        <div class="content">
+          <div class="card dense" style="margin-top:12px">
+            <div class="r dense">
+              <div class="tile sm">&#8635;</div>
+              <div class="txt">
+                <div class="t">Automatic backup</div>
+                <div class="d">An .anisu copy every day, the last 3 kept</div>
+              </div>
+              <div class="sw sm"><i>&#10003;</i></div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#8681;</div>
+              <div class="txt">
+                <div class="t">Back up now</div>
+                <div class="d">Write one without waiting for the daily run</div>
+              </div>
+              <div class="trail">Today, 04:12</div>
+            </div>
+          </div>
+
+          <div class="card dense">
+            <div class="r dense">
+              <div class="tile sm">&#128190;</div>
+              <div class="txt"><div class="t">11 Oct, 04:12</div><div class="d">42 KB · Anisu-auto-backup-20261011-0412.anisu</div></div>
+              <div class="trail acc">Restore</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#128190;</div>
+              <div class="txt"><div class="t">10 Oct, 04:10</div><div class="d">41 KB · Anisu-auto-backup-20261010-0410.anisu</div></div>
+              <div class="trail acc">Restore</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#128190;</div>
+              <div class="txt"><div class="t">9 Oct, 04:09</div><div class="d">41 KB · Anisu-auto-backup-20261009-0409.anisu</div></div>
+              <div class="trail acc">Restore</div>
+            </div>
+          </div>
+
+          <div class="card dense">
+            <div class="pad" style="padding:12px;display:flex;gap:10px">
+              <div class="btn ghost tiny" style="flex:1">Create backup</div>
+              <div class="btn ghost tiny" style="flex:1">Restore from file</div>
+            </div>
+          </div>
+
+          <div class="note">
+            The card of prose at the top is gone: the switch and its description say what a backup is, and the kept copies
+            say what restoring one does. Restoring still closes the database and restarts Anisu.
+          </div>
+        </div>
+      </div>
+      <figcaption>
+        <b>Backup, compact.</b> The switch, the last run, a manual copy and the three kept copies on one screen, with the
+        two file-picker actions beside each other at the bottom.
+        <span class="gain">Optimises:</span> seeing at a glance that backups happen and when the last one landed.
+        <span class="loss">Gives up:</span> the paragraph explaining what is inside the archive and that the AniList
+        sign-in is deliberately left out — that would have to move into a small "What's inside" link.
+      </figcaption>
+    </figure>
+
+  </div>
+
+  <h2>The four Updates variants in one sentence each</h2>
+  <ul class="cmp">
+    <li><b>1 · Tight list</b> — everything on one screen at the app's normal row height minus a little, nothing hidden,
+      but smaller targets and nowhere for the update notes.</li>
+    <li><b>2 · Status now, settings folded</b> — the fastest to act on an update, the slowest to change a setting, and
+      the only one where the screen can look empty.</li>
+    <li><b>3 · Header actions</b> — the fewest rows and the steadiest muscle memory, at the cost of unlabelled icons in
+      the top bar.</li>
+    <li><b>4 · Sticky action bar</b> — the easiest to press, at the cost of a permanent 70dp band and a second coloured
+      bar competing with the floating navigation bar.</li>
+  </ul>
+
+  <!-- The one piece of behaviour on this page: variant 2's Options row really folds, so both of its
+       states can be looked at without needing a second mockup. -->
+  <script>
+    var foldedCard = document.getElementById('c2');
+    foldedCard.querySelector('.fold').addEventListener('click', function () {
+      foldedCard.classList.toggle('open');
+    });
+  </script>
+</body>
+</html>

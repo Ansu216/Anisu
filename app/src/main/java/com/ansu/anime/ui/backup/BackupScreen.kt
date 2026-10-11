@@ -11,6 +11,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -49,9 +50,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.GlassDisclosureRow
 import com.ansu.anime.ui.components.GlassGroup
-import com.ansu.anime.ui.components.GlassGroupLabel
 import com.ansu.anime.ui.components.GlassRow
 import com.ansu.anime.ui.components.GlassRowValue
 import com.ansu.anime.ui.components.GlassToggleRow
@@ -63,14 +63,15 @@ import java.util.Locale
 import kotlinx.coroutines.delay
 
 /**
- * Settings → Backup. The top card is the user's own backup: they write an `.anisu` archive through
- * the system file picker and read one back, and the app restarts so the restored settings apply.
+ * Settings → Backup, laid out compactly: one card holds everything a person opens this screen for —
+ * whether automatic backups are on, when the last copy was written, a copy on demand and the copies
+ * kept on the device, each with its own Restore. The paragraph that explains what an archive contains
+ * sits behind a closed "What's inside" row instead of pushing the live part of the screen down, and
+ * the two file-picker actions share one row at the bottom so the whole page reads without hunting.
  *
- * Under it sits the automatic backup, which is what makes the feature work for someone who never
- * opens this screen: a daily job writes an archive into the app's own storage and keeps only the
- * newest few, and each of those can be restored from the list, with the same restart as a picked
- * file. The screen reads the switch and the list through `BackupManager`, so the scheduled job and
- * this page never disagree.
+ * The behaviour is unchanged: the manual backup is written through the system picker, restoring
+ * overwrites the settings files and the Room database and relaunches the app, and the automatic
+ * copies are written into app-private storage by a daily job.
  */
 @Composable
 fun BackupScreen(container: AppContainer, navController: NavHostController) {
@@ -79,6 +80,8 @@ fun BackupScreen(container: AppContainer, navController: NavHostController) {
     val backupManager = container.backupManager
     var backupMessage by remember { mutableStateOf<String?>(null) }
     var restartPending by remember { mutableStateOf(false) }
+    var insideOpen by remember { mutableStateOf(false) }
+    // A plain directory read, refreshed after anything that writes or restores a copy.
     var autoFiles by remember { mutableStateOf(backupManager.autoBackupFiles()) }
 
     val autoBackup by backupManager.prefs.autoBackup.collectAsStateWithLifecycle()
@@ -88,7 +91,7 @@ fun BackupScreen(container: AppContainer, navController: NavHostController) {
     }
 
     LaunchedEffect(autoBackup) {
-        // The list is a plain directory read, so it is refreshed whenever the switch changes too.
+        // The switch can be flipped from here only, so this is also the moment the list can change.
         autoFiles = backupManager.autoBackupFiles()
     }
     LaunchedEffect(restartPending) {
@@ -121,7 +124,7 @@ fun BackupScreen(container: AppContainer, navController: NavHostController) {
         applyRestore(backupManager.restoreFrom(file))
     }
 
-    // Back up settings + library into an .anisu archive.
+    // Back up settings + library into an .anisu archive the user keeps wherever they like.
     val backupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream"),
     ) { uri: Uri? ->
@@ -167,64 +170,29 @@ fun BackupScreen(container: AppContainer, navController: NavHostController) {
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp),
         ) {
-            FrostedGlassCard(
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                shape = MaterialTheme.shapes.large,
-                tintAlpha = 0.4f,
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Text(
-                        "Backup & restore",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = AnsuColors.TextPrimary,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = "Back up your settings, your watch progress and your local library into a single " +
-                            ".anisu file you keep yourself. Restoring it brings everything back and Anisu restarts " +
-                            "itself to apply it; the AniList sign-in is the only thing left out, because it is tied " +
-                            "to this device.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = AnsuColors.TextSecondary,
-                    )
-                    Button(
-                        onClick = { backupLauncher.launch("Anisu-backup-${timestampName()}.anisu") },
-                        shape = RoundedCornerShape(20.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(Icons.Filled.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Text("Create backup (.anisu)", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
-                    }
-                    OutlinedButton(
-                        onClick = { restoreLauncher.launch(arrayOf("*/*")) },
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(Icons.Filled.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Text("Restore from backup", modifier = Modifier.padding(start = 8.dp))
-                    }
-                    backupMessage?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = AnsuColors.TextSecondary)
-                    }
-                }
-            }
-
-            GlassGroupLabel("Automatic")
-            GlassGroup {
+            GlassGroup(modifier = Modifier.padding(top = 16.dp)) {
                 GlassToggleRow(
                     icon = Icons.Filled.Schedule,
                     title = "Automatic backup",
-                    description = "Write an .anisu copy every day and keep the last 3",
+                    description = "An .anisu copy every day, keeping the last 3",
                     checked = autoBackup,
                     onCheckedChange = { enabled ->
                         backupManager.setAutoBackup(enabled)
                         diagnostics.log(LogCategory.CLICK, "Automatic backup ${if (enabled) "on" else "off"}")
                     },
                     showDivider = false,
+                )
+                GlassRow(
+                    // Every row that names an archive carries the same tile, so the summary and the copies
+                    // under it read as one list.
+                    icon = Icons.Filled.Backup,
+                    title = "Last backup",
+                    description = if (autoBackup) {
+                        "The daily job runs even while Anisu is closed"
+                    } else {
+                        "Automatic backups are off"
+                    },
+                    trailing = { GlassRowValue(lastRunText) },
                 )
                 GlassRow(
                     icon = Icons.Filled.Save,
@@ -244,37 +212,81 @@ fun BackupScreen(container: AppContainer, navController: NavHostController) {
                         )
                     },
                 )
-                GlassRow(
-                    title = "Last automatic backup",
-                    description = if (autoBackup) "The daily job runs even while Anisu is closed" else "Turned off",
-                    trailing = { GlassRowValue(lastRunText) },
-                )
-            }
-
-            GlassGroupLabel("Saved on this device")
-            GlassGroup {
                 if (autoFiles.isEmpty()) {
                     GlassRow(
                         icon = Icons.Filled.Backup,
                         title = "No automatic backups yet",
                         description = "Switch automatic backups on and the first one lands within a day",
-                        showDivider = false,
                     )
                 } else {
-                    autoFiles.forEachIndexed { index, file ->
+                    autoFiles.forEach { file ->
                         GlassRow(
                             icon = Icons.Filled.Backup,
-                            title = remember(file.lastModified()) {
-                                SimpleDateFormat(TIME_FORMAT, Locale.US).format(Date(file.lastModified()))
-                            },
+                            title = SimpleDateFormat(TIME_FORMAT, Locale.US).format(Date(file.lastModified())),
                             description = "${file.length() / 1024} KB · ${file.name}",
-                            showDivider = index != 0,
                             trailing = {
                                 TextButton(onClick = { restoreAutoBackup(file) }) { Text("Restore") }
                             },
                         )
                     }
                 }
+                // What an archive holds is worth reading once, not on every visit, so it waits here.
+                GlassDisclosureRow(
+                    title = "What's inside",
+                    description = "Settings, watch progress and your library",
+                    expanded = insideOpen,
+                    onExpandedChange = { insideOpen = it },
+                ) {
+                    Text(
+                        text = "An .anisu archive holds your settings, your watch progress and your local " +
+                            "library. Restoring it brings everything back and Anisu restarts itself to apply " +
+                            "it; the AniList sign-in is the only thing left out, because it is tied to this " +
+                            "device.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AnsuColors.TextSecondary,
+                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    )
+                }
+            }
+
+            // The two picker actions share one row: they are both "move an archive by hand", and the
+            // screen has nothing else left to say.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Button(
+                    onClick = { backupLauncher.launch("Anisu-backup-${timestampName()}.anisu") },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AnsuColors.Accent,
+                        contentColor = AnsuColors.OnAccent,
+                    ),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Filled.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text(
+                        "Create backup",
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+                OutlinedButton(
+                    onClick = { restoreLauncher.launch(arrayOf("*/*")) },
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Filled.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text("Restore from backup", modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+            backupMessage?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AnsuColors.TextSecondary,
+                    modifier = Modifier.padding(top = 10.dp, start = 4.dp, end = 4.dp),
+                )
             }
         }
     }

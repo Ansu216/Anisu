@@ -2,6 +2,12 @@
 
 package com.ansu.anime.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -160,6 +168,71 @@ fun GlassToggleRow(
             )
         },
     )
+}
+
+/**
+ * A row that opens a block of content in place, for a compact screen that would otherwise either hide
+ * something important or spend half the page on it: the long explanation, or a group of settings that are
+ * read far less often than the one row above them. The chevron turns as it opens and the block animates
+ * its own height, so nothing above it jumps and the row keeps looking like every other one when closed.
+ */
+@Composable
+fun GlassDisclosureRow(
+    title: String,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    icon: ImageVector? = null,
+    description: String? = null,
+    showDivider: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (showDivider) {
+            HorizontalDivider(color = AnsuColors.StrokeGlass)
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onExpandedChange(!expanded) }
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (icon != null) {
+                Box(
+                    modifier = Modifier.size(40.dp).clip(CircleShape).background(AnsuColors.AccentSoft),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(icon, contentDescription = null, tint = AnsuColors.Accent, modifier = Modifier.size(20.dp))
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f).padding(start = if (icon != null) 12.dp else 0.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(title, style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
+                description?.let {
+                    Text(it, style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary)
+                }
+            }
+            Icon(
+                imageVector = Icons.Filled.KeyboardArrowDown,
+                contentDescription = null,
+                tint = AnsuColors.TextTertiary,
+                modifier = Modifier.size(22.dp).graphicsLayer {
+                    rotationZ = if (expanded) 180f else 0f
+                },
+            )
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = fadeIn(animationSpec = tween(durationMillis = 160)) +
+                expandVertically(animationSpec = tween(durationMillis = 220)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 120)) +
+                shrinkVertically(animationSpec = tween(durationMillis = 180)),
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) { content() }
+        }
+    }
 }
 
 /** The plain value a row shows on its right ("Nightly", "2026101201", "On"). */

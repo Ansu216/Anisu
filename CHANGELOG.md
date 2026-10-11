@@ -51,11 +51,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hourly build look like a different app and put a clock reading where a version belongs. What identifies a build
   is now the commit it was made from, which CI records and the updater compares.
 
-- **Updates and About are rebuilt on the settings rows the rest of the app uses.** A round accent icon, a title,
-  a description and a value or a switch on the right, all on the same 16dp grid and shared through
-  `ui/components/GlassSettings.kt`, in place of two screens with header cards of their own. **Constraint:** the
-  behaviour is untouched — same GitHub check, same resumable `.part` download, same signature-verified install,
-  same channel preference.
+- **Updates leads with the answer and keeps every setting one tap away.** The screen was six groups of rows —
+  install, check, version, channel, automatic checks, storage — so "is there something to install?" and the
+  button that installs it were things to hunt for, and taking a new build meant scrolling past settings nobody
+  opened the screen for. It opens with one status card now: the installed build, what the updater is doing and
+  the single button that acts on it (download and install when there is a build, check when there is not, its
+  own progress while the file comes down), with the build's notes inside that card and the version code in its
+  small print. Everything that is a setting sits behind one "Options" row that opens in place, and the channel
+  is a two-option switch on a row instead of a card. About and the rows themselves still use the shared pieces
+  in `ui/components/GlassSettings.kt` on the app's 16dp grid. **Constraint:** the behaviour is untouched — same
+  GitHub check, same resumable `.part` download, same signature-verified install, same channel preference.
+
+- **Backup is one compact card instead of three, and the long explanation folds away.** The switch, the last
+  run, a manual copy and the kept copies sat in three separate groups with a paragraph of prose above them, so
+  the screen opened on a wall of text and what a person comes for — that backups happen, and when the last one
+  landed — was the part that had scrolled. It is one card now, with the two file-picker actions side by side at
+  the bottom and what an archive holds (and that the AniList sign-in is deliberately left out) behind a
+  "What's inside" row that opens in place. The new `GlassDisclosureRow` is shared, so any settings screen can
+  fold a long explanation the same way. **Constraint:** restoring still closes the database first and
+  relaunches Anisu, exactly as before.
 
 ### Fixed
 
