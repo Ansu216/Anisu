@@ -115,6 +115,23 @@ class UpdateInstaller(
         appContext.startActivity(intent)
     }
 
+    /** How many complete update APKs the cache is holding right now. */
+    fun cachedApkCount(): Int = runCatching {
+        updatesDir.listFiles()?.count { it.isFile && it.name.endsWith(".apk") } ?: 0
+    }.getOrDefault(0)
+
+    /**
+     * Empties the updates cache: every downloaded APK and every half-written `.part`. Reports whether
+     * the cache is really empty afterwards, so the row that calls it can say what happened instead of
+     * claiming success on a file the system refused to delete.
+     */
+    fun clearCachedApks(): Boolean = runCatching {
+        updatesDir.listFiles()?.forEach { file ->
+            if (file.isFile && file.name.startsWith("ansu-update-")) file.delete()
+        }
+        cachedApkCount() == 0
+    }.getOrDefault(false)
+
     private fun baseRequest(url: String): Request = Request.Builder()
         .url(url)
         .header("User-Agent", "Ansu-Android-Updater")

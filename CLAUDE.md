@@ -383,7 +383,7 @@ The file has **three value lines** and any number of `#` comment lines, which ar
 ignored everywhere it is read (Gradle, `apk-nightly.yml`, `release-apk.yml`):
 
 ```
-0.2.0        # line 1 - version (the release tag is "v" + this)
+0.3.0        # line 1 - version (the release tag is "v" + this)
 2026101201   # line 2 - version code
 nightly     # line 3 - channel
 ```

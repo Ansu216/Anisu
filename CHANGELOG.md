@@ -22,7 +22,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Updates and About are rebuilt on the settings language the rest of the app uses.** Both opened with a
+  big header card and then a handful of loose blocks with their own spacing. They now read top to bottom as a
+  big page title, a header that says what is installed and what the updater is doing, and short groups of rows
+  — a round accent icon, a title, a line of description and a value or a switch on the right, every row on the
+  same 16dp grid, so Updates, About, Settings, Appearance and Player and streaming no longer differ. The two
+  screens share the new group/row pieces (`ui/components/GlassSettings.kt`) instead of each drawing its own.
+  **Constraint:** the behaviour is untouched — the same GitHub check, the same resumable `.part` download, the
+  same channel preference and the same signature-verified install. The minimum Compose version in the project
+  (material3 1.3.1) does not expose the switch-with-glyph variant, so the switches stay the app's own.
+
 ### Added
+
+- **Updates can now empty the APKs it already downloaded, and open the changelog.** "Clear downloaded updates"
+  shows how many update APKs are sitting in the cache and deletes them on a tap (they were only ever replaced
+  file by file before, so a cancelled update could sit there for good), and "Changelog" opens the project's
+  `CHANGELOG.md` in the browser, so the notes for a build are one tap away instead of a trip to GitHub.
+- **The notification row in Updates says whether Android would really deliver an alert, and opens the switch.**
+  A new "Notification settings" row reports On/Off and takes you straight to Anisu's own notification screen,
+  which used to be reachable only after a test notification failed.
 
 - **Backup has its own row in Settings, right beside System, and a screen of its own.** Saving and
   restoring your settings, watch progress and local library into an `.anisu` file used to be buried at
@@ -49,9 +69,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   text was 14dp here against 12dp on the Appearance, Player and streaming and Updates screens, and the
   rows sat at 14dp while two groups were only 4dp apart. The line under a row's title also had no gap
   at all, so a description that wrapped to two lines looked glued to the title. The labels are at 16dp
-  now, the icon-to-text gap is 12dp, the vertical rhythm is a uniform 16dp and the title-to-description
-  gap is the 2dp the rest of the app already used, so moving between the settings screens no longer
-  shows the spacing shifting.
+  now, the icon-to-text gap is 12dp, the vertical rhythm is a uniform 16dp and the title-to-description  gap is the 2dp the rest of the app already used, so moving between the settings screens no
+  longer shows the spacing shifting.
+
+- **About no longer looks like it carries two versions.** The header ended with two pills side by side,
+  `Version 0.2.0-nightly-2026.10.11.1900` and `2026101201 · Nightly`, which read as two different builds. The
+  name and the code are two different things — the name is what the project publishes, the code is the counter
+  Android compares — so there is now one row naming the installed build and a second, labelled, carrying the
+  version code. The same duplication was kept out of the rebuilt Updates screen, whose header alone names the
+  build.
+
 
 ## [0.1.1] - 2026-10-11
 

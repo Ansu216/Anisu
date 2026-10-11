@@ -99,6 +99,19 @@ class UpdateManager(
     /** What is stopping a notification right now, or `null` when nothing is. */
     fun notificationBlockedReason(): String? = notifier.blockedReason()
 
+    /** Whether the system would deliver an update notification right now. */
+    fun notificationsEnabled(): Boolean = notifier.canNotify()
+
+    /** How many downloaded update APKs are sitting in the cache. */
+    fun cachedApkCount(): Int = installer.cachedApkCount()
+
+    /** Empties that cache and reports whether it worked, for the Updates screen's storage row. */
+    fun clearCachedApks(): Boolean {
+        val cleared = installer.clearCachedApks()
+        diagnostics?.log(LogCategory.UPDATE, "Cleared the downloaded update APKs: $cleared")
+        return cleared
+    }
+
     /** Turns automatic checks on or off and keeps the periodic background check in step with it. */
     fun setAutoCheck(enabled: Boolean) {
         prefs.setAutoCheck(enabled)

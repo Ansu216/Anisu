@@ -1,4 +1,4 @@
-0.2.0
+0.3.0
 2026101201
 nightly
 # version.txt - the release metadata, read by app/build.gradle.kts and by the

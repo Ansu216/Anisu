@@ -4,15 +4,15 @@ package com.ansu.anime.ui.about
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,28 +22,28 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Numbers
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.filled.Update
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -52,7 +52,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,20 +60,29 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.ansu.anime.BuildConfig
-import com.ansu.anime.data.update.AvailableUpdate
+import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.data.update.UpdateChannel
 import com.ansu.anime.data.update.UpdateCheckResult
 import com.ansu.anime.data.update.UpdateState
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.GlassGroup
+import com.ansu.anime.ui.components.GlassGroupLabel
+import com.ansu.anime.ui.components.GlassRow
+import com.ansu.anime.ui.components.GlassRowValue
+import com.ansu.anime.ui.components.GlassToggleRow
 import com.ansu.anime.ui.theme.AnsuColors
 import kotlin.math.roundToInt
 
 /**
- * Updates: the app's store page, rebuilt from scratch. A header card leads with the installed build and
- * the channel, then the channel picker, the automatic-check options and the live status each get their
- * own black-glass card. It shows what the project publishes on GitHub and downloads + installs the APK
- * in one tap, through a resumable `.part` file that only becomes installable when it completes.
+ * Updates, rebuilt the way the settings apps people already know do it: a big page title, a header
+ * that says what is installed and what is happening, then short groups of rows — install, check, the
+ * installed version, the channel, the automatic-check options with the notification tools, and the
+ * storage rows. Every card is the same black glass used across Anisu, and every row follows the same
+ * 16dp grid, so this screen reads like the rest of the app.
+ *
+ * The behaviour is the one it always had: it reads what the project publishes on GitHub, downloads
+ * the APK through a resumable `.part` file and hands only a complete download to the system installer.
  */
 @Composable
 fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
@@ -84,6 +92,8 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
     val context = LocalContext.current
     var testResult by remember { mutableStateOf<String?>(null) }
     var offerNotificationSettings by remember { mutableStateOf(false) }
+    // Read once and then refreshed after a clear, so the row shows the cache the moment it is emptied.
+    var apkCount by remember { mutableIntStateOf(container.updateManager.cachedApkCount()) }
 
     LaunchedEffect(Unit) { container.updateManager.check() }
 
@@ -91,7 +101,7 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
         containerColor = AnsuColors.Background,
         topBar = {
             TopAppBar(
-                title = { Text("Updates") },
+                title = {},
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -99,7 +109,10 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                 },
                 actions = {
                     IconButton(
-                        onClick = { container.updateManager.check() },
+                        onClick = {
+                            container.diagnostics.log(LogCategory.CLICK, "Updates → check from the top bar")
+                            container.updateManager.check()
+                        },
                         enabled = !state.isChecking && !state.isDownloading,
                     ) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Check again")
@@ -113,61 +126,163 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(horizontal = 16.dp),
         ) {
-            InstalledHeader()
+            Text(
+                text = "Updates",
+                style = MaterialTheme.typography.displayLarge,
+                color = AnsuColors.TextPrimary,
+                modifier = Modifier.padding(top = 8.dp, start = 4.dp),
+            )
 
-            SectionCard("Channel") {
-                ChannelSelector(channel = channel, onChannelChange = { container.updateManager.prefs.setChannel(it) })
-            }
+            InstalledHeader(state = state, channel = channel, modifier = Modifier.padding(top = 16.dp))
 
-            SectionCard("Automatic checks") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        "Look for a new build on open and every 12 hours",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = AnsuColors.TextSecondary,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Switch(
-                        checked = autoCheck,
-                        onCheckedChange = { container.updateManager.setAutoCheck(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = AnsuColors.OnAccent,
-                            checkedTrackColor = AnsuColors.Accent,
-                        ),
+            GlassGroupLabel("App")
+            GlassGroup {
+                val available = state.result as? UpdateCheckResult.Available
+                when {
+                    state.isDownloading -> DownloadingBlock(state = state)
+                    available != null -> GlassRow(
+                        icon = Icons.Filled.Download,
+                        title = "Download & install",
+                        description = channelLabel(available.update.channel),
+                        showDivider = false,
+                        onClick = {
+                            container.diagnostics.log(LogCategory.CLICK, "Updates → download ${available.update.versionName}")
+                            container.updateManager.downloadAndInstall()
+                        },
                     )
                 }
-                TestNotificationRow(
-                    result = testResult,
-                    onSend = {
-                        val sent = container.updateManager.notifyTest()
-                        val blocked = if (sent) null else container.updateManager.notificationBlockedReason()
-                        testResult = if (sent) {
-                            "Sent — it is in your notification shade like any other app's alert."
-                        } else {
-                            "Not sent: " + (blocked ?: "the system refused it.")
-                        }
-                        offerNotificationSettings = blocked != null
+                available?.takeIf { !state.isDownloading }?.update?.notes?.takeIf { it.isNotBlank() }?.let { notes ->
+                    Text(
+                        text = notes,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AnsuColors.TextSecondary,
+                        maxLines = 10,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    )
+                }
+                GlassRow(
+                    icon = Icons.Filled.Refresh,
+                    title = "Check for updates",
+                    description = if (state.isChecking) "Checking…" else state.error ?: checkSummary(state),
+                    showDivider = state.isDownloading || available != null,
+                    onClick = {
+                        container.diagnostics.log(LogCategory.CLICK, "Updates → check")
+                        container.updateManager.check()
                     },
-                    onOpenSettings = if (offerNotificationSettings) {
-                        { openNotificationSettings(context) }
-                    } else {
-                        null
-                    },
+                )
+                // No "Version" row here on purpose: the header above already names the installed
+                // build, and repeating it is exactly the duplication About was cleaned of.
+                GlassRow(
+                    icon = Icons.Filled.Numbers,
+                    title = "Version code",
+                    trailing = { GlassRowValue(BuildConfig.VERSION_CODE.toString()) },
                 )
             }
 
-            SectionCard("Status") {
-                StatusSection(
-                    state = state,
-                    onCheck = { container.updateManager.check() },
-                    onInstall = { container.updateManager.downloadAndInstall() },
+            GlassGroupLabel("Channel")
+            GlassGroup {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    ChannelSelector(
+                        channel = channel,
+                        onChannelChange = { picked ->
+                            container.diagnostics.log(LogCategory.CLICK, "Updates → channel ${picked.name.lowercase()}")
+                            container.updateManager.prefs.setChannel(picked)
+                        },
+                    )
+                }
+            }
+
+            GlassGroupLabel("Automatic checks")
+            GlassGroup {
+                GlassToggleRow(
+                    icon = Icons.Filled.Update,
+                    title = "Check automatically",
+                    description = "On open and every 12 hours",
+                    checked = autoCheck,
+                    onCheckedChange = { container.updateManager.setAutoCheck(it) },
+                    showDivider = false,
+                )
+                GlassRow(
+                    icon = Icons.Filled.Notifications,
+                    title = "Test notification",
+                    description = testResult ?: "Post a real system notification now",
+                    trailing = {
+                        TextButton(
+                            onClick = {
+                                val sent = container.updateManager.notifyTest()
+                                val blocked = if (sent) null else container.updateManager.notificationBlockedReason()
+                                testResult = if (sent) {
+                                    "Sent — it is in your notification shade like any other app's alert."
+                                } else {
+                                    "Not sent: " + (blocked ?: "the system refused it.")
+                                }
+                                offerNotificationSettings = blocked != null
+                            },
+                        ) {
+                            Text("Send", color = AnsuColors.Accent, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                )
+                if (offerNotificationSettings) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp)) {
+                        TextButton(onClick = { openNotificationSettings(context) }) {
+                            Text(
+                                text = "Open Anisu's notification settings",
+                                color = AnsuColors.Accent,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+                GlassRow(
+                    icon = Icons.Filled.NotificationsActive,
+                    title = "Notification settings",
+                    description = "Ansu's notifications in Android",
+                    trailing = {
+                        GlassRowValue(if (container.updateManager.notificationsEnabled()) "On" else "Off")
+                    },
+                    onClick = { openNotificationSettings(context) },
+                )
+            }
+
+            GlassGroupLabel("Storage")
+            GlassGroup {
+                GlassRow(
+                    icon = Icons.Filled.Delete,
+                    title = "Clear downloaded updates",
+                    description = "Frees the update APKs Anisu downloaded",
+                    trailing = {
+                        GlassRowValue(
+                            text = if (apkCount > 0) "$apkCount in the cache" else "Empty",
+                            color = if (apkCount > 0) AnsuColors.Error else AnsuColors.TextSecondary,
+                        )
+                    },
+                    showDivider = false,
+                    onClick = {
+                        val cleared = container.updateManager.clearCachedApks()
+                        apkCount = container.updateManager.cachedApkCount()
+                        container.diagnostics.log(LogCategory.CLICK, "Updates → clear downloaded APKs (cleared=$cleared)")
+                        Toast.makeText(
+                            context,
+                            if (cleared) "Deleted successfully" else "Failed to delete some files",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    },
+                )
+                GlassRow(
+                    icon = Icons.AutoMirrored.Filled.Article,
+                    title = "Changelog",
+                    description = "What changed in this build",
+                    onClick = {
+                        container.diagnostics.log(LogCategory.CLICK, "Updates → changelog opened")
+                        openChangelog(context)
+                    },
                 )
             }
 
@@ -177,89 +292,100 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                     "so an update can only ever be Anisu itself.",
                 style = MaterialTheme.typography.labelSmall,
                 color = AnsuColors.TextTertiary,
+                modifier = Modifier.padding(top = 18.dp, bottom = 24.dp, start = 4.dp, end = 4.dp),
             )
         }
     }
 }
 
-/** The header card: what is installed, which channel it came from, over a soft accent glow. */
+/** The header card: what is installed and what the updater is doing right now, over a soft accent glow. */
 @Composable
-private fun InstalledHeader() {
-    val channel = BuildConfig.RELEASE_CHANNEL.replaceFirstChar { it.uppercase() }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(AnsuColors.Accent.copy(alpha = 0.20f), AnsuColors.BackgroundElevated),
-                ),
-            )
-            .padding(20.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.SystemUpdate, contentDescription = null, tint = AnsuColors.TextPrimary, modifier = Modifier.size(34.dp))
-            Column(modifier = Modifier.padding(start = 16.dp).weight(1f)) {
-                Text(
-                    text = "Anisu ${BuildConfig.VERSION_NAME}",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = AnsuColors.TextPrimary,
-                    fontWeight = FontWeight.ExtraBold,
+private fun InstalledHeader(state: UpdateState, channel: UpdateChannel, modifier: Modifier = Modifier) {
+    FrostedGlassCard(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), tintAlpha = 0.4f) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(AnsuColors.Accent.copy(alpha = 0.20f), AnsuColors.BackgroundElevated),
+                    ),
                 )
-                Text(
-                    text = "Build ${BuildConfig.VERSION_CODE} · $channel channel",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = AnsuColors.TextSecondary,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-        }
-    }
-}
-
-/** A black-glass card with a heading, so every block on the page reads as its own little section. */
-@Composable
-private fun SectionCard(title: String, content: @Composable () -> Unit) {
-    FrostedGlassCard(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, tintAlpha = 0.4f) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(20.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary, fontWeight = FontWeight.Bold)
-            content()
-        }
-    }
-}
-
-@Composable
-private fun TestNotificationRow(result: String?, onSend: () -> Unit, onOpenSettings: (() -> Unit)?) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text("Test notification", style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextPrimary)
-            Text(
-                text = result ?: "Post a real system notification now",
-                style = MaterialTheme.typography.bodySmall,
-                color = if (result == null) AnsuColors.TextSecondary else AnsuColors.TextPrimary,
-            )
-            if (onOpenSettings != null) {
-                TextButton(
-                    onClick = onOpenSettings,
-                    contentPadding = PaddingValues(0.dp),
-                    modifier = Modifier.padding(top = 2.dp),
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.SystemUpdate,
+                    contentDescription = null,
+                    tint = AnsuColors.TextPrimary,
+                    modifier = Modifier.size(34.dp),
+                )
+                Column(
+                    modifier = Modifier.padding(start = 16.dp).weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Text("Open Anisu's notification settings", color = AnsuColors.Accent, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "Anisu ${BuildConfig.VERSION_NAME}",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = AnsuColors.TextPrimary,
+                        fontWeight = FontWeight.ExtraBold,
+                    )
+                    val status = heroStatus(state, channel)
+                    Text(
+                        text = status.first,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = status.second,
+                    )
                 }
             }
         }
-        TextButton(onClick = onSend) {
-            Text("Send", color = AnsuColors.Accent, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** The row that replaces the install row while an APK is coming down, with the live progress under it. */
+@Composable
+private fun DownloadingBlock(state: UpdateState) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        GlassRow(
+            icon = Icons.Filled.Download,
+            title = "Download & install",
+            description = "Downloading… ${(state.downloadProgress * 100).roundToInt()}%",
+            showDivider = false,
+        )
+        LinearProgressIndicator(
+            progress = { state.downloadProgress },
+            color = AnsuColors.Accent,
+            trackColor = AnsuColors.AccentSoft,
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+        )
+    }
+}
+
+/** What the updater is doing, as the header's second line. */
+private fun heroStatus(state: UpdateState, channel: UpdateChannel): Pair<String, Color> {
+    val failure = state.error
+    return when {
+        state.isDownloading -> "Downloading ${(state.downloadProgress * 100).roundToInt()}%" to AnsuColors.Accent
+        state.isChecking -> "Checking for updates…" to AnsuColors.TextSecondary
+        failure != null -> failure to AnsuColors.Error
+        else -> when (val result = state.result) {
+            null -> "Channel: ${channelLabel(channel)}" to AnsuColors.TextSecondary
+            is UpdateCheckResult.UpToDate -> "Up to date (${result.latestVersionName})" to AnsuColors.ScoreGreen
+            is UpdateCheckResult.Failed -> result.message to AnsuColors.Error
+            is UpdateCheckResult.Available -> "${result.update.versionName} is ready to install" to AnsuColors.Accent
         }
     }
 }
+
+/** What the last check found, as the "Check for updates" row describes it. */
+private fun checkSummary(state: UpdateState): String = when (val result = state.result) {
+    null -> "Tap to look for a new build"
+    is UpdateCheckResult.UpToDate -> "Up to date (${result.latestVersionName})"
+    is UpdateCheckResult.Failed -> result.message
+    is UpdateCheckResult.Available -> "An update is available: ${result.update.versionName}"
+}
+
+private fun channelLabel(channel: UpdateChannel): String =
+    if (channel == UpdateChannel.NIGHTLY) "Nightly build" else "Stable release"
 
 /**
  * Opens Ansu's own notification screen, where the runtime permission's switch and the "App updates"
@@ -271,6 +397,14 @@ private fun openNotificationSettings(context: Context) {
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     runCatching { context.startActivity(intent) }
 }
+
+/** The changelog at this build's commit, read in the browser: it needs no screen of its own. */
+private fun openChangelog(context: Context) {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(CHANGELOG_URL)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }
+}
+
+private const val CHANGELOG_URL = "https://github.com/Ansu216/Anisu/blob/main/CHANGELOG.md"
 
 @Composable
 private fun ChannelSelector(channel: UpdateChannel, onChannelChange: (UpdateChannel) -> Unit) {
@@ -321,125 +455,6 @@ private fun ChannelSegment(text: String, isSelected: Boolean, onClick: () -> Uni
             color = if (isSelected) AnsuColors.OnAccent else AnsuColors.TextSecondary,
             fontSize = 13.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-        )
-    }
-}
-
-@Composable
-private fun StatusSection(state: UpdateState, onCheck: () -> Unit, onInstall: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (state.isChecking) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(color = AnsuColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
-                Text(
-                    text = "Checking for updates…",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = AnsuColors.TextSecondary,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
-        }
-
-        when (val result = state.result) {
-            null -> Unit
-            is UpdateCheckResult.UpToDate -> StatusLine(
-                icon = Icons.Filled.CheckCircle,
-                text = "Anisu is up to date (${result.latestVersionName}).",
-                tint = AnsuColors.ScoreGreen,
-            )
-            is UpdateCheckResult.Failed -> StatusLine(icon = Icons.Filled.Warning, text = result.message, tint = AnsuColors.Error)
-            is UpdateCheckResult.Available -> AvailableUpdateCard(
-                update = result.update,
-                state = state,
-                onInstall = onInstall,
-                onRecheck = onCheck,
-            )
-        }
-
-        state.error?.let { message -> StatusLine(icon = Icons.Filled.Warning, text = message, tint = AnsuColors.Error) }
-
-        if (state.result !is UpdateCheckResult.Available) {
-            Button(
-                onClick = onCheck,
-                enabled = !state.isChecking && !state.isDownloading,
-                shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Check for updates", fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-@Composable
-private fun AvailableUpdateCard(update: AvailableUpdate, state: UpdateState, onInstall: () -> Unit, onRecheck: () -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = "Anisu ${update.versionName} is available",
-            style = MaterialTheme.typography.titleSmall,
-            color = AnsuColors.TextPrimary,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            text = if (update.channel == UpdateChannel.NIGHTLY) "Nightly build" else "Stable release",
-            style = MaterialTheme.typography.labelSmall,
-            color = AnsuColors.TextTertiary,
-            modifier = Modifier.padding(top = 2.dp),
-        )
-
-        update.notes?.let { notes ->
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = notes,
-                style = MaterialTheme.typography.bodyMedium,
-                color = AnsuColors.TextSecondary,
-                maxLines = 16,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        if (state.isDownloading) {
-            LinearProgressIndicator(
-                progress = { state.downloadProgress },
-                color = AnsuColors.Accent,
-                trackColor = AnsuColors.AccentSoft,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text(
-                text = "Downloading… ${(state.downloadProgress * 100).roundToInt()}%",
-                style = MaterialTheme.typography.labelSmall,
-                color = AnsuColors.TextSecondary,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-        } else {
-            Button(
-                onClick = onInstall,
-                shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text("Download & install", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
-            }
-            TextButton(onClick = onRecheck, modifier = Modifier.align(Alignment.End)) {
-                Text("Check again")
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatusLine(icon: ImageVector, text: String, tint: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = tint,
-            modifier = Modifier.padding(start = 8.dp),
         )
     }
 }
