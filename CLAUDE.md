@@ -45,10 +45,13 @@ extensions).
   (e.g. `0.1.1-nightly-2026.10.11.0930`) and is published to the `apk-nightly` branch,
   anything else keeps the plain `<version>`; a release uses the pushed tag but the
   same version-code counter. **The version code is a plain build number, bumped by
-  one per release and only ever increasing** — it is no longer the date-coded
-  `YYYYMMDDHH` value the earlier workflows published. Android refuses to install an
-  APK over one that carries a higher code and reports that as an "invalid package",
-  so the number never decreases. Release notes are extracted from `CHANGELOG.md` (see §7).
+  one per release and only ever increasing, and it must stay above every code that
+  has already been published.** The earlier workflows published date-coded
+  `YYYYMMDDHH` values up to `2026101200`, so the counter is `2026101201` and counts
+  up from there — a small, "tidier" number is lower than the codes installed on
+  people's phones, and Android reports a lower code to the user only as "the package
+  appears to be invalid", refusing the install. The number therefore never
+  decreases. Release notes are extracted from `CHANGELOG.md` (see §7).
 
 ### Do not bump the toolchain
 
@@ -305,8 +308,8 @@ that could break existing behaviour, and ask when in doubt.
   hand and never "fix" it manually.
 - **`version.txt`.** The three value lines are the single source of the version,
   the version code and the channel (§7.4); the version code is a plain, monotonic
-  build number now, so keep it increasing and do not put the version back in the
-  workflow's `date` calls.
+  build number, so keep it increasing, never lower it below a code that has already
+  been published, and do not put the version back in the workflow's `date` calls.
 - **The workflow job graphs.** `plan` → `build` (parallel matrix) →
   `publish`/`release` exists so a partial build can never be published. Do not
   merge the matrix legs back into one job, and do not remove the
@@ -380,19 +383,22 @@ The file has **three value lines** and any number of `#` comment lines, which ar
 ignored everywhere it is read (Gradle, `apk-nightly.yml`, `release-apk.yml`):
 
 ```
-0.1.1        # line 1 - version (the release tag is "v" + this)
-126          # line 2 - version code
+0.2.0        # line 1 - version (the release tag is "v" + this)
+2026101201   # line 2 - version code
 nightly     # line 3 - channel
 ```
 
 - **Line 1** is the SemVer base version. Bump it here (and add the changelog entry)
   when behaviour changes, exactly as in §7.2.
 - **Line 2** is the version code: a plain build number that **only ever increases**,
-  bumped by one for every release and shared by the nightly and the stable channel.
-  It is deliberately not a date any more (the old date-coded `YYYYMMDDHH` values are
-  gone). Android refuses to install an APK whose code is lower than the installed
-  one — the installer reports that to the user as an "invalid package" — so never let
-  it decrease.
+  bumped by one for every release and shared by the nightly and the stable channel, so
+  several nightlies in a row deliberately carry the same code until a release moves
+  it. It is not derived from a date any more, but it had to **start above every code
+  already published**: the old date-coded `YYYYMMDDHH` values reached `2026101200`, so
+  the counter is `2026101201`. Android refuses to install an APK whose code is lower
+  than the installed one — the installer reports that to the user as an "invalid
+  package" and the update simply cannot be installed — so never let it decrease, and
+  never "simplify" it back to a small number.
 - **Line 3** is the channel, and it is what makes the naming decision: `nightly`
   makes every build `<version>-nightly-<YYYY.MM.DD.HHMM>`, anything else (`beta`,
   `stable`) leaves the plain `<version>`.

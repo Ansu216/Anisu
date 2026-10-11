@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Extension
@@ -135,6 +136,12 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                     title = "System",
                     subtitle = "Diagnostics and export logs",
                     onClick = { navController.navigate(Dest.SYSTEM) },
+                )
+                SettingsRow(
+                    icon = Icons.Filled.Backup,
+                    title = "Backup",
+                    subtitle = "Save or restore your settings and library (.anisu)",
+                    onClick = { navController.navigate(Dest.BACKUP) },
                 )
             }
 

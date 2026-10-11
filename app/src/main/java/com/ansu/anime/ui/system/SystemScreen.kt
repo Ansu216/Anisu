@@ -2,8 +2,6 @@
 
 package com.ansu.anime.ui.system
 
-import android.app.AlarmManager
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -26,9 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
@@ -41,10 +37,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,29 +55,17 @@ import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.theme.AnsuColors
 import java.io.File
-import kotlinx.coroutines.delay
 
 /**
  * Settings → System, rebuilt from scratch: a header, then one black-glass card for the diagnostics
- * tooling and one for backup and restore. Diagnostics can be shared or saved to the device; the
- * `.anisu` archive holds every setting and the library, and restoring one relaunches the app so
- * everything applies at once.
+ * tooling, whose report can be shared or saved to the device. Backup and restore used to be the
+ * second card here; it has its own screen now, one row above in Settings.
  */
 @Composable
 fun SystemScreen(container: AppContainer, navController: NavHostController) {
     val context = LocalContext.current
     val diagnostics = container.diagnostics
     var refresh by remember { mutableIntStateOf(0) }
-    var backupMessage by remember { mutableStateOf<String?>(null) }
-    // A restored backup has to be re-read from disk, and both the SharedPreferences and the Room
-    // database are cached for the life of the process, so the app relaunches itself.
-    var restartPending by remember { mutableStateOf(false) }
-    LaunchedEffect(restartPending) {
-        if (restartPending) {
-            delay(1200)
-            restartApp(context)
-        }
-    }
 
     // Save the diagnostics report to a location the user picks (Downloads, Drive, …), not only share it.
     val saveLogsLauncher = rememberLauncherForActivityResult(
@@ -98,44 +80,6 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
         val saved = writeFileTo(context, uri, file)
         toast(context, if (saved) "Report saved" else "Could not save the report")
         if (saved) diagnostics.log(LogCategory.CLICK, "Diagnostics report saved to device (${file.length()} bytes)")
-        refresh++
-    }
-
-    // Back up settings + library into an .anisu archive.
-    val backupLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/octet-stream"),
-    ) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        val file = container.backupManager.buildBackupFile()
-        if (file == null) {
-            backupMessage = "Could not build the backup."
-            return@rememberLauncherForActivityResult
-        }
-        val saved = writeFileTo(context, uri, file)
-        backupMessage = if (saved) "Backup saved (${file.length() / 1024} KB)." else "Could not save the backup."
-        if (saved) diagnostics.log(LogCategory.CLICK, "Settings backup saved (${file.length()} bytes)")
-        refresh++
-    }
-
-    // Restore an .anisu archive, then relaunch so every setting is re-read.
-    val restoreLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        // The database file is overwritten by the restore, so close it first.
-        runCatching { container.database.close() }
-        container.backupManager.restoreFrom(uri).fold(
-            onSuccess = { count ->
-                backupMessage = "Restored $count files. Restarting Anisu to apply them…"
-                diagnostics.log(LogCategory.CLICK, "Settings backup restored ($count files)")
-            },
-            onFailure = { error ->
-                backupMessage = "Restore failed: ${error.message ?: "unknown error"}"
-                toast(context, "Restore failed: ${error.message ?: "unknown error"}")
-            },
-        )
-        // The database is closed before the restore runs, so the app has to relaunch either way.
-        restartPending = true
         refresh++
     }
 
@@ -220,36 +164,6 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
                 }
             }
 
-            SectionCard("Backup & restore") {
-                Text(
-                    text = "Back up your settings, your watch progress and your local library into a single " +
-                        ".anisu file you keep yourself. Restoring it brings everything back and Anisu restarts " +
-                        "itself to apply it; the AniList sign-in is the only thing left out, because it is tied " +
-                        "to this device.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = AnsuColors.TextSecondary,
-                )
-                Button(
-                    onClick = { backupLauncher.launch("Anisu-backup-${timestampName()}.anisu") },
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Filled.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text("Create backup (.anisu)", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
-                }
-                OutlinedButton(
-                    onClick = { restoreLauncher.launch(arrayOf("*/*")) },
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Filled.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text("Restore from backup", modifier = Modifier.padding(start = 8.dp))
-                }
-                backupMessage?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = AnsuColors.TextSecondary)
-                }
-            }
         }
     }
 }
@@ -319,29 +233,6 @@ private fun writeFileTo(context: Context, uri: Uri, source: File): Boolean = run
 
 private fun toast(context: Context, message: String) {
     Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-}
-
-/**
- * Relaunches the app. A restored backup overwrites the settings files and the Room database, and both
- * are cached in memory for the life of the process, so starting a fresh process is what makes every
- * restored setting take effect without the user restarting the app by hand. The alarm is scheduled
- * first so the relaunch survives this process going away.
- */
-private fun restartApp(context: Context) {
-    val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
-    if (launch != null) {
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-        val pending = PendingIntent.getActivity(
-            context,
-            0,
-            launch,
-            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        (context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager)
-            ?.set(AlarmManager.RTC, System.currentTimeMillis() + 250L, pending)
-    }
-    android.os.Process.killProcess(android.os.Process.myPid())
-    kotlin.system.exitProcess(0)
 }
 
 private fun timestampName(): String =

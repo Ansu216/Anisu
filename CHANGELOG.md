@@ -22,6 +22,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Backup has its own row in Settings, right beside System, and a screen of its own.** Saving and
+  restoring your settings, watch progress and local library into an `.anisu` file used to be buried at
+  the bottom of Settings → System, under the diagnostics card, so it was easy to miss. It is now a
+  **Backup** row in the App group that opens a dedicated `Backup` screen; System keeps only the
+  diagnostics tooling. The two actions, the file picker and the "Anisu restarts itself to apply the
+  restore" behaviour are unchanged — only where you find them moved.
+
+### Fixed
+
+- **New builds install again as a normal upgrade over an older one, without uninstalling anything.**
+  The version code had been changed from the date-coded values (`YYYYMMDDHH`, the last published one
+  being `2026101200`) to a small plain build number, `126`. Because `126` is *lower* than the code
+  already installed on the device, Android refused every install of it and reported only
+  "App not installed — the package appears to be invalid", so the nightly 0.1.1 builds downloaded
+  from the updater could not be put on the phone. Line 2 of `version.txt` is now `2026101201`, the
+  first code above every code already published, and it keeps counting up by one per release from
+  there. **Constraint:** the counter is shared by the nightly and the stable channel, so consecutive
+  nightlies deliberately carry the same code until a release bumps it, and it must never be set
+  below a code that has already been published — a lower one is exactly what the installer refuses.
+
 ## [0.1.1] - 2026-10-11
 
 ### Added

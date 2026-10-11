@@ -36,6 +36,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.auth.AniListLoginScreen
+import com.ansu.anime.ui.backup.BackupScreen
 import com.ansu.anime.ui.details.DetailsScreen
 import com.ansu.anime.ui.extensions.ExtensionsScreen
 import com.ansu.anime.ui.home.HomeScreen
@@ -57,6 +58,7 @@ object Dest {
     const val UPDATES = "updates"
     const val CONTRIBUTORS = "contributors"
     const val SYSTEM = "system"
+    const val BACKUP = "backup"
     const val MY_SPACE = "my_space"
     const val DETAILS = "details"
     const val PLAYER = "player"
@@ -220,6 +222,9 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         }
         composable(Dest.SYSTEM) {
             SystemScreen(container = container, navController = navController)
+        }
+        composable(Dest.BACKUP) {
+            BackupScreen(container = container, navController = navController)
         }
         composable(Dest.MY_SPACE) {
             MySpaceScreen(

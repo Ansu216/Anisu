@@ -1,5 +1,5 @@
-0.1.1
-126
+0.2.0
+2026101201
 nightly
 # version.txt - the release metadata, read by app/build.gradle.kts and by the
 # workflows. Three value lines, then these notes:
@@ -10,14 +10,20 @@ nightly
 # line 1 - the SemVer base version. A release tag is "v" + this value and the
 #          CHANGELOG.md heading for a release uses it without the "v".
 # line 2 - the version code. A plain build number, bumped by one for every
-#          release and shared by the nightly and the stable channel. It is no
-#          longer a date: the old YYYYMMDDHH values the earlier workflows
-#          published are gone. 126 is the project's commit count, used as the
-#          starting build number. Android only requires that a new APK's code
-#          is not lower than the installed one - a lower code is refused as an
-#          "invalid package" - so this number only ever increases.
+#          release and shared by the nightly and the stable channel, so several
+#          nightlies in a row deliberately carry the same code until a release
+#          moves it.
+#
+#          IT MUST NEVER BE LOWER than a code that is already out there. Android
+#          refuses to install an APK whose code is below the installed one and
+#          reports that to the user only as "the package appears to be invalid",
+#          so a lower number turns every update into a failed install. This is
+#          why the counter does not start at 1: the earlier workflows published
+#          date-coded codes (YYYYMMDDHH) up to 2026101113, and version.txt itself
+#          carried 2026101200, so 2026101201 is the first code above all of them.
+#          Keep counting up from here - never "tidy it up" into a small number.
 # line 3 - the channel, which is how the versioning is decided:
 #            nightly  every build is named <version>-nightly-<YYYY.MM.DD.HHMM>
 #                     and is published to the apk-nightly branch;
 #            beta     <version> stays as it is, but the build is a pre-release;
-#            stable    <version> stays as it is and the build is a release.
+#            stable   <version> stays as it is and the build is a release.

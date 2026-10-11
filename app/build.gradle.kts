@@ -36,9 +36,12 @@ val baseVersionCode = versionValue(1, "version code").toIntOrNull()
 val baseChannel = versionValue(2, "channel").lowercase()
 
 // The version code is a plain build number (version.txt line 2), bumped by one per release and
-// shared by both channels. It used to be a date-coded value (YYYYMMDDHH) and is deliberately small
-// and readable now. Android only requires that a new APK's code is not lower than the installed
-// one - a lower code is refused as an "invalid package" - so keep bumping it, never lowering it.
+// shared by both channels, so several nightlies in a row carry the same code on purpose. It is no
+// longer derived from the clock, but it still has to stay above every code already published: the
+// old date-coded values (YYYYMMDDHH) reached 2026101200, so the counter starts at 2026101201.
+// Android only accepts an APK whose code is not lower than the installed one and reports a lower
+// one as "the package appears to be invalid" - an update the user can never install - so keep
+// bumping it, never lowering it.
 
 // A local build stamps itself; CI passes -PversionName so every leg of a run shares one stamp.
 val localStamp = LocalDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyy.MM.dd.HHmm"))
