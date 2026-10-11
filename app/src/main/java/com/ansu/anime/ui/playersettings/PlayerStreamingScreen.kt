@@ -75,6 +75,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val volume by prefs.volumeGesture.collectAsStateWithLifecycle()
     val skipSeconds by prefs.skipSeconds.collectAsStateWithLifecycle()
     val pip by prefs.pipEnabled.collectAsStateWithLifecycle()
+    val prefetch by prefs.prefetchEnabled.collectAsStateWithLifecycle()
     val subSize by prefs.subtitleSize.collectAsStateWithLifecycle()
     val subHeight by prefs.subtitleHeight.collectAsStateWithLifecycle()
     val subColor by prefs.subtitleColor.collectAsStateWithLifecycle()
@@ -148,6 +149,19 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                         onChange = prefs::setPipEnabled,
                     )
                     Hint("When this is off, the video pauses as soon as you leave the app.")
+                }
+            }
+
+            // ===== PRE-LOAD BOX =====
+            SettingsBox(title = "Pre-load") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ToggleRow(
+                        title = "Pre-load the last episode",
+                        subtitle = "When the app opens, load about a minute of the show you were watching",
+                        checked = prefetch,
+                        onChange = prefs::setPrefetchEnabled,
+                    )
+                    Hint("It resolves the source and buffers the next minute into the shared cache, so playback starts instantly. Turn it off on a metered connection: it uses data in the background.")
                 }
             }
 

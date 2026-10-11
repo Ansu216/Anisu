@@ -93,6 +93,20 @@ class AppContainer(context: Context) {
     /** Full settings + library backup and restore, written as one `.anisu` archive. */
     val backupManager: com.ansu.anime.data.backup.BackupManager = com.ansu.anime.data.backup.BackupManager(appContext)
 
+    /** Shared on-disk media cache, read by the player and filled ahead of time by [prefetcher]. */
+    val mediaCache: com.ansu.anime.data.player.MediaCache = com.ansu.anime.data.player.MediaCache(appContext)
+
+    /** Warms the last-watched episode into the media cache when the app opens. */
+    val prefetcher: com.ansu.anime.data.player.Prefetcher = com.ansu.anime.data.player.Prefetcher(
+        appContext,
+        continueWatchingRepository,
+        extensionManager,
+        aniListRepository,
+        mediaCache,
+        playerPrefs,
+        diagnostics,
+    )
+
     init {
         // Aniyomi/Keiyoushi extensions need the Injekt container filled in before they are instantiated.
         // Do not swallow a failure silently: without this, every extension fails with "No registered instance".

@@ -73,6 +73,10 @@ class MainActivity : ComponentActivity() {
         // Automatic update check; a no-op when the user turned it off in Updates/About.
         container.updateManager.checkIfEnabled()
 
+        // Warm about a minute of the last-watched episode into the media cache; a no-op when the
+        // "Pre-load" switch in Settings > Player and streaming is off.
+        container.prefetcher.prefetchOnLaunch()
+
         setContent {
             AnsuTheme {
                 val navController = rememberNavController()

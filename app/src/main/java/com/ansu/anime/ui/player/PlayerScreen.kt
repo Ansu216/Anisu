@@ -122,6 +122,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     container.aniListRepository,
                     container.aniSkipRepository,
                     container.playerPrefs,
+                    container.mediaCache,
                 )
             }
         },

@@ -118,6 +118,7 @@ class PlayerViewModel(
     private val aniListRepository: com.ansu.anime.anilist.AniListRepository? = null,
     private val aniSkipRepository: com.ansu.anime.data.repository.AniSkipRepository? = null,
     private val playerPrefs: com.ansu.anime.data.prefs.PlayerPrefs? = null,
+    private val mediaCache: com.ansu.anime.data.player.MediaCache? = null,
 ) : ViewModel() {
 
     // Large buffers + a small start threshold: playback starts after a few seconds of data and the
@@ -136,6 +137,13 @@ class PlayerViewModel(
                 .setTargetBufferBytes(RAM_BUFFER_BYTES)
                 .setPrioritizeTimeOverSizeThresholds(true)
                 .build(),
+        )
+        // Read through the shared cache, so an episode pre-loaded at launch plays from disk and every
+        // segment fetched during playback is kept for the next time it is opened.
+        .setMediaSourceFactory(
+            DefaultMediaSourceFactory(
+                mediaCache?.dataSourceFactory() ?: androidx.media3.datasource.DefaultDataSource.Factory(context),
+            ),
         )
         .build()
 
@@ -533,9 +541,11 @@ class PlayerViewModel(
             player.setMediaItem(mediaItem, startMs)
         } else {
             // Extension sites usually insist on a Referer/User-Agent; send what the source asked for.
-            val dataSource = DefaultHttpDataSource.Factory()
+            val upstream = DefaultHttpDataSource.Factory()
                 .setAllowCrossProtocolRedirects(true)
                 .setDefaultRequestProperties(source.headers)
+            // Read through the shared cache too, so a warmed episode plays from disk here as well.
+            val dataSource = mediaCache?.dataSourceFactory(upstream) ?: upstream
             val factory = DefaultMediaSourceFactory(dataSource)
             val main = factory.createMediaSource(mediaItem)
             // External audio streams (dubs) are merged into the video; the player lists them as audio tracks.

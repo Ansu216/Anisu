@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The last episode you were watching is pre-loaded when the app opens.** A "Pre-load" switch in Settings → Player and streaming (on by default) makes Anisu resolve that show's source at launch and buffer about a minute from where you left off into a shared cache, so opening it starts already filled instead of waiting on the network.
+
 - **Picture in picture, with a switch in Settings → Player and streaming.** With the switch on (the default), pressing Home or using the gesture while an episode is playing shrinks the video into a floating window that keeps playing; the controls and panels are hidden there, and the window has its own play/pause button.
 
 - **Episodes picker in the landscape player, with two styles.** The Episodes button now slides in a side panel like Sources, Subtitles and Audio (the video shrinks to make room, the pill drops and the seek bar moves down, then everything returns on close).

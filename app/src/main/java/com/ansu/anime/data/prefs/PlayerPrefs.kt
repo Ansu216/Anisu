@@ -63,6 +63,16 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putBoolean(KEY_PIP, value).apply()
     }
 
+    private val _prefetchEnabled = MutableStateFlow(prefs.getBoolean(KEY_PREFETCH, true))
+
+    /** Pre-load about a minute of the last-watched episode into the media cache when the app opens. */
+    val prefetchEnabled: StateFlow<Boolean> = _prefetchEnabled
+
+    fun setPrefetchEnabled(value: Boolean) {
+        _prefetchEnabled.value = value
+        prefs.edit().putBoolean(KEY_PREFETCH, value).apply()
+    }
+
     private val _episodeGrid = MutableStateFlow(prefs.getBoolean(KEY_EPISODE_GRID, false))
 
     /** The landscape Episodes panel's style: false = list of cards, true = grid of numbered tiles. */
@@ -170,6 +180,7 @@ class PlayerPrefs(context: Context) {
         private const val KEY_BRIGHTNESS = "brightness_gesture"
         private const val KEY_VOLUME = "volume_gesture"
         private const val KEY_PIP = "pip_enabled"
+        private const val KEY_PREFETCH = "prefetch_enabled"
         private const val KEY_EPISODE_GRID = "episode_grid"
         private const val KEY_SKIP_SECONDS = "skip_seconds"
         private const val KEY_SOURCE_PRIORITY = "source_priority"
