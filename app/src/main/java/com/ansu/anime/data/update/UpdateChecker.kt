@@ -20,11 +20,12 @@ class UpdateChecker(private val client: OkHttpClient) {
         channel: UpdateChannel,
         installedVersionName: String,
         installedVersionCode: Int,
+        installedCommit: String,
     ): UpdateCheckResult = withContext(Dispatchers.IO) {
         runCatching {
             when (channel) {
                 UpdateChannel.RELEASES -> checkReleases(installedVersionName)
-                UpdateChannel.NIGHTLY -> checkNightly(installedVersionName, installedVersionCode)
+                UpdateChannel.NIGHTLY -> checkNightly(installedVersionName, installedVersionCode, installedCommit)
             }
         }.getOrElse { error -> UpdateCheckResult.Failed(describe(error, channel)) }
     }
@@ -51,6 +52,8 @@ class UpdateChecker(private val client: OkHttpClient) {
             AvailableUpdate(
                 channel = UpdateChannel.RELEASES,
                 versionName = latest,
+                // A release tag is published once, so the version is what identifies the build.
+                buildId = latest,
                 notes = releaseNotes(release),
                 apkUrl = apk.downloadUrl,
                 pageUrl = release.htmlUrl.ifBlank { "$REPO_URL/releases" },
@@ -123,18 +126,29 @@ class UpdateChecker(private val client: OkHttpClient) {
             ?.take(120)
             ?.takeIf { it.isNotBlank() }
 
-    private fun checkNightly(installedVersionName: String, installedVersionCode: Int): UpdateCheckResult {
+    private fun checkNightly(
+        installedVersionName: String,
+        installedVersionCode: Int,
+        installedCommit: String,
+    ): UpdateCheckResult {
         val manifest = json.decodeFromString<NightlyManifest>(get(NIGHTLY_JSON_URL))
         if (manifest.versionCode <= 0) return UpdateCheckResult.Failed("The nightly manifest is empty")
-        // The published `versionCode` is the build hour (YYYYMMDDHH), so several
-        // builds in the same hour share it. Comparing only the code therefore
-        // reported "up to date" for a newer build that happened later that hour;
-        // the version *name* carries the minute, so either being newer counts.
+        // A nightly is identified by the commit it was made from. Every nightly carries the same
+        // version *name* (`0.3.0-nightly`) and, by design, the same version *code* (it is the shared
+        // release counter), so a check that compared those answered "up to date" for every build
+        // after the very first one and the channel silently stopped offering updates. A published
+        // commit different from the one this install was built from - or any published commit at all
+        // when this install predates the recorded one - is therefore a newer build. The name and the
+        // code are still compared, so a build published while the manifest was missing its commit is
+        // not lost.
+        val publishedCommit = manifest.commit?.takeIf { it.isNotBlank() }
+        val newerByCommit = publishedCommit != null &&
+            !publishedCommit.equals(installedCommit.trim(), ignoreCase = true)
         val newerByName = manifest.versionName.isNotBlank() &&
             !installedVersionName.isBlank() &&
             isNewerVersion(manifest.versionName, installedVersionName)
         val newerByCode = manifest.versionCode > installedVersionCode
-        if (!newerByName && !newerByCode) return UpdateCheckResult.UpToDate(manifest.versionName)
+        if (!newerByCommit && !newerByName && !newerByCode) return UpdateCheckResult.UpToDate(manifest.versionName)
 
         val notes = buildString {
             append("Nightly build from ${manifest.builtAt ?: "an unknown date"}.")
@@ -156,6 +170,7 @@ class UpdateChecker(private val client: OkHttpClient) {
             AvailableUpdate(
                 channel = UpdateChannel.NIGHTLY,
                 versionName = manifest.versionName,
+                buildId = publishedCommit ?: manifest.versionName,
                 notes = notes,
                 apkUrl = "$NIGHTLY_BRANCH_URL/$apkName",
                 pageUrl = NIGHTLY_PAGE_URL,

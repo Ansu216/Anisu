@@ -163,9 +163,12 @@ jobs:
             debug)   TASK="assembleDebug" ;;
             *) echo "::error::Unknown variant '${{ matrix.variant }}'"; exit 1 ;;
           esac
+          # The commit goes into BuildConfig.BUILD_COMMIT, the identity the updater compares
+          # (see app/build.gradle.kts): the version name no longer carries a timestamp.
           ./gradlew --no-daemon --stacktrace "$TASK" \
             -PversionCode="${{ needs.plan.outputs.version_code }}" \
-            -PversionName="${{ needs.plan.outputs.version }}"
+            -PversionName="${{ needs.plan.outputs.version }}" \
+            -PbuildCommit="${{ github.sha }}"
 
       - name: Verify the APK is signed (an unsigned build is never published)
         run: |

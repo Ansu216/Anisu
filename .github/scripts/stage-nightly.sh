@@ -8,21 +8,21 @@
 # soon as its build succeeds, so a failure on one side never holds back the other.
 #
 # Because a single leg knows nothing about the other one, this script first reads
-# the branch as it stands. When the branch already carries a build with the *same*
-# `versionName` (i.e. the sibling variant of this very run — the two legs share the
-# stamp the `plan` job computed), its APK is carried over so publishing one leg never
-# drops the other. A branch carrying a build from an older run is replaced wholesale
-# instead, so the two APKs can never belong to different runs. The version *name* is
-# what identifies the run, not the version code: the code comes from version.txt and
-# is deliberately the same on every nightly (it only ever goes up with a release), so
-# comparing it would carry a stale sibling over from an older run.
+# the branch as it stands. When the branch already carries a build from *this* run
+# (the sibling variant of this very run, identified by the run id this script writes
+# into nightly.json), its APK is carried over so publishing one leg never drops the
+# other. A branch carrying a build from an older run is replaced wholesale instead, so
+# the two APKs can never belong to different runs. The run id is what identifies the
+# run: neither the version *name* (every nightly is called `<version>-nightly` now)
+# nor the version *code* (the shared release counter, deliberately the same on every
+# nightly) can say which run a build belongs to.
 #
 # Usage: stage-nightly.sh <output-directory>
 #
 # Reads these from the environment (set by the workflow):
 #
 #   VARIANT            release | debug
-#   VERSION_NAME, VERSION_CODE, ISO   the stamp computed by the `plan` job
+#   VERSION_NAME, VERSION_CODE, ISO   the version computed by the `plan` job
 #   GITHUB_REPOSITORY, GITHUB_TOKEN   to read the current branch
 #   GITHUB_SHA, GITHUB_RUN_ID         written into nightly.json
 #
@@ -60,17 +60,20 @@ EXISTING="$(mktemp -d)"
 if git clone --quiet --depth 1 --branch apk-nightly \
     "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
     "$EXISTING" 2>/dev/null; then
-  EXISTING_NAME="$(python3 - "$EXISTING/nightly.json" <<'PY' 2>/dev/null || true
+  EXISTING_RUN="$(python3 - "$EXISTING/nightly.json" <<'PY' 2>/dev/null || true
 import json
 import sys
 
 try:
-    print(json.load(open(sys.argv[1], encoding="utf-8")).get("versionName", ""))
+    manifest = json.load(open(sys.argv[1], encoding="utf-8"))
+    # The run id says whether that build belongs to this run. The version name is only a fallback for a
+    # manifest written before the id was recorded, and it can never equal a run id anyway.
+    print(manifest.get("runId") or manifest.get("versionName", ""))
 except Exception:
     pass
 PY
 )"
-  if [ "$EXISTING_NAME" = "$VERSION_NAME" ] && [ -f "$EXISTING/$SIBLING" ]; then
+  if [ "$EXISTING_RUN" = "$GITHUB_RUN_ID" ] && [ -f "$EXISTING/$SIBLING" ]; then
     cp "$EXISTING/$SIBLING" "$STAGE/$SIBLING"
     echo "Carried over the sibling variant $SIBLING from the same run."
   fi

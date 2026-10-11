@@ -36,6 +36,8 @@ import androidx.navigation.NavHostController
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterNotNull
 import kotlin.math.abs
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.semantics
@@ -49,6 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -57,6 +60,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
 import com.ansu.anime.data.prefs.AppearancePrefs
 import com.ansu.anime.ui.navigation.Dest
+import com.ansu.anime.ui.navigation.TAB_TRANSITION_MILLIS
 import com.ansu.anime.ui.theme.AnsuColors
 import kotlin.math.roundToInt
 
@@ -104,6 +108,28 @@ fun AppBottomBar(
     backdrop: BackdropState? = null,
     modifier: Modifier = Modifier,
 ) {
+    // One tab move at a time. A tab tapped while the previous move is still sliding only replaces this
+    // pending destination, and it is applied the moment that slide ends: asking the NavHost for a second
+    // tab move while the first one was still running is what left the earlier screen composed on top of
+    // the new one - the "last tab gets stuck" the bar was reported for. `snapshotFlow` conflates, so a
+    // burst of taps collapses to the tab that was really tapped last instead of playing every step.
+    val pendingRoute = remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(navController) {
+        snapshotFlow { pendingRoute.value }
+            .filterNotNull()
+            .collect { route ->
+                pendingRoute.value = null
+                if (route != navController.currentBackStackEntry?.destination?.route) {
+                    navController.navigate(route) {
+                        popUpTo(Dest.HOME) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+                delay(TAB_TRANSITION_MILLIS.toLong())
+            }
+    }
+
     // The bar is drawn once, in the navigation shell, so it stays still during a tab change. It is a
     // floating card with no background behind it, so the screen content shows around it.
     Box(
@@ -121,13 +147,8 @@ fun AppBottomBar(
             frostiness = LocalNavBarFrostiness.current,
             backdropBlur = LocalNavBarBackdropBlur.current,
             backdrop = backdrop,
-            onItemClick = { route ->
-                navController.navigate(route) {
-                    popUpTo(Dest.HOME) { saveState = true }
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            },
+            // Tapping only queues the tab; the single mover above performs the move and spaces them out.
+            onItemClick = { route -> pendingRoute.value = route },
         )
     }
 }

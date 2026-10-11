@@ -22,27 +22,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- **Updates and About are rebuilt on the settings language the rest of the app uses.** Both opened with a
-  big header card and then a handful of loose blocks with their own spacing. They now read top to bottom as a
-  big page title, a header that says what is installed and what the updater is doing, and short groups of rows
-  — a round accent icon, a title, a line of description and a value or a switch on the right, every row on the
-  same 16dp grid, so Updates, About, Settings, Appearance and Player and streaming no longer differ. The two
-  screens share the new group/row pieces (`ui/components/GlassSettings.kt`) instead of each drawing its own.
-  **Constraint:** the behaviour is untouched — the same GitHub check, the same resumable `.part` download, the
-  same channel preference and the same signature-verified install. The minimum Compose version in the project
-  (material3 1.3.1) does not expose the switch-with-glyph variant, so the switches stay the app's own.
-
 ### Added
 
-- **Updates can now empty the APKs it already downloaded, and open the changelog.** "Clear downloaded updates"
-  shows how many update APKs are sitting in the cache and deletes them on a tap (they were only ever replaced
-  file by file before, so a cancelled update could sit there for good), and "Changelog" opens the project's
-  `CHANGELOG.md` in the browser, so the notes for a build are one tap away instead of a trip to GitHub.
+- **Anisu now backs itself up: one `.anisu` archive a day, the last three kept.** Nobody should have to remember
+  to tap **Create backup**, so a daily job writes a copy into app-private storage and drops the oldest one as a
+  new one lands. Settings → Backup shows the switch, when the last copy was written, a **Back up now** action,
+  and a **Restore** beside every kept copy. The job runs while the app is closed and needs no network, no
+  permission and no account.
+
+- **Updates can empty the APKs it already downloaded, and open the changelog.** "Clear downloaded updates"
+  counts the update APKs sitting in the cache and deletes them on a tap, and "Changelog" opens the project's
+  `CHANGELOG.md` in the browser.
+
 - **The notification row in Updates says whether Android would really deliver an alert, and opens the switch.**
-  A new "Notification settings" row reports On/Off and takes you straight to Anisu's own notification screen,
-  which used to be reachable only after a test notification failed.
+  It reports On/Off and goes straight to Anisu's own notification settings, which used to be reachable only
+  after a test notification had failed.
 
 - **Backup has its own row in Settings, right beside System, and a screen of its own.** Saving and
   restoring your settings, watch progress and local library into an `.anisu` file used to be buried at
@@ -51,34 +45,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   diagnostics tooling. The two actions, the file picker and the "Anisu restarts itself to apply the
   restore" behaviour are unchanged — only where you find them moved.
 
+### Changed
+
+- **Nightly builds are named `0.3.0-nightly`, without the timestamp.** The `-2026.10.11.1846` suffix made every
+  hourly build look like a different app and put a clock reading where a version belongs. What identifies a build
+  is now the commit it was made from, which CI records and the updater compares.
+
+- **Updates and About are rebuilt on the settings rows the rest of the app uses.** A round accent icon, a title,
+  a description and a value or a switch on the right, all on the same 16dp grid and shared through
+  `ui/components/GlassSettings.kt`, in place of two screens with header cards of their own. **Constraint:** the
+  behaviour is untouched — same GitHub check, same resumable `.part` download, same signature-verified install,
+  same channel preference.
+
 ### Fixed
 
-- **New builds install again as a normal upgrade over an older one, without uninstalling anything.**
-  The version code had been changed from the date-coded values (`YYYYMMDDHH`, the last published one
-  being `2026101200`) to a small plain build number, `126`. Because `126` is *lower* than the code
-  already installed on the device, Android refused every install of it and reported only
-  "App not installed — the package appears to be invalid", so the nightly 0.1.1 builds downloaded
-  from the updater could not be put on the phone. Line 2 of `version.txt` is now `2026101201`, the
-  first code above every code already published, and it keeps counting up by one per release from
-  there. **Constraint:** the counter is shared by the nightly and the stable channel, so consecutive
-  nightlies deliberately carry the same code until a release bumps it, and it must never be set
-  below a code that has already been published — a lower one is exactly what the installer refuses.
+- **A tab change no longer shows the screen twice, and a fast switch no longer leaves the previous tab stuck.**
+  The move slid each screen a sixth of the width *and* faded both of them at once, so two full screens were
+  drawn on top of each other for the whole transition — which is what "everything shows up twice" was. It is a
+  plain full-width slide now, so the animation is still there, and the bar runs one tab move at a time: a tab
+  tapped during a slide is applied the moment that slide ends instead of overlapping it.
 
-- **Settings now uses one consistent padding grid.** The group labels ("ACCOUNT", "APP", …) started
-  10dp from the edge while the rows under them started at 16dp, the gap between a row's icon and its
-  text was 14dp here against 12dp on the Appearance, Player and streaming and Updates screens, and the
-  rows sat at 14dp while two groups were only 4dp apart. The line under a row's title also had no gap
-  at all, so a description that wrapped to two lines looked glued to the title. The labels are at 16dp
-  now, the icon-to-text gap is 12dp, the vertical rhythm is a uniform 16dp and the title-to-description  gap is the 2dp the rest of the app already used, so moving between the settings screens no
-  longer shows the spacing shifting.
+- **The nightly channel can be offered a new build again.** Every nightly now carries the same version name and
+  the same version code by design, so a check that compared either of them answered "up to date" for every build
+  after the first one. A check compares the commit instead, and the "announced once" rule uses it too, so each
+  nightly is announced once rather than only the very first one ever.
 
-- **About no longer looks like it carries two versions.** The header ended with two pills side by side,
-  `Version 0.2.0-nightly-2026.10.11.1900` and `2026101201 · Nightly`, which read as two different builds. The
-  name and the code are two different things — the name is what the project publishes, the code is the counter
-  Android compares — so there is now one row naming the installed build and a second, labelled, carrying the
-  version code. The same duplication was kept out of the rebuilt Updates screen, whose header alone names the
-  build.
+- **New builds install again as a normal upgrade over an older one.** The version code had been changed to the
+  small number `126`, which is *below* the code already on people's phones, so Android refused every install
+  and reported only "the package appears to be invalid". Line 2 of `version.txt` is `2026101201` now — above
+  every code already published — and counts up from there. **Constraint:** the counter is shared by the nightly
+  and the stable channel, so consecutive nightlies carry the same code until a release moves it, and it must
+  never go down: a lower one is exactly what the installer refuses.
 
+- **Settings uses one consistent padding grid.** The group labels started 10dp from the edge while the rows
+  under them started at 16dp, the icon-to-text gap was 14dp here and 12dp on Appearance, Player and streaming
+  and Updates, the rows sat at 14dp while two groups were 4dp apart, and a wrapped description had no gap under
+  its title. Everything is on the app's grid now — 16dp, a 12dp icon gap and the same 2dp under a title — so
+  moving between the settings screens no longer shifts the layout.
+
+- **About no longer looks like it carries two versions.** The header ended with two pills side by side —
+  `Version 0.2.0-nightly-2026.10.11.1900` and `2026101201 · Nightly` — which read as two different builds. The
+  name and the code are different things, so there is one row naming the installed build and a labelled second
+  one carrying the version code; the rebuilt Updates screen follows the same rule, its header naming the build
+  alone.
 
 ## [0.1.1] - 2026-10-11
 

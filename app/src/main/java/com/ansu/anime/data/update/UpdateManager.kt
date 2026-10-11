@@ -64,6 +64,7 @@ class UpdateManager(
             channel = channel,
             installedVersionName = BuildConfig.VERSION_NAME,
             installedVersionCode = BuildConfig.VERSION_CODE,
+            installedCommit = BuildConfig.BUILD_COMMIT,
         )
         when (result) {
             is UpdateCheckResult.UpToDate -> {
@@ -77,9 +78,11 @@ class UpdateManager(
                 // Only announce each build once, however often the app checks, and only record it as
                 // announced when the notification was really posted — otherwise a check that ran
                 // before the Android 13 permission was granted would silence that build for good.
-                if (prefs.lastNotifiedVersion() != result.update.versionName) {
+                // The build is identified by its commit on the nightly channel: the version name is
+                // the same on every nightly, so keying on it would announce exactly one nightly ever.
+                if (prefs.lastNotifiedVersion() != result.update.buildId) {
                     if (notifier.notifyUpdate(result.update)) {
-                        prefs.setLastNotifiedVersion(result.update.versionName)
+                        prefs.setLastNotifiedVersion(result.update.buildId)
                     }
                 }
             }

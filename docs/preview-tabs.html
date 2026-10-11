@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Anisu &middot; tab switch preview</title>
+<style>
+  :root{
+    --bg:#07080B; --elev:#0F1015; --glass:#1B1D27; --stroke:rgba(255,255,255,.08);
+    --t1:#F3F4F6; --t2:#A0A3B1; --t3:#6B6E7C;
+    --accent:#A78BFA; --accent-soft:rgba(167,139,250,.16);
+    --ok:#4CD137; --err:#E0605A;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px;background:#050609;color:var(--t1);
+       font-family:Inter,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--t3);font-size:13px;margin:0 0 20px;max-width:820px;line-height:1.55}
+  .row{display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap}
+  figure{margin:0}
+  figcaption{font-size:12px;color:var(--t3);margin-top:10px;max-width:390px;line-height:1.5}
+  figcaption b{color:var(--t1)}
+  .phone{width:390px;height:800px;background:var(--bg);border:1px solid #1d1f27;border-radius:30px;
+         overflow:hidden;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .status{height:26px;display:flex;justify-content:space-between;align-items:center;
+          padding:0 18px;font-size:11px;color:var(--t2)}
+  /* the four tab pages, one on screen at a time */
+  .stage{position:absolute;inset:26px 0 0;overflow:hidden}
+  .panel{position:absolute;inset:0;visibility:hidden;background:var(--bg);padding:10px 16px 96px}
+  .panel.hero{padding-top:0}
+  .page-title{font-size:28px;font-weight:800;letter-spacing:-.3px;margin:10px 0 16px}
+  .hero-block{height:210px;border-radius:0 0 24px 24px;margin:0 -16px 18px;
+              background:linear-gradient(160deg,rgba(167,139,250,.42),rgba(15,16,21,.95));position:relative}
+  .hero-block .cap{position:absolute;left:16px;right:16px;bottom:18px}
+  .hero-block .cap b{font-size:20px;font-weight:800;display:block}
+  .hero-block .cap span{font-size:12px;color:#D9D2FF}
+  .shelf{font-size:15px;font-weight:700;margin:0 0 10px}
+  .cards{display:flex;gap:10px;margin-bottom:18px}
+  .poster{width:78px;height:112px;border-radius:12px;flex:none;
+          background:linear-gradient(150deg,rgba(167,139,250,.28),rgba(27,29,39,.95));
+          border:1px solid var(--stroke)}
+  .card{background:linear-gradient(180deg,rgba(27,29,39,.5),rgba(27,29,39,.42));
+        border:1px solid var(--stroke);border-radius:20px;backdrop-filter:blur(14px);margin-bottom:12px}
+  .r{display:flex;align-items:center;gap:14px;padding:15px 16px}
+  .r + .r{border-top:1px solid var(--stroke)}
+  .tile{width:40px;height:40px;border-radius:50%;background:var(--accent-soft);color:var(--accent);
+        display:flex;align-items:center;justify-content:center;font-size:17px;flex:none}
+  .txt{flex:1;min-width:0}
+  .t{font-size:15px;font-weight:600;line-height:1.35}
+  .d{font-size:14px;color:var(--t2);line-height:1.45;margin-top:2px}
+  .chev{color:var(--t3);font-size:16px}
+  .bar-row{display:flex;gap:8px;align-items:center;justify-content:center;height:50px}
+  .slot{width:70px;height:40px;display:flex;align-items:center;justify-content:center;
+        border-radius:20px;font-size:14px;color:var(--t3);cursor:pointer;position:relative;z-index:2;
+        user-select:none}
+  .slot.on{color:var(--accent)}
+  /* the floating bottom bar, drawn once above the pages, exactly like the app */
+  .nav{position:absolute;left:50%;transform:translateX(-50%);bottom:14px;width:290px;height:50px;
+       border-radius:25px;border:1px solid var(--stroke);z-index:5;
+       background:linear-gradient(180deg,rgba(27,29,39,.72),rgba(27,29,39,.62));backdrop-filter:blur(16px)}
+  .pill{position:absolute;left:5px;top:5px;width:70px;height:40px;border-radius:20px;
+        background:linear-gradient(180deg,rgba(167,139,250,.30),rgba(167,139,250,.20));
+        border:1px solid rgba(255,255,255,.20);transition:transform .23s cubic-bezier(.34,1.3,.64,1)}
+  .controls{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}
+  .vbtn{padding:9px 14px;border-radius:20px;border:1px solid var(--stroke);background:var(--elev);
+        color:var(--t2);font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit}
+  .vbtn.on{background:var(--accent-soft);border-color:rgba(167,139,250,.5);color:var(--t1)}
+  .hint{font-size:12px;color:var(--t3);margin:0 0 22px;line-height:1.55;max-width:820px}
+  .hint code{color:#D9D2FF}
+  .note{font-size:11px;color:var(--t3);margin:-6px 0 14px;line-height:1.5}
+  .legend{margin-top:14px;font-size:12px;color:var(--t2);line-height:1.6;max-width:390px}
+  .legend b{color:var(--t1)}
+</style>
+</head>
+<body>
+  <h1>Anisu &middot; switching between the four bottom tabs</h1>
+  <p class="sub">The four pages (Home, Search, Schedule, My Space) with the single floating bar the app draws
+  once, above them. Tap a tab, or use <b>Tap two tabs fast</b> to reproduce the report: &ldquo;if I switch tab too
+  fast the last tab gets stuck&rdquo; and &ldquo;everything shows up twice&rdquo;.</p>
+
+  <div class="controls">
+    <button class="vbtn" data-v="A">A &middot; Before &mdash; cross-fade + short slide (260 ms)</button>
+    <button class="vbtn on" data-v="B">B &middot; After &mdash; full-width slide, no fade (230 ms)</button>
+    <button class="vbtn" data-v="C">C &middot; Instant fade (150 ms)</button>
+    <button class="vbtn" id="fast">Tap two tabs fast (Home &rarr; My Space)</button>
+  </div>
+
+  <div class="row">
+    <figure>
+      <div class="phone" id="phone">
+        <div class="status"><span>11:46</span><span>65%</span></div>
+
+        <div class="stage" id="stage">
+          <!-- Home -->
+          <div class="panel hero on">
+            <div class="hero-block"><div class="cap"><b>Blue Lock</b><span>24 episodes &middot; TV</span></div></div>
+            <div class="shelf">Trending now</div>
+            <div class="cards"><div class="poster"></div><div class="poster"></div><div class="poster"></div><div class="poster"></div></div>
+            <div class="card"><div class="r"><div class="tile">&#9654;</div><div class="txt"><div class="t">Continue watching</div><div class="d">Ep 7 &middot; 18:24 left</div></div><div class="chev">&#8250;</div></div></div>
+          </div>
+          <!-- Search -->
+          <div class="panel">
+            <div class="page-title">Search</div>
+            <div class="card"><div class="r"><div class="tile">&#9906;</div><div class="txt"><div class="t">Search anime…</div></div></div></div>
+            <div class="shelf">Trending</div>
+            <div class="cards"><div class="poster"></div><div class="poster"></div><div class="poster"></div><div class="poster"></div></div>
+            <div class="cards"><div class="poster"></div><div class="poster"></div><div class="poster"></div><div class="poster"></div></div>
+          </div>
+          <!-- Schedule -->
+          <div class="panel">
+            <div class="page-title">Schedule</div>
+            <div class="card"><div class="r"><div class="tile">&#128197;</div><div class="txt"><div class="t">Thursday, 12 Oct</div><div class="d">6 shows airing today</div></div></div></div>
+            <div class="card"><div class="r"><div class="tile">&#9200;</div><div class="txt"><div class="t">Solo Leveling</div><div class="d">Episode 12 &middot; 18:30</div></div><div class="chev">&#8250;</div></div></div>
+            <div class="card"><div class="r"><div class="tile">&#9200;</div><div class="txt"><div class="t">Frieren</div><div class="d">Episode 20 &middot; 23:00</div></div><div class="chev">&#8250;</div></div></div>
+          </div>
+          <!-- My Space -->
+          <div class="panel">
+            <div class="page-title">My Space</div>
+            <div class="card"><div class="r"><div class="tile">&#9786;</div><div class="txt"><div class="t">Ansu216</div><div class="d">AniList connected</div></div></div></div>
+            <div class="shelf">My list</div>
+            <div class="cards"><div class="poster"></div><div class="poster"></div><div class="poster"></div></div>
+          </div>
+        </div>
+
+        <div class="nav">
+          <div class="pill" id="pill"></div>
+          <div class="bar-row">
+            <div class="slot on" data-i="0">&#8962;</div>
+            <div class="slot" data-i="1">&#9906;</div>
+            <div class="slot" data-i="2">&#128197;</div>
+            <div class="slot" data-i="3">&#9786;</div>
+          </div>
+        </div>
+      </div>
+      <figcaption id="cap"><b>B — after: full-width slide, no fade.</b> The two pages travel together as one
+      sheet and the animation is still there, but only one page is ever readable: nothing is drawn on top of
+      anything else. Rapid taps are queued one at a time, so the previous tab can never be left behind.</figcaption>
+
+      <div class="legend">
+        <b>A — before:</b> the incoming page started only one sixth of a page away and faded in while the
+        outgoing one faded out, so for 260 ms both screens were drawn on top of each other &mdash; the
+        &ldquo;everything shows up twice&rdquo;. Two tab moves could also overlap, which is what left the
+        previous tab on screen.<br>
+        <b>B — after:</b> 230 ms full-width slide of the pair, no cross-fade, and a tab move is never allowed
+        to interrupt one that is still running.<br>
+        <b>C — instant fade:</b> kept only for comparison; no direction, no slide.
+      </div>
+    </figure>
+  </div>
+
+<script>
+(function(){
+  var W = 390, SLOT = 70;
+  var panels = [].slice.call(document.querySelectorAll('.panel'));
+  var slots  = [].slice.call(document.querySelectorAll('.slot'));
+  var pill   = document.getElementById('pill');
+  var cap    = document.getElementById('cap');
+  var variant = 'B';
+  var current = 0, running = false, pending = null;
+
+  var DUR = { A:260, B:230, C:150 };
+
+  function setPill(i, ms){
+    pill.style.transitionDuration = ms + 'ms';
+    pill.style.transform = 'translateX(' + (i * SLOT) + 'px)';
+  }
+
+  function show(i){
+    panels.forEach(function(p, n){
+      p.style.visibility = (n === i) ? 'visible' : 'hidden';
+      p.style.opacity = '';
+      p.style.transform = '';
+      p.style.zIndex = (n === i) ? 2 : 1;
+    });
+    slots.forEach(function(s, n){ s.classList.toggle('on', n === i); });
+  }
+
+  /** One page transition, exactly the shape of the NavHost transition for that variant. */
+  function play(from, to){
+    var dir = (to > from) ? 1 : -1;
+    var incoming = panels[to], outgoing = panels[from];
+    var ms = DUR[variant];
+    incoming.style.visibility = 'visible';
+    outgoing.style.visibility = 'visible';
+    incoming.style.zIndex = 2;
+    outgoing.style.zIndex = 1;
+
+    if (variant === 'B') {
+      incoming.animate([{ transform:'translateX(' + (-dir * W) + 'px)' }, { transform:'translateX(0)' }],
+                       { duration:ms, easing:'cubic-bezier(.22,.61,.36,1)' });
+      outgoing.animate([{ transform:'translateX(0)' }, { transform:'translateX(' + (dir * W) + 'px)' }],
+                       { duration:ms, easing:'cubic-bezier(.22,.61,.36,1)' });
+    } else if (variant === 'A') {
+      incoming.animate([{ transform:'translateX(' + (-dir * W / 6) + 'px)', opacity:0 },
+                        { transform:'translateX(0)', opacity:1 }], { duration:ms, easing:'ease-out' });
+      outgoing.animate([{ transform:'translateX(0)', opacity:1 },
+                        { transform:'translateX(' + (dir * W / 6) + 'px)', opacity:0 }], { duration:ms, easing:'ease-out' });
+    } else {
+      incoming.animate([{ opacity:0 }, { opacity:1 }], { duration:ms });
+      outgoing.animate([{ opacity:1 }, { opacity:0 }], { duration:ms });
+    }
+
+    setPill(to, ms);
+    slots.forEach(function(s, n){ s.classList.toggle('on', n === to); });
+    current = to;
+    running = true;
+    setTimeout(settle, ms);
+  }
+
+  function settle(){
+    running = false;
+    if (pending !== null && pending !== current) {
+      var next = pending; pending = null; play(current, next); return;
+    }
+    pending = null;
+    show(current);
+  }
+
+  function request(i){
+    if (i === current && !running) return;
+    if (running) {
+      // The fix: a tap during a slide only replaces the pending destination. In A (before) the
+      // second move was started on top of the first one, which is what left a tab stuck.
+      if (variant === 'B' || variant === 'C') { pending = i; }
+      else { play(current, i); }
+      return;
+    }
+    play(current, i);
+  }
+
+  slots.forEach(function(s){ s.addEventListener('click', function(){ request(+s.dataset.i); }); });
+
+  [].slice.call(document.querySelectorAll('.vbtn[data-v]')).forEach(function(b){
+    b.addEventListener('click', function(){
+      [].slice.call(document.querySelectorAll('.vbtn[data-v]')).forEach(function(o){ o.classList.toggle('on', o === b); });
+      variant = b.dataset.v;
+      cap.innerHTML = variant === 'A'
+        ? '<b>A — before: cross-fade + short slide.</b> The pages are drawn on top of each other for 260 ms.'
+        : variant === 'B'
+        ? '<b>B — after: full-width slide, no fade.</b> The two pages travel together as one sheet and the animation is still there, but only one page is ever readable: nothing is drawn on top of anything else. Rapid taps are queued one at a time, so the previous tab can never be left behind.'
+        : '<b>C — instant fade.</b> No direction and no slide; kept only for comparison.';
+      running = false; pending = null; show(current); setPill(current, 0);
+    });
+  });
+
+  document.getElementById('fast').addEventListener('click', function(){
+    // Land on Home instantly, then ask for My Space ~90 ms later: faster than one slide.
+    running = false; pending = null; current = 0; show(0); setPill(0, 0);
+    setTimeout(function(){ request(3); }, 140);
+  });
+
+  show(0);
+  setPill(0, 0);
+})();
+</script>
+</body>
+</html>

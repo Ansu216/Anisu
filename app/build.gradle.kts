@@ -1,7 +1,3 @@
-import java.time.LocalDateTime
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -15,10 +11,16 @@ plugins {
 //
 //   line 1 = version    line 2 = version code    line 3 = channel
 //
-// The channel decides how the build is named: a `nightly` build is
-// `<version>-nightly-<stamp>`, anything else is the plain `<version>`. CI overrides all of it on
-// the command line, so the two legs of one run carry the same stamp, e.g.
-//   ./gradlew assembleRelease -PversionCode=42 -PversionName=1.2.3-nightly-2026.10.11.0930
+// The channel decides how the build is named: a `nightly` build is `<version>-nightly`, anything
+// else is the plain `<version>`. CI overrides all of it on the command line, so both legs of one
+// run carry the same name, e.g.
+//   ./gradlew assembleRelease -PversionCode=42 -PversionName=1.2.3-nightly
+//
+// The name carries no timestamp on purpose. A `-YYYY.MM.DD.HHMM` suffix used to be appended to
+// tell two builds of the same day apart, which made every hourly build look like a different app
+// and put a time where a version belongs. The commit a build was made from (`-PbuildCommit`,
+// exposed as BuildConfig.BUILD_COMMIT) is what identifies a build now, and the updater compares
+// that instead of a stamp in the name.
 val versionValues = rootProject.file("version.txt")
     .takeIf { it.isFile }
     ?.readLines()
@@ -43,13 +45,17 @@ val baseChannel = versionValue(2, "channel").lowercase()
 // one as "the package appears to be invalid" - an update the user can never install - so keep
 // bumping it, never lowering it.
 
-// A local build stamps itself; CI passes -PversionName so every leg of a run shares one stamp.
-val localStamp = LocalDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyy.MM.dd.HHmm"))
 val channel = (project.findProperty("channel") as String?)?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
     ?: baseChannel
 val ciVersionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: baseVersionCode
 val ciVersionName = (project.findProperty("versionName") as String?)
-    ?: if (channel == "nightly") "$baseVersion-nightly-$localStamp" else baseVersion
+    ?: if (channel == "nightly") "$baseVersion-nightly" else baseVersion
+
+// The commit this build was made from, written into BuildConfig.BUILD_COMMIT. CI passes GITHUB_SHA;
+// a local build leaves it empty. The updater compares it to decide whether a published nightly is a
+// build it does not have yet, because the version name and the version code are the same on every
+// nightly by design.
+val buildCommit = (project.findProperty("buildCommit") as String?)?.trim().orEmpty()
 
 // Your AniList client id (https://anilist.co/settings/developer). Set it without editing
 // this file via gradle.properties / local command line: -PANILIST_CLIENT_ID=12345
@@ -78,6 +84,8 @@ android {
         buildConfigField("String", "ANILIST_REDIRECT_URI", "\"ansu://anilist-auth\"")
         // The channel from version.txt, so the running build can say which channel it came from.
         buildConfigField("String", "RELEASE_CHANNEL", "\"$channel\"")
+        // The commit this build was made from; empty in a local build (see `buildCommit` above).
+        buildConfigField("String", "BUILD_COMMIT", "\"$buildCommit\"")
     }
 
     // A keystore is committed at keystore/anisu.jks so that local builds and CI

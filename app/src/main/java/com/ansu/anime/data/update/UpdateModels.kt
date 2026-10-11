@@ -16,6 +16,12 @@ enum class UpdateChannel {
 data class AvailableUpdate(
     val channel: UpdateChannel,
     val versionName: String,
+    /**
+     * What identifies this build itself: the commit it was made from on the nightly channel, the
+     * version on the stable one. The version *name* cannot do it any more — every nightly is called
+     * `<version>-nightly` — so this is what the "announced once per build" rule compares.
+     */
+    val buildId: String,
     val notes: String?,
     val apkUrl: String,
     val pageUrl: String,

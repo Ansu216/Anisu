@@ -50,8 +50,8 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # 1) One stamp for the whole run, so the APKs built by different runners in
-  #    different seconds still carry the exact same version.
+  # 1) One version for the whole run, so the APKs built by different runners in
+  #    different seconds still carry the exact same one.
   # ---------------------------------------------------------------------------
   plan:
     name: Plan the run
@@ -88,8 +88,11 @@ jobs:
 
           # version.txt is the single source of truth (line 1 = version, line 2 = version code,
           # line 3 = channel), exactly as app/build.gradle.kts reads it: "#" lines are comments and
-          # are dropped. The channel decides the name - a nightly is <version>-nightly-<stamp>
-          # (e.g. 0.1.1-nightly-2026.10.11.0930), anything else is the plain <version>.
+          # are dropped. The channel decides the name - a nightly is <version>-nightly
+          # (e.g. 0.3.0-nightly), anything else is the plain <version>. The name carries no timestamp
+          # on purpose: every nightly shares the name and the version code, so what tells one build
+          # from another is the commit it was made from (BuildConfig.BUILD_COMMIT), and the in-app
+          # updater compares that.
           VALUES="$(grep -v '^[[:space:]]*#' version.txt | sed -e 's/[[:space:]]//g' -e '/^$/d')"
           VERSION="$(printf '%s\n' "$VALUES" | sed -n '1p')"
           VERSION_CODE="$(printf '%s\n' "$VALUES" | sed -n '2p')"
@@ -101,9 +104,8 @@ jobs:
           case "$VERSION_CODE" in
             ''|*[!0-9]*) echo "::error::version.txt line 2 (version code) is not an integer: '$VERSION_CODE'"; exit 1 ;;
           esac
-          STAMP="$(date -u +'%Y.%m.%d.%H%M')"
           case "$CHANNEL" in
-            nightly) VERSION_NAME="${VERSION}-nightly-${STAMP}" ;;
+            nightly) VERSION_NAME="${VERSION}-nightly" ;;
             *)       VERSION_NAME="$VERSION" ;;
           esac
 
@@ -175,10 +177,13 @@ jobs:
             *) echo "::error::Unknown variant '${{ matrix.variant }}'"; exit 1 ;;
           esac
           # The version comes from the plan job so both legs agree; the release
-          # build is minified by R8 (see app/build.gradle.kts).
+          # build is minified by R8 (see app/build.gradle.kts). The commit is written into
+          # BuildConfig.BUILD_COMMIT and is what identifies this build to the updater, now that every
+          # nightly is named <version>-nightly.
           ./gradlew --no-daemon --stacktrace "$TASK" \
             -PversionCode="${{ needs.plan.outputs.version_code }}" \
-            -PversionName="${{ needs.plan.outputs.version_name }}"
+            -PversionName="${{ needs.plan.outputs.version_name }}" \
+            -PbuildCommit="${{ github.sha }}"
 
       - name: Verify the APK is signed (an unsigned build is never published)
         run: |

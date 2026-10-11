@@ -83,16 +83,18 @@ class MainActivity : ComponentActivity() {
                 val snackbarHostState = remember { SnackbarHostState() }
                 val updateState by container.updateManager.state.collectAsStateWithLifecycle()
                 val update = (updateState.result as? UpdateCheckResult.Available)?.update
-                // Dismissing the in-app banner only hides this version, so the next build still shows.
-                var dismissedVersion by rememberSaveable { mutableStateOf<String?>(null) }
-                val showUpdateBanner = update != null && update.versionName != dismissedVersion
+                // Dismissing the in-app banner only hides this build, so the next one still shows; the
+                // build is identified by its commit on the nightly channel, where the version name is
+                // the same on every nightly and would keep the banner hidden for good.
+                var dismissedBuild by rememberSaveable { mutableStateOf<String?>(null) }
+                val showUpdateBanner = update != null && update.buildId != dismissedBuild
 
                 // The in-app banner is a heads-up: it hides itself after four seconds so it never
                 // stays pinned over the screen. Dismissing it by hand does the same thing earlier.
                 LaunchedEffect(showUpdateBanner) {
                     if (showUpdateBanner) {
                         delay(BANNER_AUTO_DISMISS_MS)
-                        dismissedVersion = update?.versionName
+                        dismissedBuild = update?.buildId
                     }
                 }
 
@@ -124,7 +126,7 @@ class MainActivity : ComponentActivity() {
                                     navController.navigate(Dest.UPDATES) { launchSingleTop = true }
                                 },
                                 onDismiss = {
-                                    dismissedVersion = update?.versionName
+                                    dismissedBuild = update?.buildId
                                     container.diagnostics.log(LogCategory.CLICK, "Update banner dismissed")
                                 },
                                 modifier = Modifier

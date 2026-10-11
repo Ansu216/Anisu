@@ -29,6 +29,8 @@ class AnsuApp : Application(), ImageLoaderFactory {
         container = AppContainer(this)
         // Keep the scheduled background update check in step with the stored preference.
         container.updateManager.applyAutoCheck()
+        // Same for the daily automatic backup, so a fresh install gets one without a tap.
+        container.backupManager.applyAutoBackup()
         // Must be installed as early as possible so a crash at startup is captured too.
         container.diagnostics.installCrashHandler()
         installLinkageGuard()

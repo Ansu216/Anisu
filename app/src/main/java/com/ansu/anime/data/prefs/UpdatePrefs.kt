@@ -30,7 +30,11 @@ class UpdatePrefs(context: Context) {
         prefs.edit().putBoolean(KEY_AUTO_CHECK, value).apply()
     }
 
-    /** The last version the user was notified about, so the same build is never announced twice. */
+    /**
+     * The last build the user was notified about, so the same one is never announced twice. The
+     * stored value is the build's identity — the commit for a nightly, the version for a release —
+     * because the nightly version name is the same on every nightly.
+     */
     fun lastNotifiedVersion(): String? = prefs.getString(KEY_LAST_NOTIFIED, null)
 
     fun setLastNotifiedVersion(version: String?) {

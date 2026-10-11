@@ -41,10 +41,12 @@ extensions).
   ignored: line 1 version, line 2 version code, line 3 channel. `app/build.gradle.kts`
   reads all three (each overridable per build with `-PversionName` / `-PversionCode` /
   `-Pchannel`) and so do `apk-nightly.yml` and `release-apk.yml`. The **channel**
-  decides the name: a `nightly` build is `<version>-nightly-<YYYY.MM.DD.HHMM>`
-  (e.g. `0.1.1-nightly-2026.10.11.0930`) and is published to the `apk-nightly` branch,
-  anything else keeps the plain `<version>`; a release uses the pushed tag but the
-  same version-code counter. **The version code is a plain build number, bumped by
+  decides the name: a `nightly` build is `<version>-nightly` (e.g. `0.3.0-nightly`) and
+  is published to the `apk-nightly` branch, anything else keeps the plain `<version>`;
+  a release uses the pushed tag but the same version-code counter. The name carries no
+  timestamp: a build is identified by the commit it was made from (`-PbuildCommit`,
+  exposed as `BuildConfig.BUILD_COMMIT`), which is what the updater compares, because
+  the name and the version code are the same on every nightly by design. **The version code is a plain build number, bumped by
   one per release and only ever increasing, and it must stay above every code that
   has already been published.** The earlier workflows published date-coded
   `YYYYMMDDHH` values up to `2026101200`, so the counter is `2026101201` and counts
@@ -400,8 +402,11 @@ nightly     # line 3 - channel
   package" and the update simply cannot be installed — so never let it decrease, and
   never "simplify" it back to a small number.
 - **Line 3** is the channel, and it is what makes the naming decision: `nightly`
-  makes every build `<version>-nightly-<YYYY.MM.DD.HHMM>`, anything else (`beta`,
-  `stable`) leaves the plain `<version>`.
+  makes every build `<version>-nightly` (e.g. `0.3.0-nightly`), anything else (`beta`,
+  `stable`) leaves the plain `<version>`. No timestamp goes into the name: CI passes the
+  commit as `-PbuildCommit`, the app exposes it as `BuildConfig.BUILD_COMMIT`, and that
+  is what the updater compares — `stage-nightly.sh` likewise identifies a run by the run
+  id it writes into `nightly.json`, not by the now-shared version name.
 
 ### 7.5 Where the changelog ends up
 
@@ -462,10 +467,10 @@ plan  ──▶  build (matrix: release, debug — one runner each, fail-fast: f
   nothing. Both jobs share the concurrency group `apk-nightly-branch`
   (`cancel-in-progress: false`) so they never write the branch at the same time,
   and each folds the sibling variant of the same run into the branch it writes
-  (`.github/scripts/stage-nightly.sh` reads the branch and, when the `versionName`
-  matches — the run's stamp, which identifies the run; the version *code* is the same
-  on every nightly by design — keeps the other APK) — so publishing one leg never
-  drops the other, and the two APKs can never belong to different runs.
+  (`.github/scripts/stage-nightly.sh` reads the branch and, when the `runId` matches —
+  the run id, which is what identifies a run now that the version name and the version
+  code are the same on every nightly — keeps the other APK) — so publishing one leg
+  never drops the other, and the two APKs can never belong to different runs.
 - `release-apk.yml` keeps its atomic `release` job guarded with
   `if: ${{ always() && … build.result == 'success' }}`, so a GitHub Release is only
   ever created with both of its assets. Only the **nightly** workflow publishes

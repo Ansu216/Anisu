@@ -90,8 +90,12 @@ class AppContainer(context: Context) {
 
     val updateManager: UpdateManager = UpdateManager(appContext, okHttpClient, diagnostics)
 
+    /** The automatic-backup switch and the time of its last run, shared with the scheduled worker. */
+    val backupPrefs: com.ansu.anime.data.prefs.BackupPrefs = com.ansu.anime.data.prefs.BackupPrefs(appContext)
+
     /** Full settings + library backup and restore, written as one `.anisu` archive. */
-    val backupManager: com.ansu.anime.data.backup.BackupManager = com.ansu.anime.data.backup.BackupManager(appContext)
+    val backupManager: com.ansu.anime.data.backup.BackupManager =
+        com.ansu.anime.data.backup.BackupManager(appContext, backupPrefs)
 
     /** Shared on-disk media cache, read by the player and filled ahead of time by [prefetcher]. */
     val mediaCache: com.ansu.anime.data.player.MediaCache = com.ansu.anime.data.player.MediaCache(appContext)

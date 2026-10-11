@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Anisu · Updates screen — pick a layout</title>
+<style>
+  :root{
+    --bg:#07080B; --glass:#1B1D27; --stroke:rgba(255,255,255,.08);
+    --t1:#F3F4F6; --t2:#A0A3B1; --t3:#6B6E7C;
+    --accent:#A78BFA; --accent-soft:rgba(167,139,250,.16);
+    --ok:#4CD137; --err:#E0605A;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px;background:#050609;color:var(--t1);
+       font-family:Inter,-apple-system,"Segoe UI",Roboto,sans-serif}
+  h1{font-size:21px;margin:0 0 6px}
+  .sub{color:var(--t3);font-size:13px;margin:0 0 8px;max-width:900px;line-height:1.6}
+  .sub b{color:var(--t1)}
+  .sub code{color:var(--t2)}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;color:var(--t3);font-size:12px;margin:14px 0 22px}
+  .legend span{display:flex;align-items:center;gap:7px}
+  .legend i{width:9px;height:9px;border-radius:50%;background:var(--accent);display:block}
+  .row{display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap}
+  figure{margin:0}
+  figcaption{font-size:12.5px;color:var(--t3);margin-top:12px;max-width:392px;line-height:1.6}
+  figcaption b{color:var(--t1)}
+  figcaption .loss{color:#E0A05A}
+  .phone{width:392px;height:812px;background:var(--bg);border:1px solid #1d1f27;border-radius:30px;
+         overflow:hidden;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .status{height:26px;display:flex;justify-content:space-between;align-items:center;
+          padding:0 18px;font-size:11px;color:var(--t2)}
+  .bar{display:flex;align-items:center;gap:14px;padding:4px 14px 0}
+  .bar .ic{font-size:20px;color:var(--t1)}
+  .bar .sp{flex:1}
+  .content{padding:10px 16px 22px;overflow:hidden}
+  .page-title{font-size:28px;font-weight:800;letter-spacing:-.3px;margin:2px 0 14px 4px}
+  .card{background:linear-gradient(180deg,rgba(27,29,39,.5),rgba(27,29,39,.42));
+        border:1px solid var(--stroke);border-radius:20px;backdrop-filter:blur(14px);margin-bottom:14px}
+  .card.hero{background:linear-gradient(180deg,rgba(167,139,250,.20),rgba(15,16,21,.9));border-radius:24px}
+  .card.dense{border-radius:16px}
+  .pad{padding:16px}
+  .grp-label{font-size:11px;letter-spacing:.3px;font-weight:600;color:var(--t3);
+             text-transform:uppercase;margin:18px 0 8px 16px}
+  .grp-label:first-child{margin-top:0}
+  .r{display:flex;align-items:center;gap:14px;padding:15px 16px}
+  .r + .r{border-top:1px solid var(--stroke)}
+  .r.dense{gap:11px;padding:11px 14px}
+  .tile{width:40px;height:40px;border-radius:50%;background:var(--accent-soft);color:var(--accent);
+        display:flex;align-items:center;justify-content:center;font-size:17px;flex:none}
+  .tile.sm{width:30px;height:30px;font-size:14px}
+  .txt{flex:1;min-width:0}
+  .t{font-size:15px;font-weight:600;line-height:1.35}
+  .r.dense .t{font-size:14px}
+  .d{font-size:14px;color:var(--t2);line-height:1.45;margin-top:2px}
+  .r.dense .d{font-size:12.5px;margin-top:1px}
+  .d.ok{color:var(--ok)} .d.err{color:var(--err)} .d.acc{color:var(--accent)}
+  .trail{font-size:13px;color:var(--t2);flex:none;display:flex;align-items:center;gap:10px}
+  .trail.acc{color:var(--accent);font-weight:700}
+  .chev{color:var(--t3);font-size:16px}
+  .sw{width:46px;height:27px;border-radius:14px;background:var(--accent);position:relative;flex:none}
+  .sw.off{background:rgba(255,255,255,.16)}
+  .sw i{position:absolute;top:3px;right:3px;width:21px;height:21px;border-radius:50%;background:#fff;
+        color:var(--accent);font-size:12px;font-style:normal;display:flex;align-items:center;
+        justify-content:center;font-weight:800}
+  .sw.off i{left:3px;right:auto;color:var(--t3)}
+  .seg{display:flex;height:42px;border-radius:21px;background:rgba(27,29,39,.45);
+       border:1px solid var(--stroke);padding:4px;gap:4px}
+  .seg div{flex:1;display:flex;align-items:center;justify-content:center;border-radius:17px;
+           font-size:13px;color:var(--t2);font-weight:500}
+  .seg .on{background:var(--accent);color:#fff;font-weight:700}
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;height:44px;border-radius:20px;
+       background:var(--accent);color:#fff;font-weight:700;font-size:14px}
+  .btn.ghost{background:transparent;border:1px solid var(--stroke);color:var(--t1);font-weight:500}
+  .btn.tiny{height:34px;border-radius:17px;font-size:12.5px}
+  .bars{height:6px;border-radius:3px;background:var(--accent-soft);margin-top:10px;position:relative}
+  .bars i{position:absolute;inset:0 62% 0 0;background:var(--accent);border-radius:3px}
+  .note{font-size:11px;color:var(--t3);margin-top:10px;line-height:1.5}
+  .state{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);border-radius:20px;
+         padding:6px 13px;font-size:11px;font-weight:700;color:var(--t1)}
+  .link{font-size:12.5px;color:var(--accent);font-weight:600}
+  .spread{display:flex;gap:18px;margin-top:10px}
+  .spread .link{flex:1;text-align:center}
+  .muted-line{display:flex;justify-content:space-between;font-size:12.5px;color:var(--t2);
+              padding:9px 0;border-top:1px solid var(--stroke)}
+  .muted-line:first-child{border-top:0}
+  .pill{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);border-radius:20px;
+        padding:5px 12px;font-size:11px;font-weight:600;color:var(--t1)}
+</style>
+</head>
+<body>
+  <h1>Anisu · Updates screen — three layouts to choose from</h1>
+  <p class="sub">
+    These are <b>mockups drawn from the app's own values</b>, not screenshots: background
+    <code>#07080B</code>, glass cards (<code>FrostedGlassCard</code>, <code>#1B1D27</code> at 40–50% with an 8% white
+    border), accent <code>#A78BFA</code>, text <code>#F3F4F6</code> / <code>#A0A3B1</code> / <code>#6B6E7C</code>, and the
+    same row grid the code uses (40dp round accent icon, 16dp padding, 12dp icon gap).
+    <b>Option A is what ships today.</b> Each option still shows everything the screen does: the installed build and its
+    version code, the channel, the automatic-check switch, the notification state and its test action, check for updates,
+    the result (checking / up to date / update available with notes / failed), download with progress, the cached update
+    APKs with a way to clear them, and the changelog.
+  </p>
+  <div class="legend">
+    <span><i></i> all three are drawn in the "update available" state</span>
+    <span>With nothing to install the primary button reads "Check for updates"</span>
+  </div>
+
+  <div class="row">
+    <!-- ============ OPTION A — GROUPED ROWS (SHIPPED) ============ -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>11:46</span><span>65%</span></div>
+        <div class="bar"><span class="ic">&#8592;</span><span class="sp"></span><span class="ic">&#8635;</span></div>
+        <div class="content">
+          <div class="page-title">Updates</div>
+
+          <div class="card hero">
+            <div class="r" style="padding:18px">
+              <div class="tile" style="width:44px;height:44px;font-size:20px">&#8635;</div>
+              <div class="txt">
+                <div class="t" style="font-size:17px">0.3.0-nightly</div>
+                <div class="d acc">Update available</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grp-label">App</div>
+          <div class="card">
+            <div class="r">
+              <div class="tile">&#8681;</div>
+              <div class="txt">
+                <div class="t">Download &amp; install</div>
+                <div class="d">Latest build from the nightly branch</div>
+              </div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r">
+              <div class="tile">&#10003;</div>
+              <div class="txt"><div class="t">Check for updates</div></div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r">
+              <div class="tile">&#35;</div>
+              <div class="txt"><div class="t">Version code</div></div>
+              <div class="trail">2026101201</div>
+            </div>
+          </div>
+
+          <div class="grp-label">Channel</div>
+          <div class="card">
+            <div class="r">
+              <div class="tile">&#8646;</div>
+              <div class="txt">
+                <div class="t">Channel</div>
+                <div class="d">Builds pushed to the nightly branch</div>
+              </div>
+              <div class="trail">Nightly</div>
+              <div class="chev">&#8250;</div>
+            </div>
+          </div>
+
+          <div class="grp-label">Automatic checks</div>
+          <div class="card">
+            <div class="r">
+              <div class="tile">&#10003;</div>
+              <div class="txt">
+                <div class="t">Check automatically</div>
+                <div class="d">At launch and about every 12 hours</div>
+              </div>
+              <div class="sw"><i>&#10003;</i></div>
+            </div>
+            <div class="r">
+              <div class="tile">&#9993;</div>
+              <div class="txt">
+                <div class="t">Test notification</div>
+                <div class="d">Post the alert a new build uses</div>
+              </div>
+              <div class="trail acc">Send</div>
+            </div>
+            <div class="r">
+              <div class="tile">&#9993;</div>
+              <div class="txt">
+                <div class="t">Notification settings</div>
+                <div class="d">Android would deliver the alert</div>
+              </div>
+              <div class="trail">On</div>
+              <div class="chev">&#8250;</div>
+            </div>
+          </div>
+
+          <div class="grp-label">Storage</div>
+          <div class="card">
+            <div class="r">
+              <div class="tile">&#128465;</div>
+              <div class="txt">
+                <div class="t">Clear downloaded updates</div>
+                <div class="d err">2 update APKs in the cache</div>
+              </div>
+            </div>
+            <div class="r">
+              <div class="tile">&#9776;</div>
+              <div class="txt">
+                <div class="t">Changelog</div>
+                <div class="d">What changed in this build</div>
+              </div>
+              <div class="chev">&#8250;</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <figcaption>
+        <b>Option A — grouped rows (shipped today).</b> One group per concern and every action a full row, so it reads
+        exactly like Settings, Appearance and Player and streaming and the same pieces are shared in code.
+        <span class="loss">Gives up:</span> the state and the button are separated — in the update-available case the
+        "Download &amp; install" row is the third thing down, so you scroll to act, and the screen is long.
+      </figcaption>
+    </figure>
+
+    <!-- ============ OPTION B — STATUS FIRST ============ -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>11:46</span><span>65%</span></div>
+        <div class="bar"><span class="ic">&#8592;</span><span style="font-size:18px;font-weight:700">Updates</span><span class="sp"></span><span class="ic">&#8635;</span></div>
+        <div class="content">
+          <div class="card hero" style="margin-top:12px">
+            <div class="pad">
+              <div style="display:flex;align-items:center;gap:14px">
+                <div class="tile" style="width:44px;height:44px;font-size:20px">&#8681;</div>
+                <div class="txt">
+                  <div class="t" style="font-size:18px;font-weight:800">A newer build is ready</div>
+                  <div class="d">Nightly · built today at 04:12</div>
+                </div>
+              </div>
+              <div style="height:14px"></div>
+              <div class="btn">&#8681;&nbsp; Download &amp; install</div>
+              <div class="bars"><i></i></div>
+              <div class="note">38% — the file resumes from where it stopped. Installed now: 0.3.0-nightly (2026101201).</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="pad" style="padding-bottom:12px">
+              <div class="t" style="margin-bottom:10px">Channel</div>
+              <div class="seg"><div>Stable</div><div class="on">Nightly</div></div>
+            </div>
+            <div class="r" style="border-top:1px solid var(--stroke)">
+              <div class="tile sm">&#10003;</div>
+              <div class="txt">
+                <div class="t">Check automatically</div>
+                <div class="d">At launch and about every 12 hours</div>
+              </div>
+              <div class="sw"><i>&#10003;</i></div>
+            </div>
+            <div class="r">
+              <div class="tile sm">&#9993;</div>
+              <div class="txt">
+                <div class="t">Notifications</div>
+                <div class="d">Android would deliver the alert</div>
+              </div>
+              <div class="trail">On</div>
+              <div class="chev">&#8250;</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="r">
+              <div class="tile sm">&#8635;</div>
+              <div class="txt">
+                <div class="t">Check for updates</div>
+                <div class="d">Last checked a few minutes ago</div>
+              </div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r">
+              <div class="tile sm">&#9993;</div>
+              <div class="txt"><div class="t">Send a test notification</div></div>
+              <div class="trail acc">Send</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="r">
+              <div class="tile sm">&#128465;</div>
+              <div class="txt">
+                <div class="t">Clear downloaded updates</div>
+                <div class="d err">2 update APKs in the cache</div>
+              </div>
+            </div>
+            <div class="r">
+              <div class="tile sm">&#9776;</div>
+              <div class="txt"><div class="t">Changelog</div><div class="d">What changed in this build</div></div>
+              <div class="chev">&#8250;</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <figcaption>
+        <b>Option B — status first.</b> The answer to "am I up to date?", the installed build and the button that acts on
+        it are the first thing on the screen; the update notes sit inside that card. The channel becomes a two-option
+        segmented control instead of a row that opens a sheet.
+        <span class="loss">Gives up:</span> the settings language — the top card is a status card, not a group of rows,
+        so it is the one screen that does not look like the others; the version code moves into the card's small print.
+      </figcaption>
+    </figure>
+
+    <!-- ============ OPTION C — COMPACT ONE SCREEN ============ -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>11:46</span><span>65%</span></div>
+        <div class="bar"><span class="ic">&#8592;</span><span style="font-size:18px;font-weight:700">Updates</span><span class="sp"></span><span class="pill">Nightly · 2026101201</span></div>
+        <div class="content">
+          <div class="card dense" style="margin-top:12px">
+            <div class="r dense">
+              <div class="tile sm">&#8681;</div>
+              <div class="txt">
+                <div class="t">0.3.0-nightly</div>
+                <div class="d acc">A newer build is ready</div>
+              </div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#8646;</div>
+              <div class="txt"><div class="t">Channel</div></div>
+              <div class="seg" style="height:34px;width:170px;flex:none">
+                <div>Stable</div><div class="on">Nightly</div>
+              </div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#10003;</div>
+              <div class="txt"><div class="t">Check automatically</div></div>
+              <div class="sw"><i>&#10003;</i></div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#9993;</div>
+              <div class="txt"><div class="t">Notifications</div></div>
+              <div class="trail">On</div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#8635;</div>
+              <div class="txt"><div class="t">Check for updates</div></div>
+              <div class="trail">a few minutes ago</div>
+            </div>
+            <div class="r dense">
+              <div class="tile sm">&#9993;</div>
+              <div class="txt"><div class="t">Test notification</div></div>
+              <div class="trail acc">Send</div>
+            </div>
+          </div>
+
+          <div class="card dense">
+            <div class="pad" style="padding:14px">
+              <div class="state">&#8681; Update available</div>
+              <div style="height:12px"></div>
+              <div class="btn tiny">Download &amp; install</div>
+              <div class="bars"><i></i></div>
+            </div>
+          </div>
+
+          <div class="pad" style="padding:4px 4px 0">
+            <div class="muted-line"><span>Update APKs in the cache</span><span class="link">Clear</span></div>
+            <div class="muted-line"><span>2 files · 41 MB</span><span class="link">Changelog</span></div>
+            <div class="muted-line"><span>Installed 0.3.0-nightly</span><span>2026101201</span></div>
+          </div>
+
+          <div class="note">Everything fits one screen: the switch, the channel and both actions are above the fold. The notes for a build open in a sheet instead of taking rows here.</div>
+        </div>
+      </div>
+      <figcaption>
+        <b>Option C — compact one screen.</b> A single dense card with smaller icons, the channel as an inline segmented
+        control, the switches in place, and the diagnostics (cache, changelog, build numbers) reduced to three quiet lines
+        at the bottom. No scrolling and nothing to hunt for.
+        <span class="loss">Gives up:</span> comfort and the app's own row rhythm — smaller tap targets, no room for the
+        update notes (they open in a sheet), and it is the furthest from the other settings screens.
+      </figcaption>
+    </figure>
+  </div>
+</body>
+</html>

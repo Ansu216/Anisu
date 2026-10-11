@@ -69,6 +69,29 @@ object Dest {
 /** Bottom bar destinations, in display order. */
 val bottomNavDestinations = listOf(Dest.HOME, Dest.SEARCH, Dest.SCHEDULE, Dest.MY_SPACE)
 
+/**
+ * How long a tab change slides for. The bar waits exactly this long before it applies a tab that was
+ * tapped while the previous move was still running, so two tab changes never overlap.
+ */
+const val TAB_TRANSITION_MILLIS = 230
+
+/**
+ * +1 when a change goes to a later bottom-bar tab, -1 to an earlier one and 0 when the change is not
+ * between two tabs. A tab change is a plain slide of the whole page: the two screens travel together
+ * as one sheet, so only one of them is ever readable on the way in.
+ *
+ * It used to slide each screen by a sixth of the width *and* fade both of them at the same time,
+ * which drew the two full screens on top of each other for the whole 260 ms - that is the "everything
+ * shows up twice" a tab change looked like. The slide itself stays; the cross-fade between two
+ * screens is what is gone.
+ */
+private fun tabSlideDirection(fromRoute: String?, toRoute: String?): Int {
+    val from = bottomNavDestinations.indexOf(fromRoute)
+    val to = bottomNavDestinations.indexOf(toRoute)
+    if (from < 0 || to < 0 || from == to) return 0
+    return if (to > from) 1 else -1
+}
+
 @Composable
 fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rememberNavController()) {
     val navBarRoundness by container.appearancePrefs.navBarRoundness.collectAsStateWithLifecycle()
@@ -105,12 +128,11 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         navController = navController,
         startDestination = Dest.HOME,
         enterTransition = {
-            val to = bottomNavDestinations.indexOf(targetState.destination.route)
-            val from = bottomNavDestinations.indexOf(initialState.destination.route)
-            if (to >= 0 && from >= 0 && to != from) {
-                val direction = if (to > from) 1 else -1
-                slideInHorizontally(animationSpec = tween(durationMillis = 260)) { width -> -direction * width / 6 } +
-                    fadeIn(animationSpec = tween(durationMillis = 260))
+            val direction = tabSlideDirection(initialState.destination.route, targetState.destination.route)
+            if (direction != 0) {
+                slideInHorizontally(animationSpec = tween(durationMillis = TAB_TRANSITION_MILLIS)) { width ->
+                    -direction * width
+                }
             } else {
                 fadeIn(animationSpec = tween(durationMillis = 175))
             }
@@ -118,42 +140,37 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         // The page under a details page stays put (only dimmed) while the details page grows out of the
         // tapped poster and shrinks back into it, so the poster has something to grow out of.
         exitTransition = {
-            val to = bottomNavDestinations.indexOf(targetState.destination.route)
-            val from = bottomNavDestinations.indexOf(initialState.destination.route)
+            val direction = tabSlideDirection(initialState.destination.route, targetState.destination.route)
             when {
                 targetState.destination.route == Dest.DETAILS ->
                     fadeOut(targetAlpha = 0.55f, animationSpec = tween(durationMillis = PosterTransition.OPEN_MILLIS))
-                to >= 0 && from >= 0 && to != from -> {
-                    val direction = if (to > from) 1 else -1
-                    slideOutHorizontally(animationSpec = tween(durationMillis = 260)) { width -> direction * width / 6 } +
-                        fadeOut(animationSpec = tween(durationMillis = 260))
-                }
+                direction != 0 ->
+                    slideOutHorizontally(animationSpec = tween(durationMillis = TAB_TRANSITION_MILLIS)) { width ->
+                        direction * width
+                    }
                 else -> fadeOut(animationSpec = tween(durationMillis = 150))
             }
         },
         popEnterTransition = {
-            val to = bottomNavDestinations.indexOf(targetState.destination.route)
-            val from = bottomNavDestinations.indexOf(initialState.destination.route)
+            val direction = tabSlideDirection(initialState.destination.route, targetState.destination.route)
             when {
                 initialState.destination.route == Dest.DETAILS ->
                     fadeIn(initialAlpha = 0.55f, animationSpec = tween(durationMillis = PosterTransition.CLOSE_MILLIS))
-                to >= 0 && from >= 0 && to != from -> {
-                    val direction = if (to > from) 1 else -1
-                    slideInHorizontally(animationSpec = tween(durationMillis = 260)) { width -> -direction * width / 6 } +
-                        fadeIn(animationSpec = tween(durationMillis = 260))
-                }
+                direction != 0 ->
+                    slideInHorizontally(animationSpec = tween(durationMillis = TAB_TRANSITION_MILLIS)) { width ->
+                        -direction * width
+                    }
                 else -> fadeIn(animationSpec = tween(durationMillis = 150))
             }
         },
         // A tab move can pop (see `popUpTo` in the bar), so the leaving screen has to slide the same way
         // the entering one does; everything else keeps the plain quick fade.
         popExitTransition = {
-            val to = bottomNavDestinations.indexOf(targetState.destination.route)
-            val from = bottomNavDestinations.indexOf(initialState.destination.route)
-            if (to >= 0 && from >= 0 && to != from) {
-                val direction = if (to > from) 1 else -1
-                slideOutHorizontally(animationSpec = tween(durationMillis = 260)) { width -> direction * width / 6 } +
-                    fadeOut(animationSpec = tween(durationMillis = 260))
+            val direction = tabSlideDirection(initialState.destination.route, targetState.destination.route)
+            if (direction != 0) {
+                slideOutHorizontally(animationSpec = tween(durationMillis = TAB_TRANSITION_MILLIS)) { width ->
+                    direction * width
+                }
             } else {
                 fadeOut(animationSpec = tween(durationMillis = 150))
             }
