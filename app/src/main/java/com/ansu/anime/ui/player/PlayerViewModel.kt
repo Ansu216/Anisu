@@ -62,6 +62,16 @@ private const val PRIORITY_GRACE_MS = 3_000L
 /** Largest subtitle shift, either way, the Subtitles panel offers. */
 private const val MAX_SUBTITLE_OFFSET_MS = 10_000L
 
+/**
+ * Netflix-style buffering: the player keeps about five minutes of video in RAM on each side of the
+ * playback point instead of a thin forward buffer, so seeking back and resuming are instant and the
+ * busy system disk cache is not relied on. The byte cap keeps the window within a bounded amount of
+ * memory on a device that has little to spare.
+ */
+private const val RAM_BUFFER_AHEAD_MS = 300_000
+private const val RAM_BUFFER_BEHIND_MS = 300_000
+private const val RAM_BUFFER_BYTES = 128 * 1024 * 1024
+
 /** One selectable audio or subtitle track the player reported. */
 data class TrackOption(
     val groupIndex: Int,
@@ -115,11 +125,15 @@ class PlayerViewModel(
     @androidx.annotation.OptIn(UnstableApi::class)
     private val subtitleLead = SubtitleLeadRenderersFactory(context)
 
+    // Netflix-style RAM window: up to five minutes ahead and five behind are held in memory, so a seek
+    // back or a resume is instant. The byte cap bounds how much the window can cost on a tight device.
     @androidx.annotation.OptIn(UnstableApi::class)
     val player: ExoPlayer = ExoPlayer.Builder(context, subtitleLead)
         .setLoadControl(
             androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                .setBufferDurationsMs(30_000, 120_000, 1_500, 3_000)
+                .setBufferDurationsMs(30_000, RAM_BUFFER_AHEAD_MS, 1_500, 3_000)
+                .setBackBuffer(RAM_BUFFER_BEHIND_MS, true)
+                .setTargetBufferBytes(RAM_BUFFER_BYTES)
                 .setPrioritizeTimeOverSizeThresholds(true)
                 .build(),
         )

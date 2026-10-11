@@ -47,9 +47,9 @@ import com.ansu.anime.anilist.AniListFeed
 import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.components.AppBottomBar
+import com.ansu.anime.ui.components.AppBottomBarReserve
+import com.ansu.anime.ui.components.BackdropState
 import com.ansu.anime.ui.components.backdropSource
-import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.components.ContinueWatchingRow
 import com.ansu.anime.ui.components.HeroCarousel
 import com.ansu.anime.ui.components.PagedPosterRow
@@ -65,6 +65,7 @@ fun HomeScreen(
     container: AppContainer,
     navController: NavHostController,
     onAnimeSelected: (SAnime) -> Unit,
+    backdrop: BackdropState,
 ) {
     val viewModel: HomeViewModel = viewModel(
         factory = viewModelFactory {
@@ -98,12 +99,11 @@ fun HomeScreen(
         onAnimeSelected(anime)
     }
 
-    val backdrop = rememberBackdropState()
     var actionTarget by remember { mutableStateOf<ContinueWatchingActionTarget?>(null) }
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             containerColor = AnsuColors.Background,
-            bottomBar = { AppBottomBar(navController, Dest.HOME, backdrop) },
+            bottomBar = { AppBottomBarReserve() },
         ) { padding ->
             if (state.isLoading && trending.isEmpty() && state.shelves.isEmpty()) {
                 Column(

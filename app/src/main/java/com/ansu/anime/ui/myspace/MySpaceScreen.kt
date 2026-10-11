@@ -58,9 +58,9 @@ import com.ansu.anime.core.util.formatLabel
 import com.ansu.anime.data.repository.ListStatus
 import com.ansu.anime.data.repository.toSAnime
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.components.AppBottomBar
+import com.ansu.anime.ui.components.AppBottomBarReserve
+import com.ansu.anime.ui.components.BackdropState
 import com.ansu.anime.ui.components.backdropSource
-import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.components.posterTransitionOrigin
 import com.ansu.anime.ui.navigation.Dest
@@ -81,6 +81,7 @@ fun MySpaceScreen(
     container: AppContainer,
     navController: NavHostController,
     onAnimeSelected: (SAnime) -> Unit,
+    backdrop: BackdropState,
 ) {
     val viewer by container.aniListRepository.viewer.collectAsStateWithLifecycle()
     val isLoggedIn by container.aniListRepository.isLoggedIn.collectAsStateWithLifecycle()
@@ -143,10 +144,9 @@ fun MySpaceScreen(
         ListTab.Repeating -> if (isLoggedIn) repeating else localRepeating
     }
 
-    val backdrop = rememberBackdropState()
     Scaffold(
         containerColor = AnsuColors.Background,
-        bottomBar = { AppBottomBar(navController, Dest.MY_SPACE, backdrop) },
+        bottomBar = { AppBottomBarReserve() },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().backdropSource(backdrop).padding(top = padding.calculateTopPadding())) {
             // Top row: settings gear pinned to the right, as in the sketch.

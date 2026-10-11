@@ -112,12 +112,11 @@ import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.util.ageRatingFor
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.AgeRatingChip
-import com.ansu.anime.ui.components.AppBottomBar
+import com.ansu.anime.ui.components.AppBottomBarReserve
+import com.ansu.anime.ui.components.BackdropState
 import com.ansu.anime.ui.components.backdropSource
-import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.components.posterTransitionOrigin
-import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
 import kotlinx.coroutines.delay
 
@@ -128,6 +127,7 @@ fun SearchScreen(
     container: AppContainer,
     navController: NavHostController,
     onAnimeSelected: (SAnime) -> Unit,
+    backdrop: BackdropState,
 ) {
     // Held by the app rather than the screen, so opening a result and backing out finds everything as it was.
     val session = container.searchSession
@@ -247,8 +247,7 @@ fun SearchScreen(
         onAnimeSelected(anime)
     }
 
-    val backdrop = rememberBackdropState()
-    Scaffold(bottomBar = { AppBottomBar(navController, Dest.SEARCH, backdrop) }) { padding ->
+    Scaffold(bottomBar = { AppBottomBarReserve() }) { padding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()

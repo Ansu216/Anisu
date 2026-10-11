@@ -70,12 +70,10 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.components.AppBottomBar
+import com.ansu.anime.ui.components.AppBottomBarReserve
 import com.ansu.anime.ui.components.backdropSource
-import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.components.posterTransitionOrigin
-import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
 import java.time.LocalDate
 import java.time.format.TextStyle
@@ -91,6 +89,7 @@ private enum class ScheduleTab { SCHEDULE, NEWS }
 fun ScheduleScreen(
     container: AppContainer,
     navController: NavHostController,
+    backdrop: BackdropState,
     onEntrySelected: (ScheduleEntry) -> Unit = {},
 ) {
     val viewModel: ScheduleViewModel = viewModel(
@@ -100,10 +99,9 @@ fun ScheduleScreen(
     var tab by remember { mutableStateOf(ScheduleTab.NEWS) }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
 
-    val backdrop = rememberBackdropState()
     Scaffold(
         containerColor = AnsuColors.Background,
-        bottomBar = { AppBottomBar(navController, Dest.SCHEDULE, backdrop) },
+        bottomBar = { AppBottomBarReserve() },
     ) { padding ->
         val barInset = padding.calculateBottomPadding()
         // The floating toggle is a sibling of the content it blurs, never inside it.

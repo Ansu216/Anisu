@@ -48,7 +48,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -99,15 +98,19 @@ fun navBarShape(roundness: Float): RoundedCornerShape =
 
 /** Frosted-glass bottom nav bar: a compact, icon-only floating pill. */
 @Composable
-fun AppBottomBar(navController: NavHostController, currentRoute: String?, backdrop: BackdropState? = null) {
-    // The Scaffold's bottomBar slot has no background of its own, so only the
-    // pill itself is drawn and the screen content shows around it.
+fun AppBottomBar(
+    navController: NavHostController,
+    currentRoute: String?,
+    backdrop: BackdropState? = null,
+    modifier: Modifier = Modifier,
+) {
+    // The bar is drawn once, in the navigation shell, so it stays still during a tab change. It is a
+    // floating card with no background behind it, so the screen content shows around it.
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            // The app draws edge to edge and a Scaffold lays its bottomBar slot
-            // flush against the window, so a custom (non-Material) bar has to keep
-            // clear of the system navigation bar itself.
+            // The app draws edge to edge and the bar sits flush against the window, so a custom
+            // (non-Material) bar has to keep clear of the system navigation bar itself.
             .windowInsetsPadding(WindowInsets.navigationBars)
             .padding(bottom = 8.dp),
         contentAlignment = Alignment.Center,
@@ -130,11 +133,22 @@ fun AppBottomBar(navController: NavHostController, currentRoute: String?, backdr
 }
 
 /**
- * Where the selection pill was (in px, left edge) when the previous bar left the screen. Every screen
- * owns its own [AppBottomBar], so a new bar starts its pill here and slides it to the new tab, which is
- * what makes the pill appear to travel between tabs across a navigation.
+ * Empty stand-in that the four tab screens put in their Scaffold's bottomBar slot. The bar itself is
+ * drawn once, in the navigation shell, so it stays still during a tab change; the screens only reserve
+ * its height here, so their content still scrolls clear of it.
  */
-private var lastPillPx = Float.NaN
+@Composable
+fun AppBottomBarReserve(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(bottom = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Spacer(Modifier.size(width = NavSlotWidth * barItems.size + 10.dp, height = NavSlotHeight + 10.dp))
+    }
+}
 
 private val NavSlotWidth = 70.dp
 private val NavSlotHeight = 40.dp
@@ -195,27 +209,27 @@ fun NavBarSurface(
     val targetIndex = barItems.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
     val scope = rememberCoroutineScope()
 
-    val pill = remember { PillMotion(if (lastPillPx.isNaN()) targetIndex * slotPx else lastPillPx, slotPx) }
+    val pill = remember { PillMotion(targetIndex * slotPx, slotPx) }
     var held by remember { mutableStateOf(false) }
     // Left edge of the pill while a finger drags it; null whenever [pill] is in charge.
     var dragLeft by remember { mutableStateOf<Float?>(null) }
-    val pillLeft = dragLeft ?: pill.left
-    val pillRight = if (dragLeft != null) pillLeft + slotPx else pill.right
-    // 0 at rest, up to ~1 while the pill is stretched across two slots mid-move.
-    val stretch = ((pillRight - pillLeft) / slotPx - 1f).coerceIn(0f, 1.2f)
-    val holdAmount by animateFloatAsState(
+    // The pill's spring values change every frame, so they are never read while composing: reading them
+    // here used to recompose the whole bar on each frame, which is what made the move stutter. They are
+    // read only in the offset/draw/graphics-layer lambdas below, so a tab change just updates those.
+    val holdAmount = animateFloatAsState(
         targetValue = if (held) 1f else 0f,
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
         label = "navPillHold",
     )
+    // The index whose icon is highlighted: the finger's slot while dragging, the target tab otherwise.
+    val activeIndex = dragLeft?.let { ((it + slotPx / 2f) / slotPx).toInt().coerceIn(0, barItems.size - 1) }
+        ?: targetIndex
 
     LaunchedEffect(targetIndex) {
         // Only travel when the pill is not already parked on the target. Animating unconditionally re-ran
         // the same run whenever this value and the pill already agreed, which made the pill replay its move.
         if (abs(pill.left - targetIndex * slotPx) > 0.5f) pill.animateTo(targetIndex * slotPx)
     }
-    if (onItemClick != null) SideEffect { lastPillPx = pillLeft }
-    val activeIndex = (((pillLeft + pillRight) / 2f) / slotPx).toInt().coerceIn(0, barItems.size - 1)
 
     val shiftPx = with(LocalDensity.current) { NavBarDragShift.toPx() }
     // With a backdrop to blur, the glass tint is thinner so the blurred content actually shows through it.
@@ -227,10 +241,13 @@ fun NavBarSurface(
         // While the pill is held the whole bar leans a little toward it and swells slightly, and eases
         // back when it is released. Everything scales with holdAmount, so a resting bar is untouched.
         modifier = modifier.graphicsLayer {
-            val lean = (((pillLeft + pillRight) / 2f - slotPx / 2f) / maxLeft - 0.5f) * 2f
-            translationX = lean * shiftPx * holdAmount
-            scaleX = 1f + 0.04f * holdAmount
-            scaleY = 1f + 0.06f * holdAmount
+            val left = dragLeft ?: pill.left
+            val right = if (dragLeft != null) left + slotPx else pill.right
+            val lean = (((left + right) / 2f - slotPx / 2f) / maxLeft - 0.5f) * 2f
+            val hold = holdAmount.value
+            translationX = lean * shiftPx * hold
+            scaleX = 1f + 0.04f * hold
+            scaleY = 1f + 0.06f * hold
         },
     ) {
         FrostedGlassCard(
@@ -268,7 +285,7 @@ fun NavBarSurface(
                         scope.launch(start = CoroutineStart.UNDISPATCHED) {
                             if (from != null) pill.snapTo(from)
                             dragLeft = null
-                            // A tab change is animated once by the incoming screen's bar (through lastPillPx);
+                            // A tab change is animated once, by the shared bar's `targetIndex` effect;
                             // animating here as well is what made the pill appear to travel twice.
                             if (route == currentRoute) pill.animateTo(index * slotPx)
                         }
@@ -281,13 +298,19 @@ fun NavBarSurface(
             // stretches toward the destination and bulges, then settles back into one slot.
             Box(
                 modifier = Modifier
-                    .offset { IntOffset(pillLeft.roundToInt(), 0) }
+                    .offset {
+                        val left = dragLeft ?: pill.left
+                        IntOffset(left.roundToInt(), 0)
+                    }
                     .size(width = NavSlotWidth, height = NavSlotHeight)
                     .drawBehind {
-                        val h = holdAmount
+                        val left = dragLeft ?: pill.left
+                        val right = if (dragLeft != null) left + slotPx else pill.right
+                        val stretch = ((right - left) / slotPx - 1f).coerceIn(0f, 1.2f)
+                        val h = holdAmount.value
                         val extraW = 28.dp.toPx() * h
                         val extraH = 26.dp.toPx() * h + 14.dp.toPx() * (stretch / 1.2f)
-                        val w = (pillRight - pillLeft) + extraW
+                        val w = (right - left) + extraW
                         val ht = size.height + extraH
                         val topLeft = Offset(-extraW / 2f, -extraH / 2f)
                         val glow = (h + stretch).coerceAtMost(1.2f)
@@ -340,7 +363,10 @@ fun NavBarSurface(
                                 .size(24.dp)
                                 .graphicsLayer {
                                     // The icon under the pill is magnified, like the lens is enlarging it.
-                                    val scale = if (index == activeIndex) 1f + 0.3f * holdAmount + 0.18f * stretch else 1f
+                                    val left = dragLeft ?: pill.left
+                                    val right = if (dragLeft != null) left + slotPx else pill.right
+                                    val stretch = ((right - left) / slotPx - 1f).coerceIn(0f, 1.2f)
+                                    val scale = if (index == activeIndex) 1f + 0.3f * holdAmount.value + 0.18f * stretch else 1f
                                     scaleX = scale
                                     scaleY = scale
                                 },

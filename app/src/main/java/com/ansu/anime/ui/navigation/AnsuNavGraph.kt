@@ -1,5 +1,6 @@
 package com.ansu.anime.ui.navigation
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
@@ -7,20 +8,26 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.ui.about.AboutScreen
 import com.ansu.anime.ui.about.UpdatesScreen
 import com.ansu.anime.ui.appearance.AppearanceScreen
+import com.ansu.anime.ui.components.AppBottomBar
 import com.ansu.anime.ui.components.LocalNavBarBackdropBlur
 import com.ansu.anime.ui.components.LocalNavBarFrostiness
 import com.ansu.anime.ui.components.LocalNavBarRoundness
 import com.ansu.anime.ui.components.PosterExpandContainer
 import com.ansu.anime.ui.components.PosterTransition
+import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.contributors.ContributorsScreen
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -75,11 +82,17 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         }
     }
 
+    // The bar is drawn once, in a sibling Box above the NavHost, so a tab change slides only the screen
+    // and its content: the bar itself stays still. The four tab screens record their content into this
+    // one shared backdrop, which is what the bar blurs.
+    val backdrop = rememberBackdropState()
+
     CompositionLocalProvider(
         LocalNavBarRoundness provides navBarRoundness,
         LocalNavBarFrostiness provides navBarFrostiness,
         LocalNavBarBackdropBlur provides navBarBackdropBlur,
     ) {
+    Box(modifier = Modifier.fillMaxSize()) {
     // Screen transitions are about half the platform default, which makes the whole app feel snappier.
     // Switching between the four bottom-bar tabs slides the screens *with* the move instead of against
     // it: going right (Home -> Search -> Schedule -> My Space) the new screen comes in from the left and
@@ -148,6 +161,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
             HomeScreen(
                 container = container,
                 navController = navController,
+                backdrop = backdrop,
                 onAnimeSelected = { anime ->
                     container.selectionHolder.selectAnime(anime)
                     navController.navigate(Dest.DETAILS)
@@ -158,6 +172,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
             SearchScreen(
                 container = container,
                 navController = navController,
+                backdrop = backdrop,
                 onAnimeSelected = { anime ->
                     container.selectionHolder.selectAnime(anime)
                     navController.navigate(Dest.DETAILS)
@@ -168,6 +183,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
             ScheduleScreen(
                 container = container,
                 navController = navController,
+                backdrop = backdrop,
                 onEntrySelected = { entry ->
                     val anime = com.ansu.anime.core.model.SAnime(
                         id = entry.animeId.toString(),
@@ -209,6 +225,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
             MySpaceScreen(
                 container = container,
                 navController = navController,
+                backdrop = backdrop,
                 onAnimeSelected = { anime ->
                     container.selectionHolder.selectAnime(anime)
                     navController.navigate(Dest.DETAILS)
@@ -248,6 +265,26 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         composable(Dest.PLAYER) {
             PlayerScreen(container = container, navController = navController)
         }
+    }
+
+    // The single shared bar: it sits above the NavHost so it never slides with a screen. It is shown
+    // only on the four tab destinations and fades out as soon as a full-screen route (details, player,
+    // settings, ...) is opened over them.
+    val currentRoute = backStackEntry?.destination?.route
+    if (currentRoute != null) {
+        AnimatedVisibility(
+            visible = currentRoute in bottomNavDestinations,
+            enter = fadeIn(animationSpec = tween(durationMillis = 150)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 150)),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            AppBottomBar(
+                navController = navController,
+                currentRoute = currentRoute,
+                backdrop = backdrop,
+            )
+        }
+    }
     }
     }
 }

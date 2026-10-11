@@ -83,7 +83,7 @@ class MainActivity : ComponentActivity() {
                 var dismissedVersion by rememberSaveable { mutableStateOf<String?>(null) }
                 val showUpdateBanner = update != null && update.versionName != dismissedVersion
 
-                // The in-app banner is a heads-up: it hides itself after five seconds so it never
+                // The in-app banner is a heads-up: it hides itself after four seconds so it never
                 // stays pinned over the screen. Dismissing it by hand does the same thing earlier.
                 LaunchedEffect(showUpdateBanner) {
                     if (showUpdateBanner) {
@@ -114,6 +114,7 @@ class MainActivity : ComponentActivity() {
                         if (showUpdateBanner) {
                             UpdateBanner(
                                 state = updateState,
+                                dismissAfterMs = BANNER_AUTO_DISMISS_MS,
                                 onOpen = {
                                     container.diagnostics.log(LogCategory.CLICK, "Update banner opened")
                                     navController.navigate(Dest.UPDATES) { launchSingleTop = true }
@@ -238,7 +239,7 @@ class MainActivity : ComponentActivity() {
         /** Intent extra set by [com.ansu.anime.data.update.UpdateNotifier] when its notification is tapped. */
         const val EXTRA_OPEN_UPDATES = "com.ansu.anime.extra.OPEN_UPDATES"
 
-        /** How long the in-app update banner stays before it hides itself (5 seconds). */
-        private const val BANNER_AUTO_DISMISS_MS = 5_000L
+        /** How long the in-app update banner stays before it hides itself (4 seconds). */
+        private const val BANNER_AUTO_DISMISS_MS = 4_000L
     }
 }

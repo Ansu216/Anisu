@@ -2,7 +2,10 @@
 
 package com.ansu.anime.ui.system
 
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -35,6 +38,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +55,7 @@ import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.theme.AnsuColors
 import java.io.File
+import kotlinx.coroutines.delay
 
 /**
  * Settings → System. It holds the diagnostics tooling — exporting every crash, playback, click,
@@ -63,6 +68,15 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
     val diagnostics = container.diagnostics
     var refresh by remember { mutableIntStateOf(0) }
     var backupMessage by remember { mutableStateOf<String?>(null) }
+    // A restored backup has to be re-read from disk, and both the SharedPreferences and the Room
+    // database are cached in memory for the life of the process, so the app relaunches itself.
+    var restartPending by remember { mutableStateOf(false) }
+    LaunchedEffect(restartPending) {
+        if (restartPending) {
+            delay(1200)
+            restartApp(context)
+        }
+    }
 
     // Save the diagnostics report to a location the user picks (Downloads, Drive, …), not only share it.
     val saveLogsLauncher = rememberLauncherForActivityResult(
@@ -109,13 +123,16 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
         runCatching { container.database.close() }
         container.backupManager.restoreFrom(uri).fold(
             onSuccess = { count ->
-                backupMessage = "Restored $count files. Restart Anisu to apply every setting."
+                backupMessage = "Restored $count files. Restarting Anisu to apply them…"
                 diagnostics.log(LogCategory.CLICK, "Settings backup restored ($count files)")
             },
             onFailure = { error ->
                 backupMessage = "Restore failed: ${error.message ?: "unknown error"}"
+                toast(context, "Restore failed: ${error.message ?: "unknown error"}")
             },
         )
+        // The database is closed before the restore runs, so the app has to relaunch either way.
+        restartPending = true
         refresh++
     }
 
@@ -204,8 +221,9 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
             Text("Backup", style = MaterialTheme.typography.titleMedium, color = AnsuColors.TextPrimary, modifier = Modifier.padding(top = 8.dp))
             Text(
                 text = "Back up your settings, your watch progress and your local library into a single " +
-                    ".anisu file you keep yourself. Restoring it brings everything back; the AniList sign-in " +
-                    "is the only thing left out, because it is tied to this device.",
+                    ".anisu file you keep yourself. Restoring it brings everything back and Anisu restarts " +
+                    "itself to apply it; the AniList sign-in is the only thing left out, because it is tied " +
+                    "to this device.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = AnsuColors.TextSecondary,
             )
@@ -277,6 +295,29 @@ private fun writeFileTo(context: Context, uri: Uri, source: File): Boolean = run
 
 private fun toast(context: Context, message: String) {
     Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+}
+
+/**
+ * Relaunches the app. A restored backup overwrites the settings files and the Room database, and both
+ * are cached in memory for the life of the process, so starting a fresh process is what makes every
+ * restored setting take effect without the user restarting the app by hand. The alarm is scheduled
+ * first so the relaunch survives this process going away.
+ */
+private fun restartApp(context: Context) {
+    val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
+    if (launch != null) {
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        val pending = PendingIntent.getActivity(
+            context,
+            0,
+            launch,
+            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        (context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager)
+            ?.set(AlarmManager.RTC, System.currentTimeMillis() + 250L, pending)
+    }
+    android.os.Process.killProcess(android.os.Process.myPid())
+    kotlin.system.exitProcess(0)
 }
 
 private fun timestampName(): String =
