@@ -81,7 +81,6 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             SettingsGroup(title = "Account") {
                 AccountRow(
@@ -161,13 +160,13 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
 /** One category: a small label above a frosted card holding its rows. */
 @Composable
 private fun SettingsGroup(title: String, content: @Composable () -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
         Text(
             text = title.uppercase(),
             style = MaterialTheme.typography.labelSmall,
             color = AnsuColors.TextTertiary,
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 10.dp, bottom = 8.dp),
+            modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
         )
         FrostedGlassCard(
             modifier = Modifier.fillMaxWidth(),
@@ -204,7 +203,7 @@ private fun AccountRow(
                 modifier = Modifier.size(44.dp).clip(CircleShape).background(AnsuColors.AccentSoft),
             )
         }
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(name ?: "Not connected", style = MaterialTheme.typography.titleSmall)
             Text(
                 if (isLoggedIn) "AniList connected" else "Connect to sync progress",
@@ -234,7 +233,7 @@ private fun SettingsRow(
             HorizontalDivider(color = AnsuColors.StrokeGlass)
         }
         Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -243,7 +242,10 @@ private fun SettingsRow(
             ) {
                 Icon(icon, contentDescription = null, tint = AnsuColors.Accent, modifier = Modifier.size(20.dp))
             }
-            Column(modifier = Modifier.weight(1f).padding(start = 14.dp)) {
+            Column(
+                modifier = Modifier.weight(1f).padding(start = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
                 Text(title, style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
                 Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary)
             }

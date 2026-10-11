@@ -44,6 +44,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nightlies deliberately carry the same code until a release bumps it, and it must never be set
   below a code that has already been published — a lower one is exactly what the installer refuses.
 
+- **Settings now uses one consistent padding grid.** The group labels ("ACCOUNT", "APP", …) started
+  10dp from the edge while the rows under them started at 16dp, the gap between a row's icon and its
+  text was 14dp here against 12dp on the Appearance, Player and streaming and Updates screens, and the
+  rows sat at 14dp while two groups were only 4dp apart. The line under a row's title also had no gap
+  at all, so a description that wrapped to two lines looked glued to the title. The labels are at 16dp
+  now, the icon-to-text gap is 12dp, the vertical rhythm is a uniform 16dp and the title-to-description
+  gap is the 2dp the rest of the app already used, so moving between the settings screens no longer
+  shows the spacing shifting.
+
 ## [0.1.1] - 2026-10-11
 
 ### Added
