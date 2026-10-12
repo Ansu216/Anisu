@@ -1,5 +1,5 @@
-0.3.1
-2026101202
+0.3.2
+2026101203
 nightly
 # version.txt - the release metadata, read by app/build.gradle.kts and by the
 # workflows. Three value lines, then these notes:
@@ -32,3 +32,4 @@ nightly
 # from: CI passes it as -PbuildCommit, the build exposes it as BuildConfig.BUILD_COMMIT, and the
 # updater compares that. It has to - the name and the version code are the same on every nightly
 # by design.
+
