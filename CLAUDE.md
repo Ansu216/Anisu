@@ -438,7 +438,7 @@ is worse for every user, so add the section **before** pushing the tag.
 |---|---|---|
 | `.github/workflows/apk-nightly.yml` | hourly `cron`, **every push to `main`**, manual | force-publishes to `apk-nightly`: `Ansu-nightly.apk`, `Ansu-nightly-debug.apk`, `nightly.json`, generated `README.md` |
 | `.github/workflows/release-apk.yml` | tag `v*`, manual | GitHub Release with `Ansu-<version>.apk` and `-debug.apk`, notes extracted from `CHANGELOG.md` |
-| `.github/workflows/extract-fix-zip.yml` | push of `fix.zip` to `main` by **Maygodblastyou**, manual | extracts the archive into the working tree (its own relative paths), commits it to `main` as `extract fix.zip and updated the app`, then dispatches the nightly APK build. The job is guarded on `github.actor == 'Maygodblastyou'`, so any other actor is skipped |
+| `.github/workflows/extract-fix-zip.yml` | push to `main` whose **commit title** starts with `Maygodblastyou`, `fix` or `n`; manual (always starts) | extracts the `fix.*` archive **that push brought in** (`.zip`, `.7z`, `.rar`, `.tar`, `.tar.gz`, …) into the working tree (its own relative paths), commits it to `main` as `extract fix.zip and updated the app`, then dispatches the nightly APK build. A push applies only the archives it changed; a manual run applies everything on `main` and always dispatches a build. No account is checked |
 
 The two APK workflows are built the same way, and **both compile their APKs in
 parallel**:
@@ -481,13 +481,31 @@ plan  ──▶  build (matrix: release, debug — one runner each, fail-fast: f
   pre-release suffix (`v1.2.3-rc.1`), and a stable release otherwise. The manual
   run can override that with the `channel` input.
 
-`extract-fix-zip.yml` extracts `fix.zip`, commits the result to `main` and then
-starts the nightly APK build. It runs **only when the actor is
-`Maygodblastyou`** (`if: ${{ github.actor == 'Maygodblastyou' }}`): a `fix.zip`
-pushed by anyone else — a collaborator, a fork, the Actions bot — is left alone,
-which also means the run can never loop by triggering itself. Three details are
-load-bearing:
+`extract-fix-zip.yml` extracts the fix archive, commits the result to `main` and
+then starts the nightly APK build. On a **push** the job runs only when the newest
+commit's title starts with `Maygodblastyou`, `fix` or `n`; a **manual run always
+starts**, whatever the title, applies every `fix.*` archive on `main`, and starts a
+build afterwards even when there was nothing to extract — it is the "it did not
+run, run it by hand" button, and it must never come back skipped. No login is
+checked: the old `if: github.actor == 'Maygodblastyou'` guard skipped **every** run
+once the account was renamed — a push and a manual dispatch by this repository's
+own collaborators were both finished as `skipped` in a second, having done nothing —
+and only someone who can already push to `main` or dispatch a workflow can reach
+this job. The run cannot loop by itself either: the bot's own commit message
+matches no trigger title, and a push made with `GITHUB_TOKEN` starts no workflow at
+all. Five details are load-bearing:
 
+- A **push applies only the archives that push brought in**. The script diffs the
+  commit before the push against the pushed one and extracts the `fix.*` files that
+  diff touched, so an old archive lying in the repository is never re-applied by a
+  later commit that happens to carry a trigger title — which, for a `fix.zip` made
+  before a version bump, would silently roll `version.txt` back. A manual run
+  applies everything present, because that is what "re-apply my archive" means.
+- The archive may be **any format**: `fix.zip`, `fix.7z`, `fix.rar`, `fix.tar`,
+  `fix.tar.gz`, `.tgz`, `.tar.bz2`, `.tar.xz` — anything named `fix.*` at the
+  repository root. 7z and rar are read through a 7-Zip binary, which the workflow
+  installs when the runner ships none, and a failure to install it is never fatal
+  (a zip or tar needs no 7-Zip).
 - The extraction **only ever writes**. It updates existing files, creates missing
   ones and never deletes anything — `fix.zip` is left in place too — so the commit
   it makes can contain additions and modifications only.

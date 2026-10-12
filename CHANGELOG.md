@@ -52,13 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   diagnostics tooling. The two actions, the file picker and the "Anisu restarts itself to apply the
   restore" behaviour are unchanged — only where you find them moved.
 
-### Fixed
-
-- **Switching tabs quickly no longer leaves two screens drawn over each other.** The tab bar waited exactly as
-  long as the slide lasted before it allowed the next tab. A frame of slack was missing, so a fast second tap began
-  the next slide while the old screen was still on its way out, and the two showed at once. The bar now holds the
-  next tab for a short settle time after each slide.
-
 ### Changed
 
 - **Nightly builds are named `0.3.0-nightly`, without the timestamp.** The `-2026.10.11.1846` suffix made every
@@ -84,6 +77,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "What's inside" row that opens in place. The new `GlassDisclosureRow` is shared, so any settings screen can
   fold a long explanation the same way. **Constraint:** restoring still closes the database first and
   relaunches Anisu, exactly as before.
+
+- **A fix archive can be any format, and a push applies only the archives it brought in.** The extractor read a
+  zip at the repository root and nothing else, so a `.7z`, a `.rar` or a `.tar.gz` was ignored; and it applied
+  whatever `fix.zip` happened to be lying there, so an archive written before a version bump would have put an
+  older `version.txt` back over a newer one. Anything named `fix.*` at the root is read now (7z and rar through a
+  7-Zip binary the workflow installs when the runner has none), and a push extracts only the archive that push
+  changed. A manual run still applies every archive present, because that is what "re-apply my archive" means.
 
 ### Fixed
 
@@ -116,6 +116,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name and the code are different things, so there is one row naming the installed build and a labelled second
   one carrying the version code; the rebuilt Updates screen follows the same rule, its header naming the build
   alone.
+
+- **Switching tabs quickly no longer leaves two screens drawn over each other.** The tab bar waited exactly as
+  long as the slide lasted before it allowed the next tab. A frame of slack was missing, so a fast second tap began
+  the next slide while the old screen was still on its way out, and the two showed at once. The bar now holds the
+  next tab for a short settle time after each slide.
+
+- **A pushed fix archive is applied again — the extraction had silently stopped running.** The workflow started
+  only for an account named `Maygodblastyou`, and no account with that name can push to `main` any more: every run
+  of these days, a `Maygodblastyou`-titled push and a manual dispatch alike, finished as `skipped` in a second,
+  having done nothing. The gate is now the commit's title (`Maygodblastyou`, `fix` or `n`) or a manual run, which
+  always starts; no login is checked, since only someone who can already push to `main` reaches this job.
 
 ## [0.1.1] - 2026-10-11
 

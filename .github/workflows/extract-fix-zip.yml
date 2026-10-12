@@ -1,27 +1,46 @@
 name: Extract fix.zip
 
-# When a file named `fix.zip` is pushed to `main` **by Maygodblastyou**, its
-# contents are extracted into the repository and committed back by the Actions bot
+# When a commit whose **title** starts with `Maygodblastyou`, `fix` or `n` is
+# pushed to `main`, the fix archive that push brought in (`.zip`, `.7z`, `.rar`,
+# `.tar`, `.tar.gz`, `.tgz`, `.tar.bz2`, `.tar.xz`, … — anything at the root named
+# `fix.*`) is extracted into the repository and committed back by the Actions bot
 # with the message "extract fix.zip and updated the app". The APK build workflow is
 # then started explicitly, so the new commit is built and published right away
-# instead of waiting for the next hourly run. The job is guarded on
-# `github.actor == 'Maygodblastyou'`, so any other actor (the bot, a collaborator,
-# a fork) is skipped outright and cannot rewrite the project.
+# instead of waiting for the next hourly run.
+#
+# A **manual run always starts**: dispatch this workflow from the Actions tab and it
+# applies every fix archive currently on `main`, whether or not a commit title matched,
+# and it starts an APK build even when there was nothing new to extract. It is the
+# "it did not run, run it by hand" button, and it must never come back skipped.
 #
 # The archive carries the project's own relative paths (for example
 # `app/src/main/java/com/ansu/anime/...`), so every file lands in the right folder
 # and sub-folder. Existing files are overwritten, missing ones are created, and
-# **nothing is ever deleted**: the extraction only writes, `fix.zip` itself is
-# left in place, and the commit therefore stages additions and modifications only.
+# **nothing is ever deleted**: the extraction only writes, `fix.*` itself is left in
+# place, and the commit therefore stages additions and modifications only.
+#
+# Two rules keep this from ever applying an archive by accident, and both used to be
+# a single check that ended up skipping *every* run:
+#
+#   * **A push only applies what that push brought in.** The script diffs the push
+#     (the previous commit → this one) and extracts only the archives it touched, so
+#     an old `fix.zip` sitting in the repository is never re-applied behind your back
+#     by a later commit that happens to carry a trigger title.
+#   * **No login is checked.** The old `if: github.actor == 'Maygodblastyou'` guard
+#     skipped every run as soon as the account was renamed, and a manual run with it,
+#     for the same reason. Only someone who can already push to `main` (or dispatch a
+#     workflow) can reach this job at all, and the loop is closed by two independent
+#     facts: the bot's own commit message matches no trigger title, and a push made
+#     with the built-in `GITHUB_TOKEN` starts no workflow whatsoever.
 #
 # Two GitHub rules shape the two steps that are easy to get wrong:
 #
 #   * The built-in `GITHUB_TOKEN` is refused any write under `.github/workflows/`
 #     ("refusing to allow a GitHub App to create or update workflow ... without
 #     `workflows` permission"), and no `permissions:` block lifts that — it is a
-#     platform rule, not a grantable scope. Since `fix.zip` usually contains the
-#     whole repository, a commit that touched a workflow file would be rejected as
-#     a whole and the fix would never land. So the extraction skips
+#     platform rule, not a grantable scope. Since a fix archive usually contains the
+#     whole repository, a commit that touched a workflow file would be rejected as a
+#     whole and the fix would never land. So the extraction skips
 #     `.github/workflows/**` and says so, unless a token that *does* have the
 #     `workflows` scope is provided.
 #   * A push made with `GITHUB_TOKEN` starts no other workflow, so the APK build is
@@ -38,8 +57,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'fix.zip'
   workflow_dispatch:
 
 permissions:
@@ -57,10 +74,20 @@ jobs:
   extract:
     name: Extract fix.zip and commit it
     runs-on: ubuntu-latest
-    # Only the repository owner may rewrite the project through a fix.zip. Any
-    # other actor — a bot included — is skipped, so a stray or malicious fix.zip
-    # can never be extracted, which also means the extraction cannot loop.
-    if: ${{ github.actor == 'Maygodblastyou' }}
+    # A push rewrites the project only when the commit is *meant* to be a fix, which
+    # its title says: Maygodblastyou (with anything after it), fix… or n…. A manual
+    # run starts unconditionally — that is what "run it by hand" is for. A job skipped
+    # here never starts a runner, so the other pushes cost nothing.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.head_commit.message != null &&
+        (
+          startsWith(github.event.head_commit.message, 'Maygodblastyou') ||
+          startsWith(github.event.head_commit.message, 'fix') ||
+          startsWith(github.event.head_commit.message, 'n')
+        )
+      )
 
     steps:
       - name: Checkout
@@ -69,38 +96,42 @@ jobs:
           ref: main
           # A full history, not a shallow one: the job commits and pushes, and a
           # truncated clone is a known cause of rejected pushes. This also lets the
-          # rebase below work properly. (`release-apk.yml` needs depth 0 for the
-          # same class of reason.)
+          # rebase below and the "what did this push change" diff work properly.
+          # (`release-apk.yml` needs depth 0 for the same class of reason.)
           fetch-depth: 0
-          # Best-effort PAT. Note that it has to be passed *here*: whatever token
-          # this step uses is what is stored as the remote credential, and that is
-          # the one every later `git` command — the push included — will use.
+          # Best-effort PAT. Note that it has to be passed *here*: whatever token this
+          # step uses is what is stored as the remote credential, and that is the one
+          # every later `git` command — the push included — will use.
           token: ${{ secrets.FIX_ZIP_TOKEN || github.token }}
 
-      # The path filter above fires on a deletion too, so removing fix.zip again
-      # must not turn the run red: there is simply nothing to extract.
-      - name: Check that there is a fix.zip to extract
-        id: presence
+      # 7z and rar are read through a 7-Zip binary. Runners usually ship one; when
+      # they do not, this is the only thing that has to be installed. A failure here
+      # is never fatal: a .zip or .tar.gz needs no 7-Zip at all, and the script says
+      # so itself if a .7z really cannot be read.
+      - name: Make sure a 7-Zip binary exists
         run: |
           set -euo pipefail
-          if [ -f fix.zip ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::This commit has no fix.zip — nothing to extract."
+          if ! command -v 7z >/dev/null 2>&1 && ! command -v 7za >/dev/null 2>&1 && ! command -v 7zz >/dev/null 2>&1; then
+            echo "::notice::No 7-Zip on this runner — installing it so fix.7z / fix.rar can be read."
+            sudo apt-get update -qq || true
+            sudo apt-get install -y --no-install-recommends 7zip || sudo apt-get install -y --no-install-recommends p7zip-full || echo "::warning::7-Zip could not be installed; a fix.7z / fix.rar will fail to open."
           fi
 
-      - name: Extract fix.zip
-        if: ${{ steps.presence.outputs.present == 'true' }}
+      - name: Extract the fix archive
+        id: extract
         env:
           # Only a token with the `workflows` scope may write .github/workflows/;
           # with the built-in token the script skips those entries on purpose.
           ANSU_ALLOW_WORKFLOWS: ${{ secrets.FIX_ZIP_TOKEN != '' }}
+          # On a push: the commit before it, so only the archives *this* push brought
+          # in are applied. On a manual run the event has no `before`, the variable is
+          # empty, and the script applies every fix archive on main.
+          ANSU_BEFORE: ${{ github.event.before }}
+          ANSU_SHA: ${{ github.sha }}
         run: python3 .github/scripts/unpack-fix-zip.py
 
       - name: Commit, push and start the build
         id: commit
-        if: ${{ steps.presence.outputs.present == 'true' }}
         run: |
           set -euo pipefail
           git config --local user.name "github-actions[bot]"
@@ -110,7 +141,7 @@ jobs:
           git add -A
 
           if git diff --cached --quiet; then
-            echo "Nothing changed after extracting fix.zip — nothing to commit."
+            echo "Nothing changed after extracting the fix archive — nothing to commit."
             echo "committed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -131,11 +162,13 @@ jobs:
           echo "committed=true" >> "$GITHUB_OUTPUT"
           git --no-pager log -1 --stat
 
+      # A run that landed a commit builds it. A **manual** run always builds, even
+      # with nothing to extract, so this workflow doubles as "rebuild the APKs now".
       - name: Start the APK build workflow
-        if: ${{ steps.commit.outputs.committed == 'true' }}
+        if: ${{ steps.commit.outputs.committed == 'true' || github.event_name == 'workflow_dispatch' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           gh workflow run apk-nightly.yml --ref main
-          echo "::notice::Started the APK build for the commit that has just landed."
+          echo "::notice::Started the APK build for main."

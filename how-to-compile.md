@@ -475,24 +475,40 @@ Three GitHub Actions workflows are included under `.github/workflows/`.
   Release named after the tag with `Ansu-<version>.apk` and
   `Ansu-<version>-debug.apk` attached.
 
-### `extract-fix-zip.yml` — apply a `fix.zip` archive
+### `extract-fix-zip.yml` — apply a fix archive
 
-- **Runs:** when a file named `fix.zip` is pushed to `main`, or manually
-  (**Actions → Extract fix.zip → Run workflow**).
+- **Runs:** on a push to `main` whose **commit title** starts with `Maygodblastyou`,
+  `fix` or `n`, or manually (**Actions → Extract fix.zip → Run workflow**). A manual
+  run always starts, whatever the commit titles, and builds afterwards even when
+  there was nothing to extract — it doubles as "rebuild the APKs now". No account is
+  checked: whoever can push to `main` or dispatch a workflow can trigger it (only
+  those people can, too).
 - **Does:** extracts the archive into the working tree, commits the result to
   `main` as the Actions bot with the message
   `extract fix.zip and updated the app`, then starts the nightly APK build.
-- **Archive layout:** the zip must carry the project's own relative paths, e.g.
+- **Formats:** `fix.zip`, `fix.7z`, `fix.rar`, `fix.tar`, `fix.tar.gz`/`.tgz`,
+  `fix.tar.bz2`, `fix.tar.xz` — anything named `fix.*` at the repository root.
+  7z and rar go through a 7-Zip binary, which the workflow installs if the runner
+  does not ship one; failing to install it does not fail a run that only has a zip
+  or a tar to read.
+- **Only what the push brought in:** on a push the script diffs the commit before
+  the push against the pushed one and extracts the `fix.*` files that diff touched,
+  so an old archive already in the repository is never re-applied by a later commit
+  (which would put its older files — `version.txt`, for one — back over newer ones).
+  A manual run applies every archive present.
+- **Archive layout:** the archive must carry the project's own relative paths, e.g.
   `app/src/main/java/com/ansu/anime/...`. It is extracted as-is from the
   repository root, so every file lands in the right folder without mapping.
 - **Existing / missing files:** a file that already exists is overwritten with the
   archive's copy, a file that does not exist is created, and **nothing is ever
-  deleted** — `fix.zip` stays in the repository as well, so a commit from this
+  deleted** — the archive stays in the repository as well, so a commit from this
   workflow only ever adds or updates files.
 - **Safety:** each entry is validated before it is written (by
   `.github/scripts/unpack-fix-zip.py`). A path that would escape the repository or
   write into `.git` aborts the run instead of overwriting something unexpected, and
-  an empty archive is rejected.
+  an empty archive is rejected. Members of a tar that are links, devices or FIFOs
+  are skipped rather than written, and so are the `.github/workflows/` entries
+  described below.
 - **`.github/workflows/` is skipped** and the run says so. GitHub refuses to let the
   built-in `GITHUB_TOKEN` create or update a workflow file (*"refusing to allow a
   GitHub App to create or update workflow … without `workflows` permission"*), and
