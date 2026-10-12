@@ -62,7 +62,9 @@ import com.ansu.anime.ui.components.AppBottomBarReserve
 import com.ansu.anime.ui.components.BackdropState
 import com.ansu.anime.ui.components.backdropSource
 import com.ansu.anime.ui.components.FrostedGlassCard
-import com.ansu.anime.ui.components.posterTransitionOrigin
+import com.ansu.anime.ui.components.PosterOriginHandle
+import com.ansu.anime.ui.components.posterTransitionAnchor
+import com.ansu.anime.ui.components.posterTransitionTrigger
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
 
@@ -326,7 +328,13 @@ private fun ListChip(text: String, selected: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun ListItemRow(media: AniListMedia, onDetails: () -> Unit) {
-    FrostedGlassCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onDetails), shape = RoundedCornerShape(16.dp), tintAlpha = 0.4f) {
+    // A tap anywhere on the card opens the page out of its poster, not only a tap on the poster itself.
+    val originHandle = remember { PosterOriginHandle() }
+    FrostedGlassCard(
+        modifier = Modifier.fillMaxWidth().posterTransitionTrigger(originHandle, media.posterUrl, 10.dp).clickable(onClick = onDetails),
+        shape = RoundedCornerShape(16.dp),
+        tintAlpha = 0.4f,
+    ) {
         Row(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(
                 model = media.posterUrl,
@@ -335,7 +343,7 @@ private fun ListItemRow(media: AniListMedia, onDetails: () -> Unit) {
                 modifier = Modifier
                     .width(64.dp)
                     .height(92.dp)
-                    .posterTransitionOrigin(media.posterUrl, 10.dp)
+                    .posterTransitionAnchor(originHandle)
                     .clip(RoundedCornerShape(10.dp))
                     .background(AnsuColors.BackgroundElevated),
             )
@@ -362,15 +370,21 @@ private fun ListItemRow(media: AniListMedia, onDetails: () -> Unit) {
                     Text(meta, color = AnsuColors.TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 6.dp))
                 }
               }
-                WatchProgress(watched = media.progress, total = media.episodes)
+                WatchProgress(watched = media.progress, total = media.episodes, airedSoFar = media.airedEpisodes)
             }
         }
     }
 }
 
-/** "11/12" with a thin bar under it: how far through the show the user is. Without a known total it is just the count. */
+/**
+ * "11/12" with a thin bar under it: how far through the show the user is.
+ *
+ * A show still airing with no announced total (One Piece) has no "12": its bar is measured against the
+ * episodes aired so far ([airedSoFar]) and the label stays "Ep N". When even that is unknown the bar is still
+ * drawn, as a dimmed full track, so every started title has one and the card keeps its shape.
+ */
 @Composable
-private fun WatchProgress(watched: Int, total: Int?) {
+private fun WatchProgress(watched: Int, total: Int?, airedSoFar: Int?) {
     val known = total?.takeIf { it > 0 }
     if (known == null && watched <= 0) return
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -380,10 +394,13 @@ private fun WatchProgress(watched: Int, total: Int?) {
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
         )
-        if (known != null) {
-            val fraction = (watched.toFloat() / known).coerceIn(0f, 1f)
-            Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(AnsuColors.AccentSoft)) {
+        val denominator = known ?: airedSoFar?.takeIf { it > 0 }
+        Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(AnsuColors.AccentSoft)) {
+            if (denominator != null) {
+                val fraction = (watched.toFloat() / denominator).coerceIn(0f, 1f)
                 Box(modifier = Modifier.fillMaxWidth(fraction).height(4.dp).clip(CircleShape).background(AnsuColors.Accent))
+            } else {
+                Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(AnsuColors.Accent.copy(alpha = 0.35f)))
             }
         }
     }

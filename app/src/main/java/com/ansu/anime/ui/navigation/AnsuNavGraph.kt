@@ -3,11 +3,11 @@ package com.ansu.anime.ui.navigation
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -70,20 +70,15 @@ object Dest {
 val bottomNavDestinations = listOf(Dest.HOME, Dest.SEARCH, Dest.SCHEDULE, Dest.MY_SPACE)
 
 /**
- * How long a tab change slides for. The bar waits exactly this long before it applies a tab that was
+ * How long a tab change fades for. The bar waits exactly this long before it applies a tab that was
  * tapped while the previous move was still running, so two tab changes never overlap.
  */
 const val TAB_TRANSITION_MILLIS = 230
 
 /**
  * +1 when a change goes to a later bottom-bar tab, -1 to an earlier one and 0 when the change is not
- * between two tabs. A tab change is a plain slide of the whole page: the two screens travel together
- * as one sheet, so only one of them is ever readable on the way in.
- *
- * It used to slide each screen by a sixth of the width *and* fade both of them at the same time,
- * which drew the two full screens on top of each other for the whole 260 ms - that is the "everything
- * shows up twice" a tab change looked like. The slide itself stays; the cross-fade between two
- * screens is what is gone.
+ * between two tabs. A tab change is a soft cross-fade: the old page fades out while the new one fades
+ * in, with no sideways travel, so the direction only tells a tab change apart from any other move.
  */
 private fun tabSlideDirection(fromRoute: String?, toRoute: String?): Int {
     val from = bottomNavDestinations.indexOf(fromRoute)
@@ -107,7 +102,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         }
     }
 
-    // The bar is drawn once, in a sibling Box above the NavHost, so a tab change slides only the screen
+    // The bar is drawn once, in a sibling Box above the NavHost, so a tab change fades only the screen
     // and its content: the bar itself stays still. The four tab screens record their content into this
     // one shared backdrop, which is what the bar blurs.
     val backdrop = rememberBackdropState()
@@ -119,20 +114,15 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
     // Screen transitions are about half the platform default, which makes the whole app feel snappier.
-    // Switching between the four bottom-bar tabs slides the screens *with* the move instead of against
-    // it: going right (Home -> Search -> Schedule -> My Space) the new screen comes in from the left and
-    // the old one leaves to the right, so the page travels the way the finger - or the dragged pill -
-    // went, and going left everything mirrors. The same direction is used whether the move pushes or
-    // pops (tab changes do both, through `popUpTo`), so the two can never disagree.
+    // Switching between the four bottom-bar tabs is a cross-fade: the page you leave fades out while the
+    // page you open fades in, in place. The same fade is used whether the move pushes or pops (tab
+    // changes do both, through `popUpTo`), so the two can never disagree.
     NavHost(
         navController = navController,
         startDestination = Dest.HOME,
         enterTransition = {
-            val direction = tabSlideDirection(initialState.destination.route, targetState.destination.route)
-            if (direction != 0) {
-                slideInHorizontally(animationSpec = tween(durationMillis = TAB_TRANSITION_MILLIS)) { width ->
-                    -direction * width
-                }
+            if (tabSlideDirection(initialState.destination.route, targetState.destination.route) != 0) {
+                fadeIn(animationSpec = tween(durationMillis = TAB_TRANSITION_MILLIS, easing = LinearOutSlowInEasing))
             } else {
                 fadeIn(animationSpec = tween(durationMillis = 175))
             }
@@ -140,37 +130,28 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         // The page under a details page stays put (only dimmed) while the details page grows out of the
         // tapped poster and shrinks back into it, so the poster has something to grow out of.
         exitTransition = {
-            val direction = tabSlideDirection(initialState.destination.route, targetState.destination.route)
             when {
                 targetState.destination.route == Dest.DETAILS ->
                     fadeOut(targetAlpha = 0.55f, animationSpec = tween(durationMillis = PosterTransition.OPEN_MILLIS))
-                direction != 0 ->
-                    slideOutHorizontally(animationSpec = tween(durationMillis = TAB_TRANSITION_MILLIS)) { width ->
-                        direction * width
-                    }
+                tabSlideDirection(initialState.destination.route, targetState.destination.route) != 0 ->
+                    fadeOut(animationSpec = tween(durationMillis = TAB_TRANSITION_MILLIS, easing = FastOutSlowInEasing))
                 else -> fadeOut(animationSpec = tween(durationMillis = 150))
             }
         },
         popEnterTransition = {
-            val direction = tabSlideDirection(initialState.destination.route, targetState.destination.route)
             when {
                 initialState.destination.route == Dest.DETAILS ->
                     fadeIn(initialAlpha = 0.55f, animationSpec = tween(durationMillis = PosterTransition.CLOSE_MILLIS))
-                direction != 0 ->
-                    slideInHorizontally(animationSpec = tween(durationMillis = TAB_TRANSITION_MILLIS)) { width ->
-                        -direction * width
-                    }
+                tabSlideDirection(initialState.destination.route, targetState.destination.route) != 0 ->
+                    fadeIn(animationSpec = tween(durationMillis = TAB_TRANSITION_MILLIS, easing = LinearOutSlowInEasing))
                 else -> fadeIn(animationSpec = tween(durationMillis = 150))
             }
         },
-        // A tab move can pop (see `popUpTo` in the bar), so the leaving screen has to slide the same way
+        // A tab move can pop (see `popUpTo` in the bar), so the leaving screen fades the same way
         // the entering one does; everything else keeps the plain quick fade.
         popExitTransition = {
-            val direction = tabSlideDirection(initialState.destination.route, targetState.destination.route)
-            if (direction != 0) {
-                slideOutHorizontally(animationSpec = tween(durationMillis = TAB_TRANSITION_MILLIS)) { width ->
-                    direction * width
-                }
+            if (tabSlideDirection(initialState.destination.route, targetState.destination.route) != 0) {
+                fadeOut(animationSpec = tween(durationMillis = TAB_TRANSITION_MILLIS, easing = FastOutSlowInEasing))
             } else {
                 fadeOut(animationSpec = tween(durationMillis = 150))
             }
@@ -289,7 +270,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         }
     }
 
-    // The single shared bar: it sits above the NavHost so it never slides with a screen. It is shown
+    // The single shared bar: it sits above the NavHost so it never fades with a screen. It is shown
     // only on the four tab destinations and fades out as soon as a full-screen route (details, player,
     // settings, ...) is opened over them.
     val currentRoute = backStackEntry?.destination?.route

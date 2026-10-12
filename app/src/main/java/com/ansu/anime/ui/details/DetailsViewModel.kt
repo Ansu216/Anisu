@@ -131,21 +131,8 @@ class DetailsViewModel(
     }
 
     /** One placeholder episode per episode AniList says exists (or has aired); titles and thumbnails are filled in by [publishEpisodes]. */
-    private fun aniListEpisodes(current: SAnime, details: com.ansu.anime.anilist.AniListMediaDetails?): List<SEpisode> {
-        val format = details?.format ?: current.format
-        val total = details?.episodes ?: current.episodes
-        val aired = details?.nextAiringEpisode?.let { it - 1 }
-        val count = when {
-            format.equals("MOVIE", ignoreCase = true) -> 1
-            aired != null -> if (total != null) minOf(aired, total) else aired
-            details?.status == "NOT_YET_RELEASED" -> 0
-            total != null -> total
-            else -> episodeMeta.keys.maxOrNull() ?: 0
-        }
-        return (1..count).map { number ->
-            SEpisode(id = "${current.id}-al-$number", name = "Episode $number", episodeNumber = number.toFloat())
-        }
-    }
+    private fun aniListEpisodes(current: SAnime, details: com.ansu.anime.anilist.AniListMediaDetails?): List<SEpisode> =
+        aniListEpisodePlaceholders(current, details, episodeMeta)
 
     /** Quietly matches the installed sources in the background, so playing an episode finds its streams quickly. */
     private fun warmSourceMatches(current: SAnime) {
@@ -343,5 +330,31 @@ class DetailsViewModel(
         
         // Cancel all coroutines in this scope to prevent memory leaks
         viewModelScope.coroutineContext.cancelChildren()
+    }
+}
+
+
+/**
+ * One placeholder episode per episode AniList says exists (or has aired). Shared by the details page and by
+ * the player, which builds the same list when it is opened straight from Continue Watching and no details
+ * page has handed it one.
+ */
+internal fun aniListEpisodePlaceholders(
+    current: SAnime,
+    details: AniListMediaDetails?,
+    episodeMeta: Map<Int, com.ansu.anime.data.repository.EpisodeMeta>,
+): List<SEpisode> {
+    val format = details?.format ?: current.format
+    val total = details?.episodes ?: current.episodes
+    val aired = details?.nextAiringEpisode?.let { it - 1 }
+    val count = when {
+        format.equals("MOVIE", ignoreCase = true) -> 1
+        aired != null -> if (total != null) minOf(aired, total) else aired
+        details?.status == "NOT_YET_RELEASED" -> 0
+        total != null -> total
+        else -> episodeMeta.keys.maxOrNull() ?: 0
+    }
+    return (1..count).map { number ->
+        SEpisode(id = "${current.id}-al-$number", name = "Episode $number", episodeNumber = number.toFloat())
     }
 }

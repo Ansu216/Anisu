@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.CornerRadius
@@ -77,8 +78,13 @@ object PosterTransition {
     /** Settles gently into the poster at the end (Material "emphasized"). */
     private val CloseEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
-    /** What the details page grows out of. [posterUrl] is drawn inside the growing window. */
-    class Origin(val bounds: Rect, val posterUrl: String?, val cornerRadius: Dp)
+    /**
+     * What the details page grows out of. [posterUrl] is drawn inside the growing window. A [cover], when
+     * given, is drawn there instead of the bare picture (it gets the origin's size in pixels): the home
+     * banner passes its own slide, so the window opens from, and closes into, the banner exactly as it looks,
+     * with its gradient and title, rather than a plain picture that the real banner then replaces.
+     */
+    class Origin(val bounds: Rect, val posterUrl: String?, val cornerRadius: Dp, val cover: (@Composable (Size) -> Unit)? = null)
 
     /** A tap's touch-down and the navigation it triggers are far closer than this; older origins are stale. */
     private const val PENDING_TTL_MILLIS = 1500L
@@ -131,18 +137,52 @@ object PosterTransition {
 fun Modifier.posterTransitionOrigin(
     posterUrl: String? = null,
     cornerRadius: Dp = 12.dp,
+    cover: (@Composable (Size) -> Unit)? = null,
 ): Modifier = composed {
     val holder = remember { CoordinatesHolder() }
+    // Read at touch-down, so the cover always reflects what is on screen then (a logo that arrived late, say).
+    val latestCover by rememberUpdatedState(cover)
     this
         .onGloballyPositioned { holder.coordinates = it }
         .pointerInput(posterUrl, cornerRadius) {
             awaitEachGesture {
                 awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 holder.coordinates?.takeIf { it.isAttached }?.let {
-                    PosterTransition.setPending(PosterTransition.Origin(it.boundsInRoot(), posterUrl, cornerRadius))
+                    PosterTransition.setPending(PosterTransition.Origin(it.boundsInRoot(), posterUrl, cornerRadius, latestCover))
                 }
             }
         }
+}
+
+/**
+ * Lets a whole card start the details animation from its poster. A card whose poster is only a small part of
+ * it (a My Space list row) used to animate only when the poster itself was touched; a tap on the title or the
+ * empty part of the card opened the page with a plain fade. The poster is marked with
+ * [posterTransitionAnchor], the card with [posterTransitionTrigger], and both share one handle.
+ */
+class PosterOriginHandle {
+    internal var coordinates: LayoutCoordinates? = null
+}
+
+/** Marks the poster that the animation should grow out of, for a card that uses [posterTransitionTrigger]. */
+fun Modifier.posterTransitionAnchor(handle: PosterOriginHandle): Modifier =
+    onGloballyPositioned { handle.coordinates = it }
+
+/**
+ * On a card: a touch anywhere on it starts the animation from the poster marked with [posterTransitionAnchor].
+ * Like [posterTransitionOrigin] it only observes the touch-down, so clicks and scrolling are untouched.
+ */
+fun Modifier.posterTransitionTrigger(
+    handle: PosterOriginHandle,
+    posterUrl: String?,
+    cornerRadius: Dp = 12.dp,
+): Modifier = pointerInput(handle, posterUrl, cornerRadius) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        handle.coordinates?.takeIf { it.isAttached }?.let {
+            PosterTransition.setPending(PosterTransition.Origin(it.boundsInRoot(), posterUrl, cornerRadius))
+        }
+    }
 }
 
 /** A plain (non-state) holder: layout coordinates change every frame while scrolling and must not recompose. */
@@ -226,7 +266,8 @@ fun AnimatedContentScope.PosterExpandContainer(
     val originBounds = origin?.bounds
     // A poster image is what makes the morph look right: with no image to draw inside the window the
     // close would only shrink a half-transparent page over the background. Those cases cross-fade.
-    val canCover = origin?.posterUrl != null && originBounds != null
+    val originCover = origin?.cover
+    val canCover = (origin?.posterUrl != null || originCover != null) && originBounds != null
     val container = remember { OffsetHolder() }
     // The poster cover is only needed until the page is fully open; dropping it then frees its layer.
     val coverVisible by remember { derivedStateOf { progress.value < 0.999f } }
@@ -254,7 +295,19 @@ fun AnimatedContentScope.PosterExpandContainer(
             }
             .background(AnsuColors.Background),
     ) {
-        if (origin != null && origin.posterUrl != null && coverVisible) {
+        if (origin != null && originCover != null) {
+            // The banner itself, kept composed for as long as the page lives: it is prepared (artwork out of the
+            // cache, logo decoded) while the page is open, so a back press finds it ready to shrink into.
+            // It costs nothing while hidden: a layer with no alpha is not drawn.
+            BannerCover(
+                cover = originCover,
+                bounds = origin.bounds,
+                boundsAt = { containerSize ->
+                    windowBounds(origin.bounds, container.offset, containerSize, progress.value)
+                },
+                alpha = { ((0.75f - progress.value) / 0.25f).coerceIn(0f, 1f) },
+            )
+        } else if (origin != null && origin.posterUrl != null && coverVisible) {
             PosterCover(
                 posterUrl = origin.posterUrl,
                 posterBounds = origin.bounds,
@@ -286,10 +339,12 @@ fun AnimatedContentScope.PosterExpandContainer(
                             scaleX = s
                             scaleY = s
                             // Hands over to the poster cover early, so the shrinking page never reads as a tiny screen.
-                            alpha = ((p - 0.12f) / 0.4f).coerceIn(0f, 1f)
+                            // A banner is as wide as the screen, so the page does not narrow at all: it hands
+                            // over to the banner cover sooner and leaves the banner fully visible as it lands.
+                            alpha = if (originCover != null) ((p - 0.35f) / 0.35f).coerceIn(0f, 1f) else ((p - 0.12f) / 0.4f).coerceIn(0f, 1f)
                         } else {
                             // The page fades in once the window has grown a little, and settles in from just under full size.
-                            alpha = ((p - 0.15f) / 0.45f).coerceIn(0f, 1f)
+                            alpha = if (originCover != null) ((p - 0.35f) / 0.35f).coerceIn(0f, 1f) else ((p - 0.15f) / 0.45f).coerceIn(0f, 1f)
                             val s = lerp(0.94f, 1f, p)
                             scaleX = s
                             scaleY = s
@@ -299,6 +354,34 @@ fun AnimatedContentScope.PosterExpandContainer(
         ) {
             content()
         }
+    }
+}
+
+/**
+ * A caller-supplied cover (the home banner's own slide) placed at the window's bounds. It is laid out at the
+ * window's size, so the slide's title block stays pinned to the window's bottom edge as it grows and shrinks.
+ */
+@Composable
+private fun BannerCover(
+    cover: @Composable (Size) -> Unit,
+    bounds: Rect,
+    boundsAt: (containerSize: Size) -> Rect,
+    alpha: () -> Float,
+) {
+    Box(
+        modifier = Modifier
+            .layout { measurable, constraints ->
+                val window = boundsAt(Size(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat()))
+                val w = window.width.roundToInt().coerceAtLeast(1)
+                val h = window.height.roundToInt().coerceAtLeast(1)
+                val placeable = measurable.measure(Constraints.fixed(w, h))
+                layout(constraints.maxWidth, constraints.maxHeight) {
+                    placeable.place(window.left.roundToInt(), window.top.roundToInt())
+                }
+            }
+            .graphicsLayer { this.alpha = alpha() },
+    ) {
+        cover(bounds.size)
     }
 }
 

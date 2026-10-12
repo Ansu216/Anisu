@@ -119,6 +119,7 @@ class PlayerViewModel(
     private val aniSkipRepository: com.ansu.anime.data.repository.AniSkipRepository? = null,
     private val playerPrefs: com.ansu.anime.data.prefs.PlayerPrefs? = null,
     private val mediaCache: com.ansu.anime.data.player.MediaCache? = null,
+    private val episodeMetadataRepository: com.ansu.anime.data.repository.EpisodeMetadataRepository? = null,
 ) : ViewModel() {
 
     // Large buffers + a small start threshold: playback starts after a few seconds of data and the
@@ -225,7 +226,44 @@ class PlayerViewModel(
             }
         })
         loadSources()
+        loadMissingEpisodes()
         startProgressLoop()
+    }
+
+    /**
+     * Opened straight from Continue Watching, the player has an episode but no list of the show's episodes:
+     * only the details page builds one, and it was never opened. Without it there is no episode picker and
+     * no previous/next. So the list is fetched here, the way the details page builds it: AniList's own
+     * episode count first, and the sources' (cached) episode lists when AniList cannot say.
+     */
+    private fun loadMissingEpisodes() {
+        val anime = _uiState.value.anime ?: return
+        if (_uiState.value.episodes.isNotEmpty()) return
+        val anilistId = anime.anilistId ?: return
+        viewModelScope.launch {
+            val details = runCatching { aniListRepository?.getMediaDetails(anilistId) }.getOrNull()
+            val meta = runCatching { episodeMetadataRepository?.getEpisodeMeta(anilistId) }.getOrNull().orEmpty()
+            var list = com.ansu.anime.ui.details.aniListEpisodePlaceholders(anime, details, meta)
+            if (list.isEmpty()) {
+                // AniList has no count: use the sources' own list for this show, when the details page saved one.
+                list = com.ansu.anime.extension.EpisodeListCache.get("ep-$anilistId").orEmpty()
+            }
+            if (list.isEmpty()) return@launch
+            val named = list.map { episode ->
+                val info = episode.episodeNumber.takeIf { it % 1f == 0f }?.toInt()?.let { meta[it] } ?: return@map episode
+                episode.copy(
+                    name = info.title ?: episode.name,
+                    thumbnailUrl = episode.thumbnailUrl ?: info.thumbnailUrl,
+                    description = info.overview ?: episode.description,
+                    airDate = episode.airDate ?: info.airDate,
+                )
+            }.distinctBy { it.id }
+            // A details page opened meanwhile may already have handed over its own list; keep that one.
+            if (_uiState.value.episodes.isNotEmpty()) return@launch
+            selectionHolder.selectEpisodes(named)
+            _uiState.value = _uiState.value.copy(episodes = named)
+            diagnostics?.log(LogCategory.PLAYBACK, "Episode list loaded for ${anime.title}: ${named.size} episode(s)")
+        }
     }
 
     private fun loadSources() {

@@ -10,11 +10,14 @@ import com.ansu.anime.data.db.ContinueWatchingEntity
 import com.ansu.anime.data.prefs.TitleLanguage
 import com.ansu.anime.data.repository.CatalogRepository
 import com.ansu.anime.data.repository.ContinueWatchingRepository
+import com.ansu.anime.data.repository.LocalListRepository
 import com.ansu.anime.data.repository.toSAnime
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -57,20 +60,49 @@ class HomeViewModel(
     private val continueWatchingRepository: ContinueWatchingRepository,
     private val aniListRepository: AniListRepository,
     titleLanguage: StateFlow<TitleLanguage>,
+    private val localListRepository: LocalListRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState
 
+    private val _favouriteIds = MutableStateFlow<Set<Int>>(emptySet())
+
+    /** AniList ids of the titles the user has hearted (AniList's favourites when signed in, the device's otherwise); drives the hero banner's heart. */
+    val favouriteIds: StateFlow<Set<Int>> = _favouriteIds
+
     init {
         continueWatchingRepository.entries
             .onEach { list -> _uiState.update { it.copy(continueWatching = list) } }
             .launchIn(viewModelScope)
+        viewModelScope.launch {
+            // Re-read whenever the account changes or a heart is toggled on the device.
+            combine(aniListRepository.isLoggedIn, localListRepository.favourites) { loggedIn, local -> loggedIn to local }
+                .collectLatest { (loggedIn, local) ->
+                    _favouriteIds.value =
+                        if (loggedIn) aniListRepository.getLiked().map { it.id }.toSet() else local.map { it.id }.toSet()
+                }
+        }
         refresh()
         // Titles are fetched in the chosen language, so a change in Settings reloads the rows.
         titleLanguage.drop(1)
             .onEach { refresh() }
             .launchIn(viewModelScope)
+    }
+
+    /** Hearts or un-hearts [anime]. The heart changes at once; a signed-in change that AniList refuses is put back. */
+    fun toggleFavourite(anime: SAnime) {
+        val id = anime.anilistId ?: return
+        viewModelScope.launch {
+            if (aniListRepository.isLoggedIn.value) {
+                val before = _favouriteIds.value
+                _favouriteIds.value = if (id in before) before - id else before + id
+                if (!aniListRepository.toggleFavourite(id)) _favouriteIds.value = before
+            } else {
+                // The device's own list is observed above, so the heart follows the database.
+                localListRepository.toggleFavourite(anime)
+            }
+        }
     }
 
     fun removeContinueWatching(anilistId: Int) {

@@ -23,6 +23,8 @@ data class AniListMedia(
     val altTitles: List<String> = emptyList(),
     /** Episodes the user has watched: AniList's list progress when signed in, the device's own record otherwise. 0 when unknown. */
     val progress: Int = 0,
+    /** Episodes aired so far for a show still airing, when AniList knows the next one; stands in for an unknown [episodes] total. */
+    val airedEpisodes: Int? = null,
 )
 
 /**

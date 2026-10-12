@@ -75,12 +75,13 @@ fun HomeScreen(
                     container.continueWatchingRepository,
                     container.aniListRepository,
                     container.appearancePrefs.titleLanguage,
+                    container.localListRepository,
                 )
             }
         },
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
+    val favouriteIds by viewModel.favouriteIds.collectAsStateWithLifecycle()
     val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
     // Stable until the language changes, so the carousel re-resolves its logos exactly then.
     val logoLookup: suspend (Int) -> String? = remember(titleLanguage) {
@@ -137,18 +138,8 @@ fun HomeScreen(
                             onClick = selectAnime,
                             logoFor = logoLookup,
                             posterFor = posterLookup,
-                            onToggleFavourite = { anime ->
-                                anime.anilistId?.let { id ->
-                                    scope.launch {
-                                        if (container.aniListRepository.isLoggedIn.value) {
-                                            container.aniListRepository.toggleFavourite(id)
-                                        } else {
-                                            // Signed out: keep the favourite on this device.
-                                            container.localListRepository.toggleFavourite(anime)
-                                        }
-                                    }
-                                }
-                            },
+                            favouriteIds = favouriteIds,
+                            onToggleFavourite = viewModel::toggleFavourite,
                         )
                     }
                 }

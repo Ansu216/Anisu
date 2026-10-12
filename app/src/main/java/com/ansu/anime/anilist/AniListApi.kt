@@ -633,6 +633,8 @@ class AniListApi(
             format = this["format"]?.jsonPrimitive?.contentOrNull,
             isAdult = this["isAdult"]?.jsonPrimitive?.content == "true",
             altTitles = allTitles(),
+            airedEpisodes = (this["nextAiringEpisode"] as? JsonObject)?.get("episode")?.jsonPrimitive?.content?.toIntOrNull()
+                ?.let { it - 1 }?.takeIf { it > 0 },
         )
     }
 
@@ -818,6 +820,7 @@ class AniListApi(
               startDate { year }
               format
               isAdult
+              nextAiringEpisode { episode }
             }
         """
     }

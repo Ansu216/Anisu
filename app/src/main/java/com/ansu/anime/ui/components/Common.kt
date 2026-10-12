@@ -70,6 +70,9 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import kotlin.math.roundToInt
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.geometry.Size
 import kotlin.math.abs
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.graphicsLayer
@@ -427,6 +430,8 @@ fun HeroCarousel(
     items: List<SAnime>,
     onClick: (SAnime) -> Unit,
     onToggleFavourite: (SAnime) -> Unit = {},
+    /** AniList ids the user has hearted; a slide's heart is filled when its title is in here. */
+    favouriteIds: Set<Int> = emptySet(),
     modifier: Modifier = Modifier,
     /** Resolves the title-logo image URL for an AniList id; null (or no logo) shows the plain text title. */
     logoFor: suspend (Int) -> String? = { null },
@@ -436,7 +441,6 @@ fun HeroCarousel(
     if (items.isEmpty()) return
     val shown = items.take(8)
     val pagerState = rememberPagerState(pageCount = { shown.size })
-    val likedIds = remember { mutableStateMapOf<String, Boolean>() }
     // AniList id -> logo URL. A key with a null value means "looked up, no logo", so it is not asked twice.
     val logos = remember(logoFor) { mutableStateMapOf<Int, String?>() }
     val posters = remember(posterFor) { mutableStateMapOf<Int, String?>() }
@@ -474,98 +478,27 @@ fun HeroCarousel(
                 val anime = shown[page]
                 // 0 when this page is centred, -1/+1 when it is fully off to one side.
                 val offset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).coerceIn(-1f, 1f)
-                val isLiked = likedIds[anime.id] == true
+                val isLiked = anime.anilistId?.let { it in favouriteIds } == true
                 val heroImage = anime.anilistId?.let { posters[it] } ?: anime.posterUrl ?: anime.bannerUrl
-                Box(modifier = Modifier.fillMaxSize().posterTransitionOrigin(heroImage, 0.dp)) {
-                    Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
-                        // AniList's own portrait cover (extraLarge); the banner is only a fallback.
-                        // Slightly oversized and shifted against the swipe, so the art trails the page (parallax).
-                        AsyncImage(
-                            model = heroImage,
-                            contentDescription = anime.title,
-                            contentScale = ContentScale.Crop,
-                            colorFilter = HeroBrightness,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(AnsuColors.BackgroundElevated)
-                                .graphicsLayer {
-                                    scaleX = 1.16f
-                                    scaleY = 1.16f
-                                    translationX = offset * size.width * 0.07f
-                                },
-                        )
-                    }
-                    // Fade into the page colour: the banner melts into "Continue Watching" below.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    0f to Color.Transparent,
-                                    0.45f to Color.Transparent,
-                                    0.72f to AnsuColors.Background.copy(alpha = 0.7f),
-                                    1f to AnsuColors.Background,
-                                ),
-                            ),
+                val logoUrl = anime.anilistId?.let { logos[it] }
+                Box(
+                    modifier = Modifier.fillMaxSize().posterTransitionOrigin(
+                        posterUrl = heroImage,
+                        cornerRadius = 0.dp,
+                        // What the details page shrinks back into on a back press: this very slide, with its
+                        // gradient and title, so the banner closes the way it looked, not as a bare picture.
+                        cover = { bounds -> HeroSlideCover(anime, heroImage, logoUrl, bounds) },
+                    ),
+                ) {
+                    HeroSlide(
+                        anime = anime,
+                        heroImage = heroImage,
+                        logoUrl = logoUrl,
+                        offset = offset,
+                        isLiked = isLiked,
+                        onClick = { onClick(anime) },
+                        onToggleFavourite = { onToggleFavourite(anime) },
                     )
-                    // Title, genres and buttons belong to the page, so they slide with it.
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(horizontal = 24.dp)
-                            .padding(bottom = 12.dp)
-                            .graphicsLayer { alpha = 1f - abs(offset) * 0.6f },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        TitleLogo(
-                            title = anime.title,
-                            logoUrl = anime.anilistId?.let { logos[it] },
-                            alignment = Alignment.Center,
-                            textAlign = TextAlign.Center,
-                            fontSize = 27.sp,
-                            uppercase = false,
-                            maxLogoWidth = 320.dp,
-                            maxLogoHeight = 130.dp,
-                        )
-                        anime.genres.take(3).takeIf { it.isNotEmpty() }?.let { genres ->
-                            Text(
-                                text = genres.joinToString(" • ") + anime.releaseYear?.let { " • $it" }.orEmpty(),
-                                color = AnsuColors.TextSecondary,
-                                fontSize = 14.sp,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(top = 6.dp),
-                            )
-                        }
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(top = 16.dp),
-                        ) {
-                            Button(
-                                onClick = { onClick(anime) },
-                                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
-                                shape = RoundedCornerShape(24.dp),
-                                contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
-                            ) {
-                                Text("View Details", color = AnsuColors.OnAccent, fontWeight = FontWeight.Bold)
-                            }
-                            FrostedGlassCard(modifier = Modifier.size(48.dp), shape = CircleShape, tintAlpha = 0.5f) {
-                                IconButton(
-                                    onClick = {
-                                        likedIds[anime.id] = !isLiked
-                                        onToggleFavourite(anime)
-                                    },
-                                    modifier = Modifier.fillMaxSize(),
-                                ) {
-                                    Icon(
-                                        imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                                        contentDescription = if (isLiked) "Unlike" else "Like",
-                                        tint = AnsuColors.TextPrimary,
-                                    )
-                                }
-                            }
-                        }
-                    }
                 }
             }
 
@@ -602,6 +535,146 @@ fun HeroCarousel(
     }
 }
 
+/**
+ * One hero slide: artwork, the fade into the page colour and the title / genres / buttons block. It is
+ * the single source of the banner's look, drawn both by the carousel and by [HeroSlideCover], so the
+ * details page can close into a banner that is pixel-for-pixel the one on the home screen.
+ *
+ * [imageSize] pins the artwork request to a size (the banner's own); the cover passes it so the picture
+ * comes out of the memory cache the carousel filled instead of being decoded again at another size.
+ */
+@Composable
+private fun HeroSlide(
+    anime: SAnime,
+    heroImage: String?,
+    logoUrl: String?,
+    offset: Float,
+    isLiked: Boolean,
+    onClick: () -> Unit,
+    onToggleFavourite: () -> Unit,
+    imageSize: IntSize? = null,
+) {
+    val context = LocalContext.current
+    val imageModel: Any? = remember(heroImage, imageSize) {
+        if (imageSize == null || heroImage == null) heroImage
+        else ImageRequest.Builder(context).data(heroImage).size(imageSize.width, imageSize.height).crossfade(false).build()
+    }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
+            // AniList's own portrait cover (extraLarge); the banner is only a fallback.
+            // Slightly oversized and shifted against the swipe, so the art trails the page (parallax).
+            AsyncImage(
+                model = imageModel,
+                contentDescription = anime.title,
+                contentScale = ContentScale.Crop,
+                colorFilter = HeroBrightness,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(AnsuColors.BackgroundElevated)
+                    .graphicsLayer {
+                        scaleX = 1.16f
+                        scaleY = 1.16f
+                        translationX = offset * size.width * 0.07f
+                    },
+            )
+        }
+        // Fade into the page colour: the banner melts into "Continue Watching" below.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        0.45f to Color.Transparent,
+                        0.72f to AnsuColors.Background.copy(alpha = 0.7f),
+                        1f to AnsuColors.Background,
+                    ),
+                ),
+        )
+        // Title, genres and buttons belong to the page, so they slide with it.
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 12.dp)
+                .graphicsLayer { alpha = 1f - abs(offset) * 0.6f },
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            TitleLogo(
+                title = anime.title,
+                logoUrl = logoUrl,
+                alignment = Alignment.Center,
+                textAlign = TextAlign.Center,
+                fontSize = 27.sp,
+                uppercase = false,
+                maxLogoWidth = 320.dp,
+                maxLogoHeight = 130.dp,
+            )
+            anime.genres.take(3).takeIf { it.isNotEmpty() }?.let { genres ->
+                Text(
+                    text = genres.joinToString(" • ") + anime.releaseYear?.let { " • $it" }.orEmpty(),
+                    color = AnsuColors.TextSecondary,
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 16.dp),
+            ) {
+                Button(
+                    onClick = onClick,
+                    colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
+                    shape = RoundedCornerShape(24.dp),
+                    contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
+                ) {
+                    Text("View Details", color = AnsuColors.OnAccent, fontWeight = FontWeight.Bold)
+                }
+                FrostedGlassCard(modifier = Modifier.size(48.dp), shape = CircleShape, tintAlpha = 0.5f) {
+                    IconButton(onClick = onToggleFavourite, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                            contentDescription = if (isLiked) "Unlike" else "Like",
+                            tint = AnsuColors.TextPrimary,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The banner as the details page's open/close animation draws it under the shrinking window: the same
+ * slide as the carousel plus the status-bar scrim, at rest (centred, not liked), non-interactive.
+ * [bounds] is the banner's size on screen, which also pins the artwork's cache key.
+ */
+@Composable
+private fun HeroSlideCover(anime: SAnime, heroImage: String?, logoUrl: String?, bounds: Size) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        HeroSlide(
+            anime = anime,
+            heroImage = heroImage,
+            logoUrl = logoUrl,
+            offset = 0f,
+            isLiked = false,
+            onClick = {},
+            onToggleFavourite = {},
+            imageSize = IntSize(bounds.width.roundToInt().coerceAtLeast(1), bounds.height.roundToInt().coerceAtLeast(1)),
+        )
+        // Same status-bar scrim the carousel draws over its top edge.
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(96.dp)
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.4f), Color.Transparent))),
+        )
+    }
+}
+
 /** Slight lift for the hero artwork: about +12% brightness, so dark posters are not swallowed by the page. */
 private val HeroBrightness = ColorFilter.colorMatrix(
     ColorMatrix(
@@ -632,9 +705,18 @@ private sealed interface LogoState {
 @Composable
 private fun rememberLogoState(url: String?): LogoState {
     val context = LocalContext.current
-    val state by produceState<LogoState>(if (url == null) LogoState.Unusable else LogoState.Loading, url) {
+    val state by produceState<LogoState>(
+        if (url == null) LogoState.Unusable else logoStateCache[url] ?: LogoState.Loading,
+        url,
+    ) {
         if (url == null) {
             value = LogoState.Unusable
+            return@produceState
+        }
+        // A logo that was already prepared (the home banner's, drawn again by the details page's close
+        // animation) is reused, so the second copy shows the lettering at once instead of the plain title first.
+        logoStateCache[url]?.let {
+            value = it
             return@produceState
         }
         value = withContext(Dispatchers.Default) {
@@ -645,8 +727,14 @@ private fun rememberLogoState(url: String?): LogoState {
                 ?: return@withContext LogoState.Unusable
             trimLogo(source)?.let { LogoState.Ready(it.asImageBitmap()) } ?: LogoState.Unusable
         }
+        (value as? LogoState.Ready)?.let { logoStateCache[url] = it }
     }
     return state
+}
+
+/** The most recently prepared logos by URL (main thread only), so a logo drawn twice is prepared once. */
+private val logoStateCache = object : LinkedHashMap<String, LogoState.Ready>(16, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, LogoState.Ready>?): Boolean = size > 24
 }
 
 /**

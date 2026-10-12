@@ -61,6 +61,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Switching tabs is now a soft cross-fade instead of a slide.** Home, Search, Schedule and My Space used to
+  travel sideways as one sheet; the page you leave now fades out while the next one fades in, in place, like
+  the reference recording. The bar still waits `TAB_TRANSITION_MILLIS` before it accepts the next queued tab.
+
+- **The details page now closes into the home banner as the banner itself.** Opened from the hero banner, the
+  page used to shrink to the banner's size showing a bare picture, and only when the transition ended did the
+  gradient and title pop in. The banner's own slide (artwork, fade to the page colour, logo or title, genres,
+  buttons) is now drawn under the shrinking window, so it lands looking exactly like the banner and the
+  hand-over is invisible; the open starts from the same picture. The banner's logo is remembered once it has
+  been prepared, so the copy under the window shows the lettering at once instead of the plain title first.
+  **Constraint:** posters and list cards keep the picture-only morph; only the banner uses its own cover.
+
 - **Nightly builds are named `0.3.0-nightly`, without the timestamp.** The `-2026.10.11.1846` suffix made every
   hourly build look like a different app and put a clock reading where a version belongs. What identifies a build
   is now the commit it was made from, which CI records and the updater compares.
@@ -100,6 +112,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repeats the number.
 
 ### Fixed
+
+- **The home banner's heart now shows whether you have liked the title.** It was a per-session toggle that
+  started empty, so a title already in your favourites (One Piece) showed an empty heart, and the heart reset every
+  time you left Home. The banner now reads your real favourites (AniList's when signed in, the device's otherwise),
+  fills the heart for liked titles and keeps it in step when you tap it; a heart change that AniList refuses is put back.
+
+- **My Space cards for shows still airing now have a progress bar.** A show with no announced episode total
+  (One Piece) showed only "Ep 1174" and no bar. The bar is now measured against the episodes aired so far, which the
+  list queries fetch, and a started title with no usable count at all still gets a dimmed full bar so the card keeps its
+  shape. **Constraint:** the label stays "Ep N" when the total is not announced, since the aired count is an estimate.
+
+- **My Space cards open with the poster animation wherever you tap them.** Only a tap on the small poster set the
+  animation's starting point; a tap on the title or the rest of the card opened the page with a plain fade. A touch
+  anywhere on the card now starts the same open and close as the posters, growing out of the card's poster.
+
+- **Playing a title from Continue Watching now loads its episodes.** The episode list handed to the player came
+  only from the details page, which that path skips, so the player had no episode picker and no previous/next
+  after a fresh start. The player now builds the list itself when it has none: AniList's episode count (the same
+  rule as the details page, so unaired episodes are left out), with episode titles and thumbnails, and the
+  sources' saved list when AniList cannot say how many episodes there are.
+
+- **Dragging a source to the top or bottom of the Streaming Priority list now scrolls the page.** Holding a row
+  near either edge of the screen scrolls the page under it, faster the closer to the edge, and the row keeps
+  swapping places as it passes the others, so a long list can be reordered in one drag.
 
 - **A manual release with no tag takes its version from `version.txt` instead of inventing a date.**
   Leaving the tag empty used to tag the release `v2026.10.12.1846`, which no `## [...]` heading in
