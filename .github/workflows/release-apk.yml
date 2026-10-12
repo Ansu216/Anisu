@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag, e.g. v0.2.0 (leave empty to auto-generate one)'
+        description: 'Release tag, e.g. v0.2.0 (leave empty to take the version from version.txt)'
         required: false
         default: ''
       channel:
@@ -68,7 +68,19 @@ jobs:
             TAG="${{ github.ref_name }}"
           else
             TAG="${{ github.event.inputs.tag }}"
-            if [ -z "$TAG" ]; then TAG="v$(date -u +'%Y.%m.%d.%H%M')"; fi
+            if [ -z "$TAG" ]; then
+              # No tag typed in: the version comes from version.txt (line 1), the single
+              # source of it, so a manual run names the release exactly the way its
+              # changelog heading is written ("## [<version>]") instead of inventing a
+              # date that no section in CHANGELOG.md carries. The "#" lines are comments,
+              # as everywhere else that reads the file.
+              VERSION_FROM_FILE="$(grep -v '^[[:space:]]*#' version.txt 2>/dev/null | sed -e 's/[[:space:]]//g' -e '/^$/d' | sed -n '1p' || true)"
+              if [ -z "$VERSION_FROM_FILE" ]; then
+                echo "::error::version.txt is missing its version (line 1) - it is the single source of it."
+                exit 1
+              fi
+              TAG="v$VERSION_FROM_FILE"
+            fi
           fi
 
           # v1.2.3 -> 1.2.3. The changelog headings use the version WITHOUT the

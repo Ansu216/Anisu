@@ -53,7 +53,10 @@ extensions).
   up from there — a small, "tidier" number is lower than the codes installed on
   people's phones, and Android reports a lower code to the user only as "the package
   appears to be invalid", refusing the install. The number therefore never
-  decreases. Release notes are extracted from `CHANGELOG.md` (see §7).
+  decreases. **No file repeats it**: every place that needs the version or the
+  version code reads `version.txt`, and an update edits that file and `CHANGELOG.md`
+  and nothing else — the readers are listed in §7.4. Release notes are extracted
+  from `CHANGELOG.md` (see §7).
 
 ### Do not bump the toolchain
 
@@ -218,6 +221,9 @@ means the manifest and the package name have drifted — that is an instant
 - [ ] No new `com.kernel.anime` / `Anisu` / `StreamHub` name anywhere (§5).
 - [ ] No duplicate top-level symbols were introduced (§4.3.2).
 - [ ] `CHANGELOG.md` `## [Unreleased]` updated (§7).
+- [ ] A version change touched `version.txt` **only** (plus that changelog entry) —
+      no copy of the version or the version code is left behind in another file
+      (§7.4).
 - [ ] Docs updated if the change alters how the project is built, signed or
       released (`README.md`, `how-to-compile.md`, `CLAUDE.md`, `AGENTS.md`).
 - [ ] `git status` contains no `local.properties`, `build/`, `.gradle/` or
@@ -312,6 +318,8 @@ that could break existing behaviour, and ask when in doubt.
   the version code and the channel (§7.4); the version code is a plain, monotonic
   build number, so keep it increasing, never lower it below a code that has already
   been published, and do not put the version back in the workflow's `date` calls.
+  Do not copy the number into another file either: every reader takes it from here,
+  and a copy goes stale at the next release (§7.4 lists them).
 - **The workflow job graphs.** `plan` → `build` (parallel matrix) →
   `publish`/`release` exists so a partial build can never be published. Do not
   merge the matrix legs back into one job, and do not remove the
@@ -408,6 +416,35 @@ nightly     # line 3 - channel
   is what the updater compares — `stage-nightly.sh` likewise identifies a run by the run
   id it writes into `nightly.json`, not by the now-shared version name.
 
+#### Who reads it — nothing repeats the version
+
+Every place that needs the version or the version code takes it out of this file.
+None of them carries a copy of the number:
+
+| Reader | How it reads `version.txt` |
+|---|---|
+| `app/build.gradle.kts` | lines 1-2-3 into `versionName`, `versionCode` and `BuildConfig.RELEASE_CHANNEL`; each is overridable per build with `-PversionName` / `-PversionCode` / `-Pchannel`, and a missing or non-integer line fails the build with an explicit message instead of a default |
+| `.github/workflows/apk-nightly.yml` | the `plan` job checks the repository out, drops the `#` lines, reads lines 1-2-3, refuses a code that is not an integer, and hands `-PversionName` / `-PversionCode` to **both** matrix legs so they carry one name |
+| `.github/workflows/release-apk.yml` | **line 2 for the version code, always**; a manual run with no tag typed in takes the version from line 1 and tags it `v<line 1>`, so the release matches its own `## [<version>]` heading instead of a date that no changelog section carries. A tag typed in or pushed still decides the release name |
+| `.github/scripts/stage-nightly.sh` | receives `VERSION_NAME` / `VERSION_CODE` from the `plan` job (never recomputes them) and copies `version.txt` into the published branch |
+| the app at runtime | `BuildConfig.VERSION_NAME` / `VERSION_CODE` in About and Updates, and `BuildConfig.BUILD_COMMIT` for the updater's comparison |
+
+What follows from it:
+
+- **An update edits `version.txt` and `CHANGELOG.md`** — nothing else. The number to
+  put on line 1 is chosen with §7.2, the entry is written with §7.3. A version
+  repeated in a README, a code comment, a workflow or a Kotlin constant is a second
+  source of truth, and it goes stale the moment the next update lands.
+- **Never derive it** at build time: no `date` call for a version or a version code,
+  no workflow run number, no tag guessed inside Gradle. A release tag is `v` + line 1;
+  the version code is line 2. (The `iso` field the nightly writes into `nightly.json`
+  is a build timestamp, not a version.)
+- **A `-P` override is a build input, not a second source.** CI uses it to make both
+  legs of one run agree; the value still originates in this file.
+- **If a reader needs something this file does not carry, add a line here** and teach
+  every reader about it in the same change — never hardcode the value at the reading
+  end.
+
 ### 7.5 Where the changelog ends up
 
 `release-apk.yml` extracts the `## [<version>]` section from `CHANGELOG.md` on the
@@ -437,7 +474,7 @@ is worse for every user, so add the section **before** pushing the tag.
 | Workflow | Trigger | Output |
 |---|---|---|
 | `.github/workflows/apk-nightly.yml` | hourly `cron`, **every push to `main`**, manual | force-publishes to `apk-nightly`: `Ansu-nightly.apk`, `Ansu-nightly-debug.apk`, `nightly.json`, generated `README.md` |
-| `.github/workflows/release-apk.yml` | tag `v*`, manual | GitHub Release with `Ansu-<version>.apk` and `-debug.apk`, notes extracted from `CHANGELOG.md` |
+| `.github/workflows/release-apk.yml` | tag `v*`, manual (with no tag typed in the manual run uses `v` + `version.txt` line 1) | GitHub Release with `Ansu-<version>.apk` and `-debug.apk`, notes extracted from `CHANGELOG.md` |
 | `.github/workflows/extract-fix-zip.yml` | push to `main` whose **commit title** starts with `Maygodblastyou`, `fix` or `n`; manual (always starts) | extracts the `fix.*` archive **that push brought in** (`.zip`, `.7z`, `.rar`, `.tar`, `.tar.gz`, …) into the working tree (its own relative paths), commits it to `main` as `extract fix.zip and updated the app`, then dispatches the nightly APK build. A push applies only the archives it changed; a manual run applies everything on `main` and always dispatches a build. No account is checked |
 
 The two APK workflows are built the same way, and **both compile their APKs in

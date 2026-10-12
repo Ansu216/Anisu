@@ -471,6 +471,10 @@ Three GitHub Actions workflows are included under `.github/workflows/`.
 
 - **Runs:** when you push a tag like `v1.0.0`, or manually
   (**Actions → Anisu Release APK → Run workflow**, with an optional tag).
+- **Version:** the release is named after the tag; leave the tag empty in a manual run
+  and it is `v` + line 1 of `version.txt`, so the release matches its `CHANGELOG.md`
+  heading. The version code is always line 2 of `version.txt` — the same counter the
+  nightlies publish with.
 - **Does:** builds and signs the APKs, verifies signatures, and creates a GitHub
   Release named after the tag with `Ansu-<version>.apk` and
   `Ansu-<version>-debug.apk` attached.

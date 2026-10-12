@@ -85,7 +85,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   7-Zip binary the workflow installs when the runner has none), and a push extracts only the archive that push
   changed. A manual run still applies every archive present, because that is what "re-apply my archive" means.
 
+- **The version rule now lives in one place, with every reader of the file listed.** How the
+  version and the version code travel through the project — which reader takes which line, and that
+  a `-P` value on the command line is a build input rather than a second source — was spread across
+  the build script, the two workflows and the notes in `version.txt` itself. It is one section now,
+  and it states the rule plainly: an update edits `version.txt` and `CHANGELOG.md`, and no other file
+  repeats the number.
+
 ### Fixed
+
+- **A manual release with no tag takes its version from `version.txt` instead of inventing a date.**
+  Leaving the tag empty used to tag the release `v2026.10.12.1846`, which no `## [...]` heading in
+  `CHANGELOG.md` matches, so the release came out with a placeholder body and a version nobody ever
+  chose. The tag is now `v` plus line 1 of `version.txt` — the single source the nightlies and the
+  build itself read — and a file missing that line fails the run with an explicit message.
+  **Constraint:** a tag typed in or pushed still decides the release name, and the version code stays
+  on line 2 for both channels.
 
 - **A tab change no longer shows the screen twice, and a fast switch no longer leaves the previous tab stuck.**
   The move slid each screen a sixth of the width *and* faded both of them at once, so two full screens were
