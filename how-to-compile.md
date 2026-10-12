@@ -495,6 +495,12 @@ Three GitHub Actions workflows are included under `.github/workflows/`.
   7z and rar go through a 7-Zip binary, which the workflow installs if the runner
   does not ship one; failing to install it does not fail a run that only has a zip
   or a tar to read.
+- **A wrong title is visible, not silent:** a push that carried a `fix.*` archive but
+  whose commit title starts with none of the three words runs the workflow's `warn`
+  job instead of the extraction one, which reports the archive it did *not* apply as a
+  `::warning::` annotation and in the run summary, naming the title it saw. Before
+  that, the run was simply skipped and looked like a successful extraction with
+  nothing in it.
 - **Only what the push brought in:** on a push the script diffs the commit before
   the push against the pushed one and extracts the `fix.*` files that diff touched,
   so an old archive already in the repository is never re-applied by a later commit

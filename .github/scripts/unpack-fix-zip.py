@@ -17,6 +17,11 @@ Which archives are applied:
   * without it (a manual run), every fix archive on `main` right now;
   * names given on the command line override both, for local use.
 
+`--check` applies nothing: it prints the archives that *would* be applied, one per
+line, and is what `extract-fix-zip.yml`'s warning job uses to tell a push that
+carried an archive it did not apply (a commit title that matches none of the
+triggers). An empty output means "nothing to apply", which is not an error.
+
 Python rather than `unzip`/`tar -x`/`7z x` on the repository so every entry is
 checked *before* it is written: a path that escapes the repository or points into
 `.git` aborts the run instead of overwriting something outside the checkout. Tar
@@ -61,7 +66,10 @@ def fail(message):
 
 
 def notice(message):
-    print(f"::notice::{message}")
+    # stderr, so that `--check`'s stdout stays machine-readable: the warning job reads
+    # it as the list of archives. GitHub collects `::notice::` annotations from either
+    # stream.
+    print(f"::notice::{message}", file=sys.stderr)
 
 
 def allow_workflows():
@@ -232,9 +240,8 @@ def write_entries(root, entries, workflows_allowed, source):
     return written, skipped_workflows
 
 
-def select_archives(root):
+def select_archives(root, requested):
     """Explicit names, else the push's new archives, else everything present."""
-    requested = sys.argv[1:]
     if requested:
         selected = []
         for name in requested:
@@ -253,8 +260,20 @@ def select_archives(root):
 
 
 def main():
+    arguments = sys.argv[1:]
+    # `--check` answers "which archives would be applied?" and prints only their
+    # names, one per line, so the warning job can read them without duplicating the
+    # selection rules. Nothing else is printed in that mode.
+    check_only = "--check" in arguments
+    requested = [name for name in arguments if name != "--check"]
+
     root = os.path.realpath(os.getcwd())
-    archives = select_archives(root)
+    archives = select_archives(root, requested)
+
+    if check_only:
+        for name in archives:
+            print(name)
+        return
 
     if not archives:
         if os.environ.get("ANSU_BEFORE", "").strip():

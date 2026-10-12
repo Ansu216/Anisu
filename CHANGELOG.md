@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A fix archive pushed with the wrong commit title now says so instead of passing in silence.**
+  The extraction only runs for a commit title starting with `Maygodblastyou`, `fix` or `n`, and a
+  title that missed all three produced a run that was simply skipped — indistinguishable, in the
+  Actions list, from an archive that had been applied. Such a push now reports the archive it did
+  not apply as a warning annotation and in the run summary, naming the file and the title it read,
+  and a push that changed no archive at all no longer starts the workflow.
+
 - **Search suggests titles as you type, and shows the top results in your chosen layout.** AniList only finds
   titles that match what is typed exactly, so a small typo or a half-typed word turned up nothing useful. While the
   search panel is open it now lists your earlier searches that match, then up to five titles close to what you typed

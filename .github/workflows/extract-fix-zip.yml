@@ -26,6 +26,12 @@ name: Extract fix.zip
 #     (the previous commit → this one) and extracts only the archives it touched, so
 #     an old `fix.zip` sitting in the repository is never re-applied behind your back
 #     by a later commit that happens to carry a trigger title.
+# A push that carries an archive but whose title matches none of those words is **not
+# silent**: the `extract` job is skipped, so the second job (`warn`) runs instead, asks
+# the same script which archives it would have applied, and reports them as a warning
+# annotation plus a run summary. Getting the title wrong is therefore visible in the
+# Actions list rather than looking like an archive that was applied.
+#
 #   * **No login is checked.** The old `if: github.actor == 'Maygodblastyou'` guard
 #     skipped every run as soon as the account was renamed, and a manual run with it,
 #     for the same reason. Only someone who can already push to `main` (or dispatch a
@@ -57,6 +63,14 @@ on:
   push:
     branches:
       - main
+    # The workflow starts only when the push touched a fix archive at the repository
+    # root, so a push with nothing to apply costs no runner at all — and this is what
+    # makes the warning job below possible: it runs exactly on the pushes that carried
+    # an archive their commit title did not match. A path filter is case-sensitive, so
+    # both spellings are listed; the script accepts either.
+    paths:
+      - 'fix.*'
+      - 'Fix.*'
   workflow_dispatch:
 
 permissions:
@@ -172,3 +186,63 @@ jobs:
           set -euo pipefail
           gh workflow run apk-nightly.yml --ref main
           echo "::notice::Started the APK build for main."
+
+  # ---------------------------------------------------------------------------
+  # The tripwire. A push that carried a fix archive but whose commit title matched
+  # none of the triggers used to end in silence — the `extract` job above is skipped,
+  # so the run showed nothing at all and the archive looked applied. The `if` here is
+  # the exact negation of that job's, so this one runs on precisely those pushes, and
+  # only ever after the path filter let the run start at all (a fix archive changed).
+  # It reads the same selection the extractor would have used, through the same
+  # script in `--check` mode, and writes nothing.
+  # ---------------------------------------------------------------------------
+  warn:
+    name: Warn about a fix archive this push did not apply
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'push' &&
+      github.event.head_commit.message != null &&
+      !(
+        startsWith(github.event.head_commit.message, 'Maygodblastyou') ||
+        startsWith(github.event.head_commit.message, 'fix') ||
+        startsWith(github.event.head_commit.message, 'n')
+      )
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The diff goes from the pushed commit back to the previous one, so the
+          # history has to contain both.
+          fetch-depth: 0
+
+      - name: Say so when the push carried a fix archive
+        env:
+          ANSU_BEFORE: ${{ github.event.before }}
+          ANSU_SHA: ${{ github.sha }}
+          # Through the environment, never interpolated into the script: a commit
+          # message is text a person wrote.
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+
+          # The very rule the extractor uses, in `--check` mode: the archives it would
+          # have applied, one per line and nothing else on stdout.
+          ARCHIVES="$(python3 .github/scripts/unpack-fix-zip.py --check || true)"
+          if [ -z "$ARCHIVES" ]; then
+            echo "::notice::This push changed no fix archive — nothing to apply."
+            exit 0
+          fi
+
+          TITLE="$(printf '%s' "$COMMIT_MESSAGE" | head -1)"
+          LISTED="$(printf '%s' "$ARCHIVES" | tr '\n' ' ' | sed 's/ *$//')"
+
+          echo "::warning title=Fix archive not applied::$LISTED changed in this push, but the commit title \"$TITLE\" starts with none of Maygodblastyou, fix or n, so nothing was extracted. Push again with a matching title, or run this workflow manually."
+
+          {
+            echo "### Fix archive not applied"
+            echo
+            echo "This push changed \`$LISTED\`, but its commit title is \`$TITLE\` — it starts with none of \`Maygodblastyou\`, \`fix\` or \`n\`, which is what the extraction job waits for."
+            echo
+            echo "Push the archive again with a matching title, or dispatch **Extract fix.zip** from the Actions tab: a manual run always starts and applies every archive on \`main\`."
+          } >> "$GITHUB_STEP_SUMMARY"

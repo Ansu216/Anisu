@@ -475,7 +475,7 @@ is worse for every user, so add the section **before** pushing the tag.
 |---|---|---|
 | `.github/workflows/apk-nightly.yml` | hourly `cron`, **every push to `main`**, manual | force-publishes to `apk-nightly`: `Ansu-nightly.apk`, `Ansu-nightly-debug.apk`, `nightly.json`, generated `README.md` |
 | `.github/workflows/release-apk.yml` | tag `v*`, manual (with no tag typed in the manual run uses `v` + `version.txt` line 1) | GitHub Release with `Ansu-<version>.apk` and `-debug.apk`, notes extracted from `CHANGELOG.md` |
-| `.github/workflows/extract-fix-zip.yml` | push to `main` whose **commit title** starts with `Maygodblastyou`, `fix` or `n`; manual (always starts) | extracts the `fix.*` archive **that push brought in** (`.zip`, `.7z`, `.rar`, `.tar`, `.tar.gz`, …) into the working tree (its own relative paths), commits it to `main` as `extract fix.zip and updated the app`, then dispatches the nightly APK build. A push applies only the archives it changed; a manual run applies everything on `main` and always dispatches a build. No account is checked |
+| `.github/workflows/extract-fix-zip.yml` | push to `main` that **changed a `fix.*` file** *and* whose **commit title** starts with `Maygodblastyou`, `fix` or `n`; manual (always starts) | extracts the `fix.*` archive **that push brought in** (`.zip`, `.7z`, `.rar`, `.tar`, `.tar.gz`, …) into the working tree (its own relative paths), commits it to `main` as `extract fix.zip and updated the app`, then dispatches the nightly APK build. A push applies only the archives it changed; a manual run applies everything on `main` and always dispatches a build. A push that carried an archive but has no matching title ends in a `::warning::` annotation and a run summary (`warn` job) instead of silently doing nothing. No account is checked |
 
 The two APK workflows are built the same way, and **both compile their APKs in
 parallel**:
@@ -530,7 +530,13 @@ own collaborators were both finished as `skipped` in a second, having done nothi
 and only someone who can already push to `main` or dispatch a workflow can reach
 this job. The run cannot loop by itself either: the bot's own commit message
 matches no trigger title, and a push made with `GITHUB_TOKEN` starts no workflow at
-all. Five details are load-bearing:
+all. The run only starts when the push changed a `fix.*` file (a `paths:` filter), so a
+push with nothing to apply costs no runner, and a push that *did* carry an archive with
+a title matching none of the three fires the `warn` job instead of the `extract` one:
+same script, `--check` mode (its stdout is the list of archives, notices go to stderr),
+and a warning annotation plus a run summary naming the archive and the title. Before it,
+a mistyped title looked exactly like a working extraction — a green run with nothing in
+it. Five details are load-bearing:
 
 - A **push applies only the archives that push brought in**. The script diffs the
   commit before the push against the pushed one and extracts the `fix.*` files that
