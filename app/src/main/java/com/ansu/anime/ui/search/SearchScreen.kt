@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -122,6 +123,16 @@ import kotlinx.coroutines.delay
 
 private fun SAnime.resultKey(): String = id + origin.hashCode()
 
+/** How many titles the panel suggests under a typed query. */
+private const val SUGGESTION_COUNT = 5
+
+/** How many top results the panel shows: nine as a grid (three rows of three), five as a list. */
+private const val TOP_GRID_COUNT = 9
+private const val TOP_LIST_COUNT = 5
+
+/** How many earlier searches the panel shows under a typed query. */
+private const val MATCHING_HISTORY_COUNT = 3
+
 @Composable
 fun SearchScreen(
     container: AppContainer,
@@ -170,6 +181,7 @@ fun SearchScreen(
         moreFailed = false
         val result = container.catalogRepository.search(text, filters, 1)
         results = result?.items.orEmpty().distinctBy { it.resultKey() }
+        session.remember(results)
         hasNext = result?.hasNextPage == true
         failed = result == null
         session.loadedKey = if (result == null) null else key
@@ -204,11 +216,35 @@ fun SearchScreen(
                 moreFailed = true
             } else {
                 results = (results + next.items).distinctBy { it.resultKey() }
+                session.remember(next.items)
                 hasNext = next.hasNextPage
                 page += 1
             }
         } finally {
             isLoadingMore = false
+        }
+    }
+
+    // ---- Typo-tolerant suggestions, and the top results the panel shows in the chosen layout ----
+    val typedNow = query.trim()
+    val suggestions = remember(typedNow, session.poolVersion) {
+        if (typedNow.length < 2) {
+            emptyList()
+        } else {
+            rankAnime(typedNow, session.pool())
+                .filterNot { TitleMatcher.normalize(it.title) == TitleMatcher.normalize(typedNow) }
+                .distinctBy { it.title.lowercase() }
+                .take(SUGGESTION_COUNT)
+        }
+    }
+    val panelTopResults = remember(typedNow, results, isLoading, isGrid) {
+        if (typedNow.length < 2 || isLoading) {
+            emptyList()
+        } else {
+            // Close matches first; the results AniList returned that the matcher did not rank still fill the rest.
+            val ranked = rankAnime(typedNow, results)
+            (ranked + results.filterNot { it in ranked })
+                .take(if (isGrid) TOP_GRID_COUNT else TOP_LIST_COUNT)
         }
     }
 
@@ -345,12 +381,17 @@ fun SearchScreen(
                   barBounds = { barBounds },
                   areaBounds = { areaBounds },
                   history = history,
+                  suggestions = suggestions,
+                  topResults = panelTopResults,
+                  topSearching = typedNow.length >= 2 && isLoading,
+                  isGrid = isGrid,
                   filter = query.trim(),
                   bottomPadding = padding.calculateBottomPadding(),
                   onPick = { submit(it) },
                   onFill = { query = it },
                   onRemove = container.searchHistory::remove,
                   onClearAll = container.searchHistory::clear,
+                  onOpen = { anime -> closeSearch(); openResult(anime) },
               )
           }
 
@@ -521,7 +562,9 @@ private class RevealShape(private val rect: Rect, private val radius: Float) : S
 }
 
 /**
- * The dark panel that grows out of the search bar to the edges of the screen, with the search history inside.
+ * The dark panel that grows out of the search bar to the edges of the screen. With nothing typed it lists the search
+ * history. While something is typed it shows, top to bottom: the earlier searches that match it, up to five titles
+ * close to it, and the top results in the chosen layout (nine as a grid, five as a list).
  * It is laid out at full size the whole time and only the clip grows (from the bar's rectangle and rounded corners
  * to the whole area with square corners), so the list never reflows mid-animation; it fades in as the panel opens.
  */
@@ -532,14 +575,24 @@ private fun SearchPanel(
     areaBounds: () -> Rect,
     history: List<String>,
     filter: String,
+    suggestions: List<SAnime>,
+    topResults: List<SAnime>,
+    topSearching: Boolean,
+    isGrid: Boolean,
     bottomPadding: Dp,
     onPick: (String) -> Unit,
     onFill: (String) -> Unit,
     onRemove: (String) -> Unit,
     onClearAll: () -> Unit,
+    onOpen: (SAnime) -> Unit,
 ) {
-    // While something is typed the history narrows to the matching entries.
-    val shown = if (filter.isEmpty()) history else history.filter { it.contains(filter, ignoreCase = true) }
+    val typing = filter.isNotEmpty()
+    // While something is typed, only the earlier searches that match it are shown, the newest few.
+    val shown = if (typing) {
+        history.filter { it.contains(filter, ignoreCase = true) }.take(MATCHING_HISTORY_COUNT)
+    } else {
+        history
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -574,45 +627,161 @@ private fun SearchPanel(
                 },
             contentPadding = PaddingValues(top = SearchBarRowHeight + 4.dp, bottom = 12.dp + bottomPadding),
         ) {
-            if (shown.isEmpty()) {
-                item(key = "empty") {
-                    Text(
-                        text = if (history.isEmpty()) "Your searches will show up here." else "No matching searches.",
-                        color = AnsuColors.TextTertiary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
-                        textAlign = TextAlign.Center,
-                    )
-                }
-            } else {
-                item(key = "header") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "Search history",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = AnsuColors.TextPrimary,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (filter.isEmpty()) {
+            if (!typing) {
+                if (history.isEmpty()) {
+                    item(key = "empty") {
+                        EmptyPanelText("Your searches will show up here.")
+                    }
+                } else {
+                    item(key = "header") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "Search history",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = AnsuColors.TextPrimary,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f),
+                            )
                             TextButton(onClick = onClearAll) { Text("Clear all", color = AnsuColors.TextSecondary) }
                         }
                     }
+                    items(history, key = { it }) { entry ->
+                        SearchHistoryRow(
+                            text = entry,
+                            onPick = { onPick(entry) },
+                            onFill = { onFill(entry) },
+                            onRemove = { onRemove(entry) },
+                        )
+                    }
                 }
-                items(shown, key = { it }) { entry ->
-                    SearchHistoryRow(
-                        text = entry,
-                        onPick = { onPick(entry) },
-                        onFill = { onFill(entry) },
-                        onRemove = { onRemove(entry) },
-                    )
+            } else {
+                if (shown.isNotEmpty()) {
+                    item(key = "history-header") { PanelSectionHeader("From your searches") }
+                    items(shown, key = { "history-$it" }) { entry ->
+                        SearchHistoryRow(
+                            text = entry,
+                            onPick = { onPick(entry) },
+                            onFill = { onFill(entry) },
+                            onRemove = { onRemove(entry) },
+                        )
+                    }
+                }
+                if (suggestions.isNotEmpty()) {
+                    item(key = "suggest-header") { PanelSectionHeader("Suggestions") }
+                    items(suggestions, key = { "suggest-${it.title}" }) { anime ->
+                        SuggestionRow(
+                            title = anime.title,
+                            onOpen = { onOpen(anime) },
+                            onFill = { onFill(anime.title) },
+                        )
+                    }
+                }
+                if (topSearching || topResults.isNotEmpty()) {
+                    item(key = "top-header") { PanelSectionHeader("Top results") }
+                    when {
+                        topSearching -> item(key = "top-loading") { PanelSpinner() }
+                        isGrid -> item(key = "top-grid") { PanelGrid(topResults, onOpen) }
+                        else -> items(topResults, key = { "top-${it.resultKey()}" }) { anime ->
+                            Box(modifier = Modifier.padding(horizontal = 12.dp)) {
+                                SearchListItem(anime = anime, onClick = { onOpen(anime) }, animateOpen = false)
+                            }
+                        }
+                    }
+                }
+                if (shown.isEmpty() && suggestions.isEmpty() && topResults.isEmpty() && !topSearching) {
+                    item(key = "nomatch") { EmptyPanelText("No matching searches.") }
                 }
             }
         }
     }
+}
+
+/** The top results as three-by-three rows of posters, the same look as the grid below the bar. */
+@Composable
+private fun PanelGrid(animes: List<SAnime>, onOpen: (SAnime) -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        animes.chunked(3).forEach { rowItems ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                rowItems.forEach { anime ->
+                    Box(modifier = Modifier.weight(1f)) {
+                        SearchGridCard(anime = anime, onClick = { onOpen(anime) }, animateOpen = false)
+                    }
+                }
+                repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+/** A small heading inside the panel, such as "Suggestions". */
+@Composable
+private fun PanelSectionHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        color = AnsuColors.TextPrimary,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp),
+    )
+}
+
+/** One suggested title: tap to open it, the arrow to copy the title into the search bar. */
+@Composable
+private fun SuggestionRow(title: String, onOpen: () -> Unit, onFill: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen)
+            .padding(start = 20.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Search,
+            contentDescription = null,
+            tint = AnsuColors.TextTertiary,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = title,
+            color = AnsuColors.TextPrimary,
+            style = MaterialTheme.typography.bodyLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(horizontal = 16.dp, vertical = 14.dp),
+        )
+        IconButton(onClick = onFill, modifier = Modifier.size(40.dp)) {
+            Icon(
+                imageVector = Icons.Filled.NorthWest,
+                contentDescription = "Use in search bar",
+                tint = AnsuColors.TextSecondary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PanelSpinner() {
+    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(color = AnsuColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+    }
+}
+
+@Composable
+private fun EmptyPanelText(text: String) {
+    Text(
+        text = text,
+        color = AnsuColors.TextTertiary,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
+        textAlign = TextAlign.Center,
+    )
 }
 
 /** One remembered search: tap to run it, the arrow to copy it into the bar for editing, the cross to forget it. */
@@ -719,12 +888,12 @@ private fun RemovableChip(label: String, onRemove: () -> Unit) {
 
 /** Grid mode: poster with the age-rating chip top-left and the title over a scrim at the bottom. */
 @Composable
-private fun SearchGridCard(anime: SAnime, onClick: () -> Unit) {
+private fun SearchGridCard(anime: SAnime, onClick: () -> Unit, animateOpen: Boolean = true) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(2f / 3f)
-            .posterTransitionOrigin(anime.posterUrl, 14.dp)
+            .let { if (animateOpen) it.posterTransitionOrigin(anime.posterUrl, 14.dp) else it }
             .clip(RoundedCornerShape(14.dp))
             .background(AnsuColors.BackgroundElevated)
             .clickable(onClick = onClick),
@@ -761,7 +930,7 @@ private fun SearchGridCard(anime: SAnime, onClick: () -> Unit) {
 
 /** List mode: poster on the left; name, episodes and year, genre tags and format on the right. */
 @Composable
-private fun SearchListItem(anime: SAnime, onClick: () -> Unit) {
+private fun SearchListItem(anime: SAnime, onClick: () -> Unit, animateOpen: Boolean = true) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -775,7 +944,7 @@ private fun SearchListItem(anime: SAnime, onClick: () -> Unit) {
             modifier = Modifier
                 .width(96.dp)
                 .aspectRatio(2f / 3f)
-                .posterTransitionOrigin(anime.posterUrl, 12.dp)
+                .let { if (animateOpen) it.posterTransitionOrigin(anime.posterUrl, 12.dp) else it }
                 .clip(RoundedCornerShape(12.dp))
                 .background(AnsuColors.Background),
         ) {

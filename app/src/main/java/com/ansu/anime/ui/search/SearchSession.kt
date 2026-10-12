@@ -32,4 +32,31 @@ class SearchSession {
 
     val gridState = LazyGridState()
     val listState = LazyListState()
+
+    /**
+     * Every title the search has shown this session, keyed by title, oldest first. The typo-tolerant suggestions are
+     * ranked from these, so a title that came up once still counts when a later search is mistyped.
+     */
+    private val titlePool = LinkedHashMap<String, SAnime>()
+
+    /** Changes whenever [titlePool] does, so the screen knows to rank its suggestions again. */
+    var poolVersion by mutableIntStateOf(0)
+        private set
+
+    fun remember(items: List<SAnime>) {
+        if (items.isEmpty()) return
+        for (anime in items) {
+            val key = anime.title.lowercase()
+            titlePool.remove(key)
+            titlePool[key] = anime
+        }
+        while (titlePool.size > MAX_POOL) titlePool.remove(titlePool.keys.first())
+        poolVersion++
+    }
+
+    fun pool(): List<SAnime> = titlePool.values.toList()
+
+    companion object {
+        private const val MAX_POOL = 400
+    }
 }

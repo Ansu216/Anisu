@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Search suggests titles as you type, and shows the top results in your chosen layout.** AniList only finds
+  titles that match what is typed exactly, so a small typo or a half-typed word turned up nothing useful. While the
+  search panel is open it now lists your earlier searches that match, then up to five titles close to what you typed
+  (a missing or swapped letter still counts), then the top results: nine as a grid or five as a list, following the
+  grid/list switch. **Constraint:** suggestions are ranked from the titles this session has already shown, so a title
+  AniList never returns for a badly misspelled query cannot be suggested.
+
 - **Anisu now backs itself up: one `.anisu` archive a day, the last three kept.** Nobody should have to remember
   to tap **Create backup**, so a daily job writes a copy into app-private storage and drops the oldest one as a
   new one lands. Settings → Backup shows the switch, when the last copy was written, a **Back up now** action,
@@ -44,6 +51,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **Backup** row in the App group that opens a dedicated `Backup` screen; System keeps only the
   diagnostics tooling. The two actions, the file picker and the "Anisu restarts itself to apply the
   restore" behaviour are unchanged — only where you find them moved.
+
+### Fixed
+
+- **Switching tabs quickly no longer leaves two screens drawn over each other.** The tab bar waited exactly as
+  long as the slide lasted before it allowed the next tab. A frame of slack was missing, so a fast second tap began
+  the next slide while the old screen was still on its way out, and the two showed at once. The bar now holds the
+  next tab for a short settle time after each slide.
 
 ### Changed
 

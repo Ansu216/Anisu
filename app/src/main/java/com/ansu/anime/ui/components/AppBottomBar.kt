@@ -126,7 +126,10 @@ fun AppBottomBar(
                         restoreState = true
                     }
                 }
-                delay(TAB_TRANSITION_MILLIS.toLong())
+                // Hold the next move until the slide has really finished. The NavHost keeps the old screen on the
+                // way out until its exit animation ends, and a wait that ends on the frame the slide is due to end
+                // starts the next move over a screen that is still leaving: that overlap is the doubled screen.
+                delay(TAB_TRANSITION_MILLIS.toLong() + TAB_SETTLE_MILLIS)
             }
     }
 
@@ -170,6 +173,9 @@ fun AppBottomBarReserve(modifier: Modifier = Modifier) {
         Spacer(Modifier.size(width = NavSlotWidth * barItems.size + 10.dp, height = NavSlotHeight + 10.dp))
     }
 }
+
+/** Extra time after a tab slide before the next queued tab may start, so frames of the old slide have finished. */
+private const val TAB_SETTLE_MILLIS = 90L
 
 private val NavSlotWidth = 70.dp
 private val NavSlotHeight = 40.dp
