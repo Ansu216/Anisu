@@ -145,3 +145,32 @@ data class AniListMediaCore(
     val titles: List<String>,
     val episodes: List<AniListStreamingEpisode>,
 )
+
+/** A forum thread about a show on AniList (the place its comments live). */
+data class AniListThread(
+    val id: Int,
+    val title: String,
+    val replyCount: Int,
+    val userName: String?,
+    val isLocked: Boolean,
+)
+
+/**
+ * One comment in an AniList thread, with the replies under it already nested. [text] is AniList's own markdown;
+ * the comments screen turns it into plain text for display.
+ */
+data class AniListComment(
+    val id: Int,
+    val userId: Int?,
+    val userName: String,
+    val avatarUrl: String?,
+    val text: String,
+    val likeCount: Int,
+    val isLiked: Boolean,
+    /** Seconds since the epoch. */
+    val createdAt: Long,
+    val replies: List<AniListComment> = emptyList(),
+)
+
+/** One page of a thread's top-level comments. */
+data class AniListCommentPage(val comments: List<AniListComment>, val hasNextPage: Boolean)

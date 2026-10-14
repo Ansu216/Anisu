@@ -10,6 +10,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class AniListRepository(
@@ -43,6 +47,33 @@ class AniListRepository(
 
     init {
         scope.launch { refreshViewer() }
+    }
+
+    /**
+     * Keeps the signed-in user's lists in the response cache for as long as it is running (the app calls it
+     * only while it is on screen). All six lists and the favourites are fetched at once when the app opens,
+     * then again every [LIST_REFRESH_MS], a little inside the cache's lifetime, so My Space and the home
+     * banner's hearts always find their lists ready instead of waiting on the network. Signing out stops it;
+     * signing in starts it. The device's own lists need none of this: they are read from the local database.
+     */
+    suspend fun keepListsWarm() {
+        isLoggedIn.collectLatest { loggedIn ->
+            if (!loggedIn) return@collectLatest
+            viewer.filterNotNull().first()
+            while (true) {
+                warmLists()
+                delay(LIST_REFRESH_MS)
+            }
+        }
+    }
+
+    private suspend fun warmLists() {
+        val userId = _viewer.value?.id ?: return
+        // One after the other, so the refresh stays far below AniList's request limit.
+        for (status in listOf("CURRENT", "PLANNING", "COMPLETED", "PAUSED", "DROPPED", "REPEATING")) {
+            guarded("Refreshing your $status list", Unit, quiet = true) { api.getMediaListCollection(userId, status); Unit }
+        }
+        guarded("Refreshing your favourites", Unit, quiet = true) { api.getFavouriteAnime(userId); Unit }
     }
 
     suspend fun refreshViewer() {
@@ -130,6 +161,31 @@ class AniListRepository(
         return guarded("Updating your favourites", false) { api.toggleFavourite(mediaId) }
     }
 
+    /** The discussion threads about a show; null when the request failed (as opposed to "there are none"). */
+    suspend fun getMediaThreads(mediaId: Int): List<AniListThread>? =
+        guarded<List<AniListThread>?>("Loading discussions", null) { api.getMediaThreads(mediaId) }
+
+    /** One page of a thread's comments; null when the request failed. */
+    suspend fun getThreadComments(threadId: Int, page: Int = 1): AniListCommentPage? =
+        guarded<AniListCommentPage?>("Loading comments", null) { api.getThreadComments(threadId, page) }
+
+    /** Posts a comment (or a reply); the new comment's id, or null when signed out or AniList refused it. */
+    suspend fun postComment(threadId: Int, text: String, parentCommentId: Int? = null): Int? {
+        if (!authManager.isLoggedIn) return null
+        return guarded<Int?>("Posting your comment", null) { api.saveThreadComment(threadId, text, parentCommentId) }
+    }
+
+    /** Opens a discussion thread about a show; its id, or null when signed out or AniList refused it. */
+    suspend fun startThread(mediaId: Int, title: String, body: String): Int? {
+        if (!authManager.isLoggedIn) return null
+        return guarded<Int?>("Starting the discussion", null) { api.saveThread(mediaId, title, body) }
+    }
+
+    suspend fun toggleCommentLike(commentId: Int): Boolean {
+        if (!authManager.isLoggedIn) return false
+        return guarded("Updating your like", false) { api.toggleCommentLike(commentId) }
+    }
+
     /** The user's heart and list entry for a show; null when signed out or the request failed. */
     suspend fun getUserState(mediaId: Int): AniListUserState? {
         if (!authManager.isLoggedIn) return null
@@ -155,3 +211,6 @@ class AniListRepository(
         _viewer.value = null
     }
 }
+
+/** How often the warmed lists are fetched again; shorter than the API cache's two-minute lifetime. */
+private const val LIST_REFRESH_MS = 90_000L

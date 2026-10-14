@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
@@ -116,6 +117,7 @@ fun DetailsScreen(
     var expandSynopsis by remember { mutableStateOf(false) }
     var selectedPerson by remember { mutableStateOf<PersonDetail?>(null) }
     var playingTrailer by remember { mutableStateOf<com.ansu.anime.data.repository.Trailer?>(null) }
+    var showComments by remember { mutableStateOf(false) }
     var selectedGroup by remember(anime?.id) { mutableIntStateOf(0) }
     // Only the first few episodes of a group show until "More episodes" is tapped; reset per show and per group.
     var episodesExpanded by remember(anime?.id, selectedGroup) { mutableStateOf(false) }
@@ -249,6 +251,12 @@ fun DetailsScreen(
                 item { TrailersRow(trailers = trailers, onPlay = { playingTrailer = it }) }
             }
 
+            // The show's comments are its AniList forum threads, so they need its AniList id.
+            if (anime?.anilistId != null) {
+                item { DetailsSectionHeader("Comments") }
+                item { CommentsEntry(onOpen = { showComments = true }) }
+            }
+
             item { DetailsSectionHeader("Episodes") }
             if (state.isLoading) {
                 item { CircularProgressIndicator(color = AnsuColors.Accent, modifier = Modifier.padding(20.dp)) }
@@ -378,8 +386,18 @@ fun DetailsScreen(
     selectedPerson?.let { person ->
         CharacterStaffSheet(person = person, onDismiss = { selectedPerson = null })
     }
+    val commentsFor = anime
+    if (showComments && commentsFor?.anilistId != null) {
+        CommentsSheet(
+            container = container,
+            mediaId = commentsFor.anilistId!!,
+            mediaTitle = commentsFor.title,
+            onDismiss = { showComments = false },
+        )
+    }
+
     playingTrailer?.let { trailer ->
-        TrailerSheet(trailer = trailer, onDismiss = { playingTrailer = null })
+        TrailerSheet(trailer = trailer, trailerRepository = container.trailerRepository, onDismiss = { playingTrailer = null })
     }
 }
 
@@ -584,6 +602,32 @@ private fun DetailsSectionHeader(title: String) {
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(start = 20.dp, top = 22.dp, bottom = 12.dp),
     )
+}
+
+/** The card under the "Comments" header: one tap opens the show's AniList discussions. */
+@Composable
+private fun CommentsEntry(onOpen: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(AnsuColors.BackgroundElevated)
+            .clickable(onClick = onOpen)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Read and join the discussion", color = AnsuColors.TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Comments from AniList. Sign in there to write, reply and like.",
+                color = AnsuColors.TextSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(top = 3.dp),
+            )
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = AnsuColors.TextSecondary)
+    }
 }
 
 /** Episodes per chip: shows longer than this are split into 1-50, 51-100, … pages. */

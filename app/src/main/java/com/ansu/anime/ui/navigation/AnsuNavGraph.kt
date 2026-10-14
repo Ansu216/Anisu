@@ -76,6 +76,42 @@ val bottomNavDestinations = listOf(Dest.HOME, Dest.SEARCH, Dest.SCHEDULE, Dest.M
 const val TAB_TRANSITION_MILLIS = 230
 
 /**
+ * Counts the tab screens whose enter or exit animation is running right now, as reported by the NavHost itself
+ * (see [TrackTabTransition]). The bottom bar waits for it to reach zero before it starts the next tab move.
+ * A fixed wait could end while the previous move was still under way, for instance when the screen being
+ * opened was slow to appear, and a second move started over a running one leaves the earlier screen drawn on
+ * top of the new one.
+ */
+object TabTransitionGate {
+    private val count = androidx.compose.runtime.mutableIntStateOf(0)
+
+    /** True while any tab screen is animating in or out. Backed by state, so it can be observed. */
+    val isRunning: Boolean get() = count.intValue > 0
+
+    internal fun begin() {
+        count.intValue += 1
+    }
+
+    internal fun end() {
+        count.intValue = (count.intValue - 1).coerceAtLeast(0)
+    }
+}
+
+/**
+ * Called first thing by each tab screen's `composable` block: reports to [TabTransitionGate] for as long as
+ * this screen is animating in or out. It ends when the animation ends or the screen leaves the composition,
+ * whichever comes first, so it can never be left counted.
+ */
+@androidx.compose.runtime.Composable
+fun androidx.compose.animation.AnimatedContentScope.TrackTabTransition() {
+    val moving = transition.currentState != transition.targetState || transition.isRunning
+    androidx.compose.runtime.DisposableEffect(moving) {
+        if (moving) TabTransitionGate.begin()
+        onDispose { if (moving) TabTransitionGate.end() }
+    }
+}
+
+/**
  * +1 when a change goes to a later bottom-bar tab, -1 to an earlier one and 0 when the change is not
  * between two tabs. A tab change is a soft cross-fade: the old page fades out while the new one fades
  * in, with no sideways travel, so the direction only tells a tab change apart from any other move.
@@ -158,6 +194,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         },
     ) {
         composable(Dest.HOME) {
+            TrackTabTransition()
             HomeScreen(
                 container = container,
                 navController = navController,
@@ -169,6 +206,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
             )
         }
         composable(Dest.SEARCH) {
+            TrackTabTransition()
             SearchScreen(
                 container = container,
                 navController = navController,
@@ -180,6 +218,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
             )
         }
         composable(Dest.SCHEDULE) {
+            TrackTabTransition()
             ScheduleScreen(
                 container = container,
                 navController = navController,
@@ -225,6 +264,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
             BackupScreen(container = container, navController = navController)
         }
         composable(Dest.MY_SPACE) {
+            TrackTabTransition()
             MySpaceScreen(
                 container = container,
                 navController = navController,

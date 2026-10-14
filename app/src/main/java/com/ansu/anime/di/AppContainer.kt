@@ -49,6 +49,7 @@ class AppContainer(context: Context) {
 
     val extensionManager: ExtensionManager = ExtensionManager(appContext)
     val extensionRepo: ExtensionRepo = ExtensionRepo(appContext, okHttpClient)
+    val newsRepository: com.ansu.anime.data.news.NewsRepository = com.ansu.anime.data.news.NewsRepository(okHttpClient)
     val sourceTester: SourceTester = SourceTester(okHttpClient)
 
     val apiErrorHandler: ApiErrorHandler = ApiErrorHandler(diagnostics)
@@ -120,5 +121,18 @@ class AppContainer(context: Context) {
             android.util.Log.e("AniyomiRuntime", "Injekt setup failed", t)
         }
         runCatching { extensionManager.reloadAll() }
+    }
+
+    /**
+     * Forgets everything the anime details page keeps: the saved episode lists, episode titles and thumbnails, logos
+     * and backdrops, trailer lists and the AniList answers. Nothing of the user's is touched (lists, progress, settings
+     * and backups); the next details page simply fetches it all again.
+     */
+    suspend fun clearAnimeDetailsCache() {
+        com.ansu.anime.extension.EpisodeListCache.clearAll()
+        episodeMetadataRepository.clearCache()
+        artworkRepository.clearCache()
+        trailerRepository.clearCache()
+        aniListApi.clearCache()
     }
 }

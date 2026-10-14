@@ -48,6 +48,15 @@ object EpisodeListCache {
         dir = java.io.File(cacheDir, "episode-lists").also { it.mkdirs() }
     }
 
+    /** Forgets every saved episode list, in memory and on disk; the next details page asks the sources again. */
+    suspend fun clearAll() {
+        map.clear()
+        val folder = dir ?: return
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            folder.listFiles()?.forEach { it.delete() }
+        }
+    }
+
     fun ageMs(key: String): Long = map[key]?.let { System.currentTimeMillis() - it.at } ?: Long.MAX_VALUE
 
     /** Memory first, then disk. */

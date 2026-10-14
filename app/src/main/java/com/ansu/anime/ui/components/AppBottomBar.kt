@@ -38,6 +38,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import com.ansu.anime.ui.navigation.TabTransitionGate
 import kotlin.math.abs
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.semantics
@@ -125,11 +127,19 @@ fun AppBottomBar(
                         launchSingleTop = true
                         restoreState = true
                     }
+                    // Hold the next move until the NavHost says this one's animation has really finished, not for
+                    // a guessed time: a screen that is slow to appear (My Space while it loads) starts its
+                    // animation late, and a second move begun over a running one leaves the earlier screen drawn
+                    // on top of the new one. The gate is told by the tab screens themselves; the timeouts only
+                    // stop a move that never animates (or never ends) from blocking the bar for good.
+                    kotlinx.coroutines.withTimeoutOrNull(600L) {
+                        snapshotFlow { TabTransitionGate.isRunning }.first { it }
+                    }
+                    kotlinx.coroutines.withTimeoutOrNull(3000L) {
+                        snapshotFlow { TabTransitionGate.isRunning }.first { !it }
+                    }
                 }
-                // Hold the next move until the slide has really finished. The NavHost keeps the old screen on the
-                // way out until its exit animation ends, and a wait that ends on the frame the slide is due to end
-                // starts the next move over a screen that is still leaving: that overlap is the doubled screen.
-                delay(TAB_TRANSITION_MILLIS.toLong() + TAB_SETTLE_MILLIS)
+                delay(TAB_SETTLE_MILLIS)
             }
     }
 

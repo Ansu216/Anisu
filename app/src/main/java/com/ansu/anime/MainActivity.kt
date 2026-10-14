@@ -34,7 +34,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.compose.rememberNavController
 import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.data.update.UpdateCheckResult
@@ -76,6 +79,12 @@ class MainActivity : ComponentActivity() {
         // Warm about a minute of the last-watched episode into the media cache; a no-op when the
         // "Pre-load" switch in Settings > Player and streaming is off.
         container.prefetcher.prefetchOnLaunch()
+
+        // Keep the signed-in lists (Watching, Planning, ..., favourites) cached while the app is on screen, so
+        // My Space and the home banner's hearts open instantly. Stops when the app goes to the background.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) { container.aniListRepository.keepListsWarm() }
+        }
 
         setContent {
             AnsuTheme {

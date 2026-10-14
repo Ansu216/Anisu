@@ -24,6 +24,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Comments on the details page, through your AniList account.** A new "Comments" card opens a sheet with the show's
+  AniList discussions (its forum threads). Pick one to read its comments with the replies nested under them, and load
+  more as you scroll. Signed in with AniList you can write a comment, reply to one, like or un-like it, and start a
+  discussion when the show has none; your comment shows at once where it belongs. Signed out you can read everything
+  and are told that writing needs the AniList sign-in. Locked threads are read-only. **Constraint:** comments are AniList's
+  own, so a show without an AniList id has no Comments card, and the text is shown as plain words (images, videos and
+  spoilers appear as "[image]", "[video]" and "[spoiler: ...]").
+
+- **A "Clear anime details cache" button on the Backup screen.** It forgets everything the details page keeps:
+  the saved episode lists (memory and disk), episode titles, thumbnails and synopses, logos and backdrops, trailer
+  lists and the AniList answers, so the next details page fetches them fresh. That is the fix for a title stuck on
+  an old or wrong episode list. **Constraint:** nothing of the user's is touched: lists, watch progress, settings and
+  backups stay as they are, and no pictures are removed.
+
+- **Trailers now play inside the app, from YouTube's own stream, instead of YouTube's embedded player.** Many
+  trailers refuse the embedded player and showed "video unavailable". The app now asks YouTube for the video's stream
+  the way its own apps do and plays it with the app's player: playback controls, buffering indicator, a fullscreen
+  button that turns the video landscape, and a pause when the app leaves the screen. It prefers an adaptive HLS
+  stream, then a single mp4 with sound, then a picture file and a sound file joined (up to 1080p). If YouTube gives
+  no stream, or the stream fails to play, the sheet falls back to the embedded player as before, and the button in
+  the sheet still opens the video in YouTube. **Constraint:** YouTube changes which app identities it accepts from time
+  to time; `YouTubeStreamResolver` keeps them in one list, and a trailer that goes back to the embedded player is the
+  sign that list needs updating.
+
 - **A fix archive pushed with the wrong commit title now says so instead of passing in silence.**
   The extraction only runs for a commit title starting with `Maygodblastyou`, `fix` or `n`, and a
   title that missed all three produced a run that was simply skipped — indistinguishable, in the
@@ -60,6 +84,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   restore" behaviour are unchanged — only where you find them moved.
 
 ### Changed
+
+- **Your AniList lists are now kept cached while the app is open.** My Space and the home banner's hearts
+  used to ask AniList when you first looked, and again once the two-minute cache had run out. The six lists
+  (Watching, Planning, Completed, Paused, Dropped, Repeating) and your favourites are now fetched as soon as the
+  app opens and fetched again every 90 seconds, a little inside the cache's lifetime, so they are always ready.
+  It runs only while the app is on screen and only while signed in. **Constraint:** the lists are read one after
+  the other, so the refresh stays far below AniList's request limit.
 
 - **Switching tabs is now a soft cross-fade instead of a slide.** Home, Search, Schedule and My Space used to
   travel sideways as one sheet; the page you leave now fades out while the next one fades in, in place, like
@@ -112,6 +143,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repeats the number.
 
 ### Fixed
+
+- **The News tab now shows real, current news.** It listed five fixed sample articles dated September 2026 and never
+  changed. It now reads Anime News Network's feed (MyAnimeList's news when ANN cannot be reached), newest first, with
+  plain-text summaries, categories and dates, and tapping an article opens it in the browser. The news is fetched when
+  the tab is opened and again whenever the copy in memory is over ten minutes old; if a fetch fails the last good copy
+  stays on screen, and an empty tab now says it could not load instead of "check back soon".
+
+- **Switching Home, My Space and back quickly no longer leaves My Space drawn over Home with a spinner.** Tapping My
+  Space while it was still loading and then Home again could leave My Space's loading screen on top of Home until
+  the screen was touched or scrolled. The bar kept the next tab move waiting for a fixed time after the last one, but a
+  screen that is slow to appear (My Space while it loads) starts its fade late, so the next move could begin over a fade
+  that was still running, and a move started over a running one leaves the earlier screen composed on top of the
+  new one. The tab screens now tell the bar when their fade really starts and ends, and the next move waits for that
+  (with time limits, so a move that never animates cannot block the bar).
 
 - **The home banner's heart now shows whether you have liked the title.** It was a per-session toggle that
   started empty, so a title already in your favourites (One Piece) showed an empty heart, and the heart reset every

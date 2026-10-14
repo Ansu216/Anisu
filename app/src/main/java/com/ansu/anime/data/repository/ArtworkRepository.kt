@@ -141,6 +141,11 @@ class ArtworkRepository(
     private val json = Json { ignoreUnknownKeys = true }
     private val cache = ConcurrentHashMap<Int, AnimeArtwork>()
 
+    /** Forgets every logo and backdrop answer, so the next page asks again. */
+    fun clearCache() {
+        cache.clear()
+    }
+
     suspend fun get(anilistId: Int): AnimeArtwork {
         cache[anilistId]?.let { return it }
         return try {

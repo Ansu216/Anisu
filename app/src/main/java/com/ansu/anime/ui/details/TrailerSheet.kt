@@ -64,6 +64,27 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import coil.compose.AsyncImage
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.ui.PlayerView
+import com.ansu.anime.data.repository.TrailerRepository
+import com.ansu.anime.data.repository.TrailerStream
+import okhttp3.OkHttpClient
 import com.ansu.anime.data.repository.Trailer
 import com.ansu.anime.ui.theme.AnsuColors
 
@@ -110,10 +131,21 @@ fun TrailersRow(trailers: List<Trailer>, onPlay: (Trailer) -> Unit) {
     }
 }
 
-/** Bottom sheet that plays [trailer] with YouTube's embedded player (autoplay; its own button goes fullscreen). */
+/**
+ * Bottom sheet that plays [trailer] inside the app: the video's stream is taken from YouTube and played by the
+ * app's own player (with its controls and a fullscreen button), so videos that refuse YouTube's embedded player
+ * play all the same. While the stream is being looked up a spinner shows; if YouTube gives none, or the stream
+ * fails to play, the sheet falls back to YouTube's embedded player, and its button opens the video in YouTube.
+ */
 @Composable
-fun TrailerSheet(trailer: Trailer, onDismiss: () -> Unit) {
+fun TrailerSheet(trailer: Trailer, trailerRepository: TrailerRepository, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    var stream by remember(trailer.youtubeId) { mutableStateOf<TrailerStream?>(null) }
+    var useEmbedded by remember(trailer.youtubeId) { mutableStateOf(false) }
+    LaunchedEffect(trailer.youtubeId) {
+        val found = trailerRepository.resolveStream(trailer.youtubeId)
+        if (found != null) stream = found else useEmbedded = true
+    }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -127,7 +159,6 @@ fun TrailerSheet(trailer: Trailer, onDismiss: () -> Unit) {
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                // Some videos forbid embedding; this opens them in YouTube instead.
                 IconButton(onClick = {
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailer.watchUrl))) }
                 }) {
@@ -138,9 +169,116 @@ fun TrailerSheet(trailer: Trailer, onDismiss: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(12.dp))
-            YouTubePlayer(
-                youtubeId = trailer.youtubeId,
+            Box(
                 modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp)).background(Color.Black),
+                contentAlignment = Alignment.Center,
+            ) {
+                val resolved = stream
+                when {
+                    useEmbedded -> YouTubePlayer(youtubeId = trailer.youtubeId, modifier = Modifier.fillMaxSize())
+                    resolved != null -> NativeTrailerPlayer(
+                        stream = resolved,
+                        client = trailerRepository.httpClient,
+                        // A stream that will not play (expired, refused) is replaced by the embedded player.
+                        onFailed = {
+                            stream = null
+                            useEmbedded = true
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    else -> CircularProgressIndicator(color = AnsuColors.Accent, strokeWidth = 3.dp)
+                }
+            }
+        }
+    }
+}
+
+/** Plays [stream] with the app's own player; its fullscreen button turns the video landscape in a full-window dialog. */
+@androidx.annotation.OptIn(UnstableApi::class)
+@Composable
+private fun NativeTrailerPlayer(stream: TrailerStream, client: OkHttpClient, onFailed: () -> Unit, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val activity = remember(context) { context.trailerActivity() }
+    var fullscreen by remember { mutableStateOf(false) }
+    val latestOnFailed by rememberUpdatedState(onFailed)
+
+    val player = remember(stream) {
+        ExoPlayer.Builder(context).build().apply {
+            val factory = OkHttpDataSource.Factory(client).setUserAgent(stream.userAgent)
+            val progressive = ProgressiveMediaSource.Factory(factory)
+            setMediaSource(
+                when (stream) {
+                    is TrailerStream.Hls -> HlsMediaSource.Factory(factory).createMediaSource(MediaItem.fromUri(stream.url))
+                    is TrailerStream.Progressive -> progressive.createMediaSource(MediaItem.fromUri(stream.url))
+                    is TrailerStream.Merged -> MergingMediaSource(
+                        progressive.createMediaSource(MediaItem.fromUri(stream.videoUrl)),
+                        progressive.createMediaSource(MediaItem.fromUri(stream.audioUrl)),
+                    )
+                },
+            )
+            playWhenReady = true
+            prepare()
+        }
+    }
+
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                latestOnFailed()
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+        }
+    }
+
+    // The trailer stops when the app leaves the screen instead of playing on in the background.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, player) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) player.pause() }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    AndroidView(
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                setBackgroundColor(android.graphics.Color.BLACK)
+                setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                setFullscreenButtonClickListener { fullscreen = true }
+            }
+        },
+        // The picture follows the player into the fullscreen dialog and back; a player draws into one view at a time.
+        update = { view -> view.player = if (fullscreen) null else player },
+        modifier = modifier,
+    )
+
+    if (fullscreen) {
+        val fullscreenView = remember { PlayerView(context) }
+        DisposableEffect(Unit) {
+            val previous = activity?.requestedOrientation
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            onDispose { activity?.requestedOrientation = previous ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        }
+        Dialog(
+            onDismissRequest = { fullscreen = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            DisposableEffect(fullscreenView) {
+                onDispose { fullscreenView.player = null }
+            }
+            AndroidView(
+                factory = {
+                    fullscreenView.apply {
+                        setBackgroundColor(android.graphics.Color.BLACK)
+                        setFullscreenButtonState(true)
+                        setFullscreenButtonClickListener { fullscreen = false }
+                        this.player = player
+                    }
+                },
+                modifier = Modifier.fillMaxSize().background(Color.Black),
             )
         }
     }

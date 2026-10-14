@@ -25,7 +25,10 @@ import com.ansu.anime.ui.components.navBarShape
 import com.ansu.anime.ui.components.navBarTintAlpha
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -93,10 +96,12 @@ fun ScheduleScreen(
     onEntrySelected: (ScheduleEntry) -> Unit = {},
 ) {
     val viewModel: ScheduleViewModel = viewModel(
-        factory = viewModelFactory { initializer { ScheduleViewModel(container.aniListRepository, container.appearancePrefs.titleLanguage) } },
+        factory = viewModelFactory { initializer { ScheduleViewModel(container.aniListRepository, container.newsRepository, container.appearancePrefs.titleLanguage) } },
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(ScheduleTab.NEWS) }
+    // Opening the tab (again) fetches news that has gone stale; a recent copy is shown as it is.
+    LaunchedEffect(Unit) { viewModel.refreshNews() }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
 
     Scaffold(
@@ -128,7 +133,7 @@ fun ScheduleScreen(
                         }
                     } else {
                         when (tab) {
-                            ScheduleTab.NEWS -> NewsList(articles = state.news, bottomInset = barInset)
+                            ScheduleTab.NEWS -> NewsList(articles = state.news, loading = state.newsLoading, bottomInset = barInset)
                             ScheduleTab.SCHEDULE -> ScheduleList(
                                 entries = state.schedule,
                                 selectedDate = selectedDate,
@@ -293,9 +298,15 @@ private fun ToggleSegment(
 }
 
 @Composable
-private fun NewsList(articles: List<NewsArticle>, bottomInset: Dp) {
+private fun NewsList(articles: List<NewsArticle>, loading: Boolean, bottomInset: Dp) {
     if (articles.isEmpty()) {
-        EmptyState(text = "No news yet — check back soon.")
+        if (loading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = AnsuColors.Accent)
+            }
+        } else {
+            EmptyState(text = "Could not load the news. Check your connection and reopen this tab.")
+        }
         return
     }
     LazyColumn(
@@ -311,8 +322,15 @@ private fun NewsList(articles: List<NewsArticle>, bottomInset: Dp) {
 
 @Composable
 private fun NewsCard(article: NewsArticle) {
+    val context = LocalContext.current
     FrostedGlassCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().then(
+            if (article.url != null) {
+                Modifier.clickable { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(article.url))) } }
+            } else {
+                Modifier
+            },
+        ),
         shape = RoundedCornerShape(16.dp),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {

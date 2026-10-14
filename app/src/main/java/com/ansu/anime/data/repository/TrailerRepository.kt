@@ -22,12 +22,25 @@ data class Trailer(val youtubeId: String, val title: String) {
 
 /**
  * Trailers and promo videos (PVs, teasers) for a show, from Jikan (api.jikan.moe, the free MyAnimeList mirror).
- * Keyed by MyAnimeList id; there is no API key. Playback itself is YouTube's embedded player.
+ * Keyed by MyAnimeList id; there is no API key. Playback is the app's own player on a stream taken from YouTube ([resolveStream]), with YouTube's embedded player as the fallback.
  */
 class TrailerRepository(private val client: OkHttpClient) {
 
+    /** The app's HTTP client, shared with the trailer player so it can load the stream. */
+    val httpClient: OkHttpClient get() = client
+
+    private val resolver = YouTubeStreamResolver(client)
+
+    /** A stream the in-app player can play for a trailer's YouTube id, or null when YouTube gave none (the sheet then falls back to the embedded player). */
+    suspend fun resolveStream(youtubeId: String): TrailerStream? = resolver.resolve(youtubeId)
+
     private val json = Json { ignoreUnknownKeys = true }
     private val cache = ConcurrentHashMap<Int, List<Trailer>>()
+
+    /** Forgets every trailer list, so the next details page asks Jikan again. */
+    fun clearCache() {
+        cache.clear()
+    }
 
     /** The show's promo videos, or an empty list when Jikan has none or cannot be reached (not cached then). */
     suspend fun getTrailers(malId: Int): List<Trailer> {

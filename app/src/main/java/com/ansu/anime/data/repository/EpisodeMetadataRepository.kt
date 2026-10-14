@@ -42,6 +42,11 @@ class EpisodeMetadataRepository(
     /** Episode number -> details. Empty when nothing could be fetched. */
     private val metaCache = java.util.concurrent.ConcurrentHashMap<Int, Map<Int, EpisodeMeta>>()
 
+    /** Forgets every episode title, thumbnail and synopsis, so the next page asks again. */
+    fun clearCache() {
+        metaCache.clear()
+    }
+
     suspend fun getEpisodeMeta(anilistId: Int): Map<Int, EpisodeMeta> {
         metaCache[anilistId]?.let { return it }
         // ani.zip and AniList are independent, so ask both at once instead of one after the other.

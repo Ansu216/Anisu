@@ -11,6 +11,10 @@ data class NewsArticle(
     val snippet: String,
     val category: String,
     val dateDisplay: String,
+    /** The article's page, opened when its card is tapped; null when the feed gave none. */
+    val url: String? = null,
+    /** Publication time in epoch milliseconds, for newest-first ordering; 0 when the feed gave no date. */
+    val publishedAt: Long = 0L,
 )
 
 data class ScheduleEntry(

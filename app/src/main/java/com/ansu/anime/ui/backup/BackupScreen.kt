@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
@@ -61,6 +62,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Settings → Backup, laid out compactly: one card holds everything a person opens this screen for —
@@ -79,6 +81,7 @@ fun BackupScreen(container: AppContainer, navController: NavHostController) {
     val diagnostics = container.diagnostics
     val backupManager = container.backupManager
     var backupMessage by remember { mutableStateOf<String?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     var restartPending by remember { mutableStateOf(false) }
     var insideOpen by remember { mutableStateOf(false) }
     // A plain directory read, refreshed after anything that writes or restores a copy.
@@ -280,6 +283,26 @@ fun BackupScreen(container: AppContainer, navController: NavHostController) {
                     Text("Restore from backup", modifier = Modifier.padding(start = 8.dp))
                 }
             }
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        container.clearAnimeDetailsCache()
+                        backupMessage = "Anime details cache cleared."
+                    }
+                },
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            ) {
+                Icon(Icons.Filled.DeleteSweep, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text("Clear anime details cache", modifier = Modifier.padding(start = 8.dp))
+            }
+            Text(
+                text = "Forgets the saved episode lists, episode titles and thumbnails, logos, backdrops and trailers. " +
+                    "Your lists, progress and settings are not touched; the next details page loads it all again.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AnsuColors.TextTertiary,
+                modifier = Modifier.padding(top = 6.dp, start = 4.dp, end = 4.dp),
+            )
             backupMessage?.let {
                 Text(
                     text = it,

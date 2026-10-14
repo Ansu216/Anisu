@@ -484,6 +484,103 @@ class AniListApi(
         return (execute(mutation, mapOf("id" to mediaId), idempotent = false) != null).also { if (it) clearCache() }
     }
 
+    /** The newest discussion threads about [mediaId], where its comments are written. */
+    suspend fun getMediaThreads(mediaId: Int): List<AniListThread> {
+        val query = """
+            query (${'$'}mediaId: Int) {
+              Page(perPage: 20) {
+                threads(mediaCategoryId: ${'$'}mediaId, sort: [REPLIED_AT_DESC]) {
+                  id title replyCount isLocked user { name }
+                }
+              }
+            }
+        """.trimIndent()
+        val data = execute(query, mapOf("mediaId" to mediaId)) ?: return emptyList()
+        val threads = data["Page"]?.jsonObject?.get("threads") as? JsonArray ?: return emptyList()
+        return threads.mapNotNull { element ->
+            val obj = element as? JsonObject ?: return@mapNotNull null
+            AniListThread(
+                id = obj["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return@mapNotNull null,
+                title = obj["title"]?.jsonPrimitive?.contentOrNull.orEmpty().ifBlank { "Untitled discussion" },
+                replyCount = obj["replyCount"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+                userName = (obj["user"] as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull,
+                isLocked = obj["isLocked"]?.jsonPrimitive?.content == "true",
+            )
+        }
+    }
+
+    /** One page of a thread's top-level comments, each with its replies nested (never cached: comments change). */
+    suspend fun getThreadComments(threadId: Int, page: Int): AniListCommentPage? {
+        val query = """
+            query (${'$'}threadId: Int, ${'$'}page: Int) {
+              Page(page: ${'$'}page, perPage: 25) {
+                pageInfo { hasNextPage }
+                threadComments(threadId: ${'$'}threadId) {
+                  id comment likeCount isLiked createdAt user { id name avatar { medium } } childComments
+                }
+              }
+            }
+        """.trimIndent()
+        val data = execute(query, mapOf("threadId" to threadId, "page" to page)) ?: return null
+        val pageObj = data["Page"]?.jsonObject ?: return null
+        val comments = (pageObj["threadComments"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.toComment() }
+        val hasNext = (pageObj["pageInfo"] as? JsonObject)?.get("hasNextPage")?.jsonPrimitive?.content == "true"
+        return AniListCommentPage(comments, hasNext)
+    }
+
+    /** Posts [text] to [threadId], as a reply to [parentCommentId] when given. Returns the new comment's id, or null. */
+    suspend fun saveThreadComment(threadId: Int, text: String, parentCommentId: Int?): Int? {
+        val mutation = """
+            mutation (${'$'}threadId: Int, ${'$'}parentCommentId: Int, ${'$'}comment: String) {
+              SaveThreadComment(threadId: ${'$'}threadId, parentCommentId: ${'$'}parentCommentId, comment: ${'$'}comment) { id }
+            }
+        """.trimIndent()
+        val variables = mutableMapOf<String, Any?>("threadId" to threadId, "comment" to text)
+        if (parentCommentId != null) variables["parentCommentId"] = parentCommentId
+        val data = execute(mutation, variables, idempotent = false) ?: return null
+        return data["SaveThreadComment"]?.jsonObject?.get("id")?.jsonPrimitive?.content?.toIntOrNull()
+    }
+
+    /** Opens a new discussion thread about [mediaId]. Returns its id, or null. */
+    suspend fun saveThread(mediaId: Int, title: String, body: String): Int? {
+        val mutation = """
+            mutation (${'$'}title: String, ${'$'}body: String, ${'$'}categories: [Int]) {
+              SaveThread(title: ${'$'}title, body: ${'$'}body, mediaCategories: ${'$'}categories) { id }
+            }
+        """.trimIndent()
+        val data = execute(
+            mutation,
+            mapOf("title" to title, "body" to body, "categories" to listOf(mediaId)),
+            idempotent = false,
+        ) ?: return null
+        return data["SaveThread"]?.jsonObject?.get("id")?.jsonPrimitive?.content?.toIntOrNull()
+    }
+
+    /** Likes or un-likes a comment as the signed-in user. */
+    suspend fun toggleCommentLike(commentId: Int): Boolean {
+        val mutation = """
+            mutation (${'$'}id: Int) { ToggleLikeV2(id: ${'$'}id, type: THREAD_COMMENT) { __typename } }
+        """.trimIndent()
+        return execute(mutation, mapOf("id" to commentId), idempotent = false) != null
+    }
+
+    /** A comment object (a top-level one from the query, or a nested reply from `childComments`) with its replies. */
+    private fun JsonObject.toComment(): AniListComment? {
+        val id = this["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
+        val user = this["user"] as? JsonObject
+        return AniListComment(
+            id = id,
+            userId = user?.get("id")?.jsonPrimitive?.content?.toIntOrNull(),
+            userName = user?.get("name")?.jsonPrimitive?.contentOrNull ?: "Unknown",
+            avatarUrl = (user?.get("avatar") as? JsonObject)?.get("medium")?.jsonPrimitive?.contentOrNull,
+            text = this["comment"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+            likeCount = this["likeCount"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+            isLiked = this["isLiked"]?.jsonPrimitive?.content == "true",
+            createdAt = this["createdAt"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L,
+            replies = (this["childComments"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.toComment() },
+        )
+    }
+
     /**
      * Sends one GraphQL request and returns its `data` object. Any failure is thrown as an
      * [ApiException] (never returned as null), so callers cannot mistake "the request broke" for
