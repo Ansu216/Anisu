@@ -582,19 +582,28 @@ private fun PlayerSurface(
             // fraction of the video height above the bottom.
             var subtitleAreaHeightPx by remember { mutableIntStateOf(0) }
             val subtitleTextSizePx = with(androidx.compose.ui.platform.LocalDensity.current) { subtitleSize.sp.toPx() }
-            val placedCues = remember(cues, subtitleHeight, subtitleTextSizePx, subtitleAreaHeightPx) {
-                placeCues(cues, subtitleHeight, subtitleTextSizePx, subtitleAreaHeightPx)
+            val subtitleBackground = subtitleBackgroundArgb(subtitleBgColor, subtitleBgOpacity)
+            val placedCues = remember(cues, subtitleHeight, subtitleTextSizePx, subtitleAreaHeightPx, subtitleBackground) {
+                // The background is drawn by the cues themselves (rounded, one bar per line), not by the view's square one.
+                roundCueBackgrounds(
+                    placeCues(cues, subtitleHeight, subtitleTextSizePx, subtitleAreaHeightPx),
+                    subtitleBackground,
+                    subtitleTextSizePx,
+                )
             }
             AndroidView(
                 factory = { ctx -> SubtitleView(ctx) },
                 update = { view ->
                     // The colours below are the person's choice, so a subtitle file's own colours and sizes must not win.
-                    view.setApplyEmbeddedStyles(false)
+                    // Embedded styles must stay on for the rounded background spans to survive; the cues were reduced to
+                    // plain words (and their own window colour removed) in roundCueBackgrounds, so no file styling gets through.
+                    view.setApplyEmbeddedStyles(true)
                     view.setApplyEmbeddedFontSizes(false)
                     view.setStyle(
                         CaptionStyleCompat(
                             subtitleTextColor,
-                            subtitleBackgroundArgb(subtitleBgColor, subtitleBgOpacity),
+                            // Transparent: the rounded bars are drawn by the cues. The view's own background would be square.
+                            0,
                             0,
                             CaptionStyleCompat.EDGE_TYPE_OUTLINE,
                             0xFF000000.toInt(),

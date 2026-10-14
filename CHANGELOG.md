@@ -85,6 +85,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Subtitles have rounded corners.** The background behind the subtitle text was a square block, and the player's
+  subtitle view cannot draw anything else. Each line of a cue now gets its own rounded bar, as wide as the line, in the
+  background colour and opacity chosen in the Subtitles panel (a fully transparent background still gives the
+  outline-only look). **Constraint:** the subtitle file's own colours, fonts and sizes are still ignored, as before; picture
+  subtitles (bitmap formats) keep their own look.
+
+- **Subtitles are on by default, and your choice is remembered for the session.** A stream with subtitles used to
+  start with them off, so they had to be switched on for every episode and every source. Now subtitles turn on by
+  themselves when the stream has them (the English track if there is one, otherwise the first), and once you
+  pick a track or turn them off, that choice is used for every following episode and source until the app is closed.
+  **Constraint:** the choice is kept for the run of the app only; a fresh start begins with subtitles on again.
+
 - **Your AniList lists are now kept cached while the app is open.** My Space and the home banner's hearts
   used to ask AniList when you first looked, and again once the two-minute cache had run out. The six lists
   (Watching, Planning, Completed, Paused, Dropped, Repeating) and your favourites are now fetched as soon as the

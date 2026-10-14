@@ -52,3 +52,85 @@ private fun Cue.hasOwnPlacement(): Boolean = when (lineType) {
     Cue.LINE_TYPE_NUMBER -> line != Cue.DIMEN_UNSET && line >= 0f
     else -> false
 }
+
+/**
+ * Gives every text cue a background with rounded corners, one rounded bar behind each line of text.
+ *
+ * The player's own subtitle view can only paint a square background behind the text. So the cue's text is reduced to
+ * plain words (the person's colours and size are applied by the view, see the player screen) and a span that draws
+ * the rounded bar is put over it. Picture cues (bitmap subtitles) are left as they are. With a fully transparent
+ * background no bar is added, so the outline-only look still works.
+ *
+ * @param backgroundArgb the background colour with the person's opacity already in it.
+ * @param textSizePx the subtitle text size in pixels, which sets the padding and the corner radius.
+ */
+internal fun roundCueBackgrounds(cues: List<Cue>, backgroundArgb: Int, textSizePx: Float): List<Cue> {
+    val visible = android.graphics.Color.alpha(backgroundArgb) != 0
+    return cues.map { cue ->
+        val text = cue.text
+        if (cue.bitmap != null || text.isNullOrEmpty()) return@map cue
+        // Always reduced to plain words with no window colour, so the file's own styling never gets through; the bar is
+        // only added when the person's background is not fully transparent.
+        val plain = android.text.SpannableString(text.toString())
+        if (visible) {
+            plain.setSpan(
+                RoundedLineBackgroundSpan(backgroundArgb, textSizePx, cue.textAlignment),
+                0,
+                plain.length,
+                android.text.Spanned.SPAN_INCLUSIVE_INCLUSIVE,
+            )
+        }
+        cue.buildUpon().setText(plain).clearWindowColor().build()
+    }
+}
+
+/**
+ * Draws a rounded bar behind one line of text, as wide as that line plus a little padding, so a two-line cue gets two
+ * bars of their own widths. The line is positioned the way the cue aligns its text (centred unless the cue says otherwise).
+ */
+private class RoundedLineBackgroundSpan(
+    private val color: Int,
+    private val textSizePx: Float,
+    private val alignment: android.text.Layout.Alignment?,
+) : android.text.style.LineBackgroundSpan {
+
+    private val rect = android.graphics.RectF()
+
+    override fun drawBackground(
+        canvas: android.graphics.Canvas,
+        paint: android.graphics.Paint,
+        left: Int,
+        right: Int,
+        top: Int,
+        baseline: Int,
+        bottom: Int,
+        text: CharSequence,
+        start: Int,
+        end: Int,
+        lineNumber: Int,
+    ) {
+        // The line break that ends a line has no width worth a bar.
+        var lineEnd = end
+        while (lineEnd > start && text[lineEnd - 1].isWhitespace()) lineEnd--
+        if (lineEnd <= start) return
+
+        val textWidth = paint.measureText(text, start, lineEnd)
+        val padX = textSizePx * 0.4f
+        val barWidth = textWidth + padX * 2f
+        val barLeft = when (alignment) {
+            android.text.Layout.Alignment.ALIGN_NORMAL -> left.toFloat()
+            android.text.Layout.Alignment.ALIGN_OPPOSITE -> right - barWidth
+            else -> (left + right) / 2f - barWidth / 2f
+        }
+        rect.set(barLeft, top.toFloat(), barLeft + barWidth, bottom.toFloat())
+
+        val previousColor = paint.color
+        val previousStyle = paint.style
+        paint.color = color
+        paint.style = android.graphics.Paint.Style.FILL
+        val radius = (bottom - top) * 0.32f
+        canvas.drawRoundRect(rect, radius, radius, paint)
+        paint.color = previousColor
+        paint.style = previousStyle
+    }
+}

@@ -191,12 +191,14 @@ class PlayerViewModel(
             }
 
             override fun onTracksChanged(tracks: Tracks) {
+                val textOptions = tracks.toOptions(C.TRACK_TYPE_TEXT)
                 _uiState.value = _uiState.value.copy(
                     audioOptions = tracks.toOptions(C.TRACK_TYPE_AUDIO),
-                    textOptions = tracks.toOptions(C.TRACK_TYPE_TEXT),
+                    textOptions = textOptions,
                     textEnabled = !player.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) &&
                         tracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected },
                 )
+                applySessionSubtitleChoice(textOptions)
             }
 
             override fun onCues(cueGroup: CueGroup) {
@@ -551,6 +553,8 @@ class PlayerViewModel(
 
     @androidx.annotation.OptIn(UnstableApi::class)
     private fun startPlayback(source: PlayableSource, mimeType: String?) {
+        // A new stream: its subtitle tracks get the person's session choice again once they are reported.
+        subtitleChoiceApplied = false
         val mediaItem = MediaItem.Builder()
             .setUri(source.url)
             .apply {
@@ -703,8 +707,33 @@ class PlayerViewModel(
 
     fun selectAudioTrack(option: TrackOption) = overrideTrack(option)
 
-    /** Picks a subtitle track, or turns subtitles off when [option] is null. */
+    /**
+     * Subtitles follow the person's choice for as long as the app runs: on (with the track they last picked) unless they turned
+     * them off, and on by default the first time a stream has subtitles. Done once per stream, when its tracks are first listed.
+     */
+    private var subtitleChoiceApplied = false
+
+    private fun applySessionSubtitleChoice(options: List<TrackOption>) {
+        if (subtitleChoiceApplied || options.isEmpty()) return
+        subtitleChoiceApplied = true
+        if (sessionSubtitlesOn == false) {
+            showTextTrack(null)
+            return
+        }
+        val pick = sessionSubtitleLabel?.let { label -> options.firstOrNull { it.label == label } }
+            ?: options.firstOrNull { it.label.contains("english", ignoreCase = true) }
+            ?: options.first()
+        showTextTrack(pick)
+    }
+
+    /** Picks a subtitle track, or turns subtitles off when [option] is null; the choice is remembered for the session. */
     fun selectTextTrack(option: TrackOption?) {
+        sessionSubtitlesOn = option != null
+        if (option != null) sessionSubtitleLabel = option.label
+        showTextTrack(option)
+    }
+
+    private fun showTextTrack(option: TrackOption?) {
         if (option == null) {
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
@@ -880,5 +909,15 @@ class PlayerViewModel(
     override fun onCleared() {
         player.release()
         super.onCleared()
+    }
+
+    private companion object {
+        /** The person's subtitle choice for this run of the app: null = never chosen (subtitles default to on). */
+        @Volatile
+        var sessionSubtitlesOn: Boolean? = null
+
+        /** The label of the subtitle track they last picked, used again on the next stream that offers it. */
+        @Volatile
+        var sessionSubtitleLabel: String? = null
     }
 }
