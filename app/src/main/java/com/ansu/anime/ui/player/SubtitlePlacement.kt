@@ -64,7 +64,7 @@ private fun Cue.hasOwnPlacement(): Boolean = when (lineType) {
  * @param backgroundArgb the background colour with the person's opacity already in it.
  * @param textSizePx the subtitle text size in pixels, which sets the padding and the corner radius.
  */
-internal fun roundCueBackgrounds(cues: List<Cue>, backgroundArgb: Int, textSizePx: Float): List<Cue> {
+internal fun roundCueBackgrounds(cues: List<Cue>, backgroundArgb: Int, textSizePx: Float, rounded: Boolean = true): List<Cue> {
     val visible = android.graphics.Color.alpha(backgroundArgb) != 0
     return cues.map { cue ->
         val text = cue.text
@@ -72,6 +72,10 @@ internal fun roundCueBackgrounds(cues: List<Cue>, backgroundArgb: Int, textSizeP
         // Always reduced to plain words with no window colour, so the file's own styling never gets through; the bar is
         // only added when the person's background is not fully transparent.
         val plain = android.text.SpannableString(text.toString())
+        if (visible && !rounded) {
+            // Plain look: one ordinary rectangle behind the whole cue, drawn by the view from the cue's window colour.
+            return@map cue.buildUpon().setText(plain).setWindowColor(backgroundArgb).build()
+        }
         if (visible) {
             plain.setSpan(
                 RoundedLineBackgroundSpan(backgroundArgb, textSizePx, cue.textAlignment),
@@ -115,20 +119,22 @@ private class RoundedLineBackgroundSpan(
         if (lineEnd <= start) return
 
         val textWidth = paint.measureText(text, start, lineEnd)
-        val padX = textSizePx * 0.4f
+        val padX = textSizePx * 0.5f
         val barWidth = textWidth + padX * 2f
         val barLeft = when (alignment) {
             android.text.Layout.Alignment.ALIGN_NORMAL -> left.toFloat()
             android.text.Layout.Alignment.ALIGN_OPPOSITE -> right - barWidth
             else -> (left + right) / 2f - barWidth / 2f
         }
-        rect.set(barLeft, top.toFloat(), barLeft + barWidth, bottom.toFloat())
+        // A hair of overlap, so the bars of a two-line cue touch instead of leaving a gap between them.
+        rect.set(barLeft, top.toFloat(), barLeft + barWidth, bottom.toFloat() + 1f)
 
         val previousColor = paint.color
         val previousStyle = paint.style
         paint.color = color
         paint.style = android.graphics.Paint.Style.FILL
-        val radius = (bottom - top) * 0.32f
+        // Gently rounded corners (a soft rectangle rather than a pill), as in the design sketch.
+        val radius = (bottom - top) * 0.16f
         canvas.drawRoundRect(rect, radius, radius, paint)
         paint.color = previousColor
         paint.style = previousStyle

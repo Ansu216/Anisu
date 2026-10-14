@@ -80,7 +80,7 @@ class HomeViewModel(
             combine(aniListRepository.isLoggedIn, localListRepository.favourites) { loggedIn, local -> loggedIn to local }
                 .collectLatest { (loggedIn, local) ->
                     _favouriteIds.value =
-                        if (loggedIn) aniListRepository.getLiked().map { it.id }.toSet() else local.map { it.id }.toSet()
+                        if (loggedIn) aniListRepository.getLikedIds() else local.map { it.id }.toSet()
                 }
         }
         refresh()

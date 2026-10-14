@@ -243,9 +243,10 @@ fun DetailsScreen(
             }
 
             // Jikan's promo videos; AniList's own trailer stands in when Jikan has none.
-            val trailers = state.trailers.ifEmpty {
-                details?.trailerYoutubeId?.let { listOf(com.ansu.anime.data.repository.Trailer(it, "Official Trailer")) }.orEmpty()
-            }
+            val trailers = (
+                details?.trailerYoutubeId?.let { listOf(com.ansu.anime.data.repository.Trailer(it, "Official Trailer")) }.orEmpty() +
+                    state.trailers
+                ).distinctBy { it.youtubeId }
             if (trailers.isNotEmpty()) {
                 item { DetailsSectionHeader("Trailers") }
                 item { TrailersRow(trailers = trailers, onPlay = { playingTrailer = it }) }

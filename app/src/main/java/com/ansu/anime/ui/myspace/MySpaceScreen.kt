@@ -98,7 +98,8 @@ fun MySpaceScreen(
     var paused by remember { mutableStateOf<List<AniListMedia>>(emptyList()) }
     var dropped by remember { mutableStateOf<List<AniListMedia>>(emptyList()) }
     var repeating by remember { mutableStateOf<List<AniListMedia>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(false) }
+    // Starts true when signed in, so the first frame shows the spinner instead of a flash of "Nothing in ... yet".
+    var isLoading by remember { mutableStateOf(isLoggedIn) }
     var isSyncing by remember { mutableStateOf(false) }
     var reloadKey by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
@@ -150,7 +151,9 @@ fun MySpaceScreen(
         containerColor = AnsuColors.Background,
         bottomBar = { AppBottomBarReserve() },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().backdropSource(backdrop).padding(top = padding.calculateTopPadding())) {
+        // The background sits inside the recorded layer: without it the layer is transparent wherever no card is
+        // drawn, so the nav bar had nothing opaque to blur on this screen.
+        Column(modifier = Modifier.fillMaxSize().backdropSource(backdrop).background(AnsuColors.Background).padding(top = padding.calculateTopPadding())) {
             // Top row: settings gear pinned to the right, as in the sketch.
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
                 FrostedGlassCard(modifier = Modifier.size(44.dp), shape = CircleShape, tintAlpha = 0.5f) {

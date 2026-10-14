@@ -88,6 +88,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val subColor by prefs.subtitleColor.collectAsStateWithLifecycle()
     val subBgColor by prefs.subtitleBgColor.collectAsStateWithLifecycle()
     val subBgOpacity by prefs.subtitleBgOpacity.collectAsStateWithLifecycle()
+    val subRoundedBg by prefs.subtitleRoundedBg.collectAsStateWithLifecycle()
 
     // The page scrolls; the source list asks it to scroll further while a row is dragged to its edge.
     val scrollState = rememberScrollState()
@@ -185,7 +186,8 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
             SettingsBox(title = "Subtitles") {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Live Preview", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextSecondary)
-                    SubtitlePreview(size = subSize, height = subHeight, textColor = subColor, bgColor = subBgColor, bgOpacity = subBgOpacity)
+                    SubtitlePreview(size = subSize, height = subHeight, textColor = subColor, bgColor = subBgColor, bgOpacity = subBgOpacity, roundedBg = subRoundedBg)
+                    ToggleRow("Rounded subtitle background", "Soft rounded bars behind each line. Off shows a plain rectangle box.", subRoundedBg, prefs::setSubtitleRoundedBg)
                     Text("Text colour", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
                     ColorSwatchRow(SubtitleTextColors, subColor, prefs::setSubtitleColor)
                     Text("Background colour", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)

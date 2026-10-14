@@ -85,6 +85,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Subtitle backgrounds are softer, with a "Rounded subtitle background" switch.** The bars behind each line were
+  nearly pill-shaped; they now have gently rounded corners, a little more side padding, and the bars of a two-line cue
+  touch. A new switch (Settings > Player and streaming > Subtitles, and the player's subtitle panel) turns it off, and
+  the subtitles then sit in one plain rectangle box.
+
+- **The Trailers row lists every trailer.** AniList's own, Jikan's promos and a YouTube search for the show's trailers, PVs,
+  teasers and sub / dub versions (short videos that name the show) are merged without duplicates.
+
 - **Subtitles have rounded corners.** The background behind the subtitle text was a square block, and the player's
   subtitle view cannot draw anything else. Each line of a cue now gets its own rounded bar, as wide as the line, in the
   background colour and opacity chosen in the Subtitles panel (a fully transparent background still gives the
@@ -155,6 +163,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repeats the number.
 
 ### Fixed
+
+- **The home banner's heart now shows a liked title as liked.** Favourites were read before the AniList profile had
+  loaded (so the first read was empty) and only the first 50 were fetched. They now wait for the profile and load every page.
+
+- **"Start discussion" no longer fails with "The server rejected that request".** List values in the request were sent as
+  a quoted string instead of a JSON array, and AniList also needs a forum category. Both are fixed.
+
+- **The navigation bar's frosted blur works on My Space.** The screen's recorded backdrop had no background, so there was
+  nothing solid to blur.
+
+- **Switching tabs while My Space is loading no longer leaves it drawn over another tab.** The bar now waits for the
+  navigation host to report that the previous tab move has finished instead of waiting a guessed time, and My Space shows
+  its spinner from the first frame.
+
+- **Trailers that buffered and then went blank now play.** Every stream YouTube offers is collected (HLS first); one that
+  errors, does not start within 12 s or freezes for 10 s moves on to the next, and the embedded player is the last resort.
+
+- **Upcoming shows and movies show an English title.** When AniList has no English title yet, a Latin-lettered synonym is
+  used before the romaji title. **Constraint:** if AniList lists no English name at all, the romaji title stays.
 
 - **The News tab now shows real, current news.** It listed five fixed sample articles dated September 2026 and never
   changed. It now reads Anime News Network's feed (MyAnimeList's news when ANN cannot be reached), newest first, with

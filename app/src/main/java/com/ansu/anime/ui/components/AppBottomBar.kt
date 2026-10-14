@@ -127,16 +127,14 @@ fun AppBottomBar(
                         launchSingleTop = true
                         restoreState = true
                     }
-                    // Hold the next move until the NavHost says this one's animation has really finished, not for
-                    // a guessed time: a screen that is slow to appear (My Space while it loads) starts its
-                    // animation late, and a second move begun over a running one leaves the earlier screen drawn
-                    // on top of the new one. The gate is told by the tab screens themselves; the timeouts only
-                    // stop a move that never animates (or never ends) from blocking the bar for good.
-                    kotlinx.coroutines.withTimeoutOrNull(600L) {
-                        snapshotFlow { TabTransitionGate.isRunning }.first { it }
-                    }
-                    kotlinx.coroutines.withTimeoutOrNull(3000L) {
-                        snapshotFlow { TabTransitionGate.isRunning }.first { !it }
+                    // Hold the next move until the NavHost itself says this one is over: an entry stays in
+                    // `visibleEntries` until its screen has really finished leaving, however late a slow screen
+                    // (My Space while it loads) started animating. The old gate used timeouts, so a second tap
+                    // could still land on a running move and leave the previous tab drawn over the new one.
+                    kotlinx.coroutines.withTimeoutOrNull(5000L) {
+                        navController.visibleEntries.first { entries ->
+                            entries.count { it.destination.route in com.ansu.anime.ui.navigation.bottomNavDestinations } <= 1
+                        }
                     }
                 }
                 delay(TAB_SETTLE_MILLIS)
