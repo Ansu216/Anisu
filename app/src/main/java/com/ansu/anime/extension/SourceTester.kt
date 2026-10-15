@@ -52,10 +52,13 @@ data class SourceTestResult(
  */
 class SourceTester(
     private val client: OkHttpClient,
+    private val health: SourceHealth? = null,
 ) {
     suspend fun test(target: TestTarget): SourceTestResult = withContext(Dispatchers.IO) {
         when (target) {
-            is TestTarget.Extension -> testExtension(target.source).copy(target = target.label)
+            is TestTarget.Extension -> testExtension(target.source).copy(target = target.label).also {
+                health?.record(target.source.id, it.ok, it.error)
+            }
         }
     }
 
@@ -115,7 +118,10 @@ class SourceTester(
      */
     private suspend fun checkStreaming(source: AnimeCatalogueSource, titles: List<SAnime>): StreamCheck {
         var reason = "no episodes were listed"
+        // Each title's failure is kept: only the last one used to be shown, which hid why the first title failed.
+        val reasons = mutableListOf<String>()
         for (anime in titles.take(STREAM_TITLES)) {
+            if (reasons.isNotEmpty() || reason != "no episodes were listed") reasons += reason
             val episodes = try {
                 withTimeout(STREAM_STEP_TIMEOUT_MS) { source.getEpisodeList(anime) }
             } catch (e: TimeoutCancellationException) {
@@ -183,7 +189,8 @@ class SourceTester(
             }
             reason = "${listed.size} video(s) were listed for \"${anime.title}\" but none of the first $STREAM_RESOLVE_TRIES could be resolved"
         }
-        return StreamCheck(0, reason)
+        reasons += reason
+        return StreamCheck(0, reasons.filter { it != "no episodes were listed" }.distinct().joinToString("  ||  ").ifBlank { reason })
     }
 
     private fun failure(name: String, pingMs: Long?, status: Int?, message: String) = SourceTestResult(

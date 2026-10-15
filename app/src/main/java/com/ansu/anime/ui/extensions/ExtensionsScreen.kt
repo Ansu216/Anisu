@@ -173,11 +173,14 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     val extensionSources = extensions.flatMap { it.sources }
     val builtInSources = manager.allSourcesIncludingDisabled().filter { built -> extensionSources.none { it.id == built.id } }
 
+    // Reading results.size makes the rows rebuild after a test finishes, so the saved status shows up at once.
+    val healthTick = results.size
+    val healthOf: (Long) -> String? = { id -> if (healthTick >= 0) container.sourceHealth.label(id) else null }
     val installedRows = buildList {
-        builtInSources.forEach { add(sourceRow(it, "Built-in", null, disabledIds, manager::setSourceEnabled, null)) }
+        builtInSources.forEach { add(sourceRow(it, "Built-in", null, disabledIds, manager::setSourceEnabled, null, healthOf = healthOf)) }
         extensions.forEach { ext ->
             val icon = ext.icon ?: runCatching { packageManager.getApplicationIcon(ext.packageName) }.getOrNull()
-            addAll(extensionRows(ext, icon, disabledIds, manager::setSourceEnabled, onSettings = { settingsFor = it }) { manager.uninstall(ext.packageName) })
+            addAll(extensionRows(ext, icon, disabledIds, manager::setSourceEnabled, onSettings = { settingsFor = it }, healthOf = healthOf) { manager.uninstall(ext.packageName) })
         }
     }
 
@@ -615,10 +618,11 @@ private fun sourceRow(
     setEnabled: (Long, Boolean) -> Unit,
     onRemove: (() -> Unit)?,
     onSettings: (() -> Unit)? = null,
+    healthOf: (Long) -> String? = { null },
 ) = InstalledRow(
     key = "src:${source.id}",
     title = source.name,
-    subtitle = listOf(kind, source.lang.ifBlank { null }).filterNotNull().joinToString(" · "),
+    subtitle = listOfNotNull(kind, source.lang.ifBlank { null }, healthOf(source.id)).joinToString(" · "),
     icon = icon,
     checked = source.id !in disabledIds,
     onCheckedChange = { setEnabled(source.id, it) },
@@ -632,6 +636,7 @@ private fun extensionRows(
     disabledIds: Set<Long>,
     setEnabled: (Long, Boolean) -> Unit,
     onSettings: (AniyomiSourceAdapter) -> Unit,
+    healthOf: (Long) -> String? = { null },
     onRemove: () -> Unit,
 ): List<InstalledRow> {
     if (ext.sources.isEmpty()) {
@@ -648,7 +653,7 @@ private fun extensionRows(
     }
     return ext.sources.mapIndexed { index, source ->
         val settings: (() -> Unit)? = (source as? AniyomiSourceAdapter)?.takeIf { it.hasSettings }?.let { adapter -> { onSettings(adapter) } }
-        sourceRow(source, "v${ext.versionName}", icon, disabledIds, setEnabled, if (index == 0) onRemove else null, settings)
+        sourceRow(source, "v${ext.versionName}", icon, disabledIds, setEnabled, if (index == 0) onRemove else null, settings, healthOf)
     }
 }
 

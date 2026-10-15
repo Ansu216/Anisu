@@ -99,7 +99,17 @@ class ExtensionRepo(
         val trimmed = url.trimEnd('/')
         val looksLikeFile = trimmed.substringAfterLast('/').contains('.')
         val primary = if (looksLikeFile) listOf(trimmed) else listOf("$trimmed/index.min.json", trimmed)
-        return (primary + branchFallbacks(primary.first())).distinct()
+        return (mirrorsFor(primary.first()) + primary + branchFallbacks(primary.first())).distinct()
+    }
+
+    /**
+     * Kohi-den moved its extension repo off GitHub (every `raw.githubusercontent.com/Kohi-den/extensions/...` URL now
+     * 404s). Its index lives on its own Forgejo host, so that address is tried first for any Kohi-den link.
+     */
+    private fun mirrorsFor(url: String): List<String> {
+        val m = Regex("^https://raw\\.githubusercontent\\.com/Kohi-den/extensions/(?:refs/heads/)?[^/]+/(.+)$", RegexOption.IGNORE_CASE)
+            .matchEntire(url) ?: return emptyList()
+        return listOf("https://kohiden.xyz/Kohi-den/extensions/raw/branch/main/${m.groupValues[1]}")
     }
 
     /**
@@ -120,13 +130,24 @@ class ExtensionRepo(
     suspend fun resolve(input: String): Result<JsonUrlResult> = withContext(Dispatchers.IO) {
         val urls = candidates(input)
         if (urls.isEmpty()) return@withContext Result.failure(IllegalArgumentException("Paste a JSON URL first"))
-        var lastError: Throwable? = null
+        val errors = mutableListOf<Throwable>()
         for (url in urls) {
             val parsed = runCatching { fetchAndClassify(url) }
             if (parsed.isSuccess) return@withContext parsed
-            lastError = parsed.exceptionOrNull()
+            parsed.exceptionOrNull()?.let { errors += it }
         }
-        Result.failure(lastError ?: IllegalStateException("Could not read that URL"))
+        // Reporting only the last attempt hid the real problem (a 404 on the final fallback branch looked like the
+        // pasted link itself was wrong); every address that was tried is listed instead.
+        val message = if (errors.size <= 1) {
+            errors.firstOrNull()?.message ?: "Could not read that URL"
+        } else {
+            "Could not load a repo from any of ${errors.size} addresses tried:\n" +
+                errors.joinToString("\n") { "• ${it.message ?: it::class.java.simpleName}" } +
+                if (errors.all { it.message.orEmpty().startsWith("HTTP 404") }) {
+                    "\nThe repo may have moved or been removed; check the repo's own page for its current index.min.json link."
+                } else ""
+        }
+        Result.failure(IllegalStateException(message, errors.lastOrNull()))
     }
 
     private fun fetchAndClassify(url: String): JsonUrlResult {

@@ -22,6 +22,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **11 more accent colours.** Red, Crimson, Coral, Pink, Purple, Indigo, Blue, Cyan, Teal, Brown and Slate join the
+  palette in Appearance (the row already scrolls sideways). **Constraint:** all are mid-tones so the white text on
+  accent buttons stays readable; saved choices keep their keys.
+
+- **Each source remembers its last test.** The Extensions list now shows "Streams OK" or "Streaming failed" with how long
+  ago it was tested, so you can see which sources work without testing again. **Constraint:** informational only;
+  sources are not hidden or reordered automatically.
+
+### Fixed
+
+- **Switching tabs while one is still loading no longer leaves the old tab drawn on the new one.** All four tab
+  screens recorded their content into one shared layer for the nav bar's blur, and each also drew that layer back as
+  its own content. During a tab change two screens are alive at once, so the screen that was not redrawing showed the
+  other screen's picture (a stuck spinner) until a touch or scroll redrew it. Each screen now records into its own
+  layer, and the bar blurs whichever screen appeared last; a screen fading out can no longer take that from the one
+  fading in.
+
+- **Nav bar: the pill now comes to a pressed tab immediately.** Holding a tab that was not selected left the pill
+  where it was until the finger moved, then it jumped under the finger. A press now sends the pill to that tab with
+  the usual stretchy spring, and dragging only moves the pill's target, so there is no jump. Releasing settles it on the
+  tab under the finger.
+
+- **Kohi-den repo adds work again (it moved off GitHub).** `raw.githubusercontent.com/Kohi-den/extensions/...` now returns
+  HTTP 404 for every branch; the index is published on `kohiden.xyz`. Any Kohi-den link is now also tried there first.
+  The error also lists every address that was tried, instead of only the last fallback branch.
+  **Constraint:** other repos are untouched; only Kohi-den links get the mirror.
+- **Test results keep every title's failure.** A streaming test tries two titles and used to show only the second
+  one's reason, which hid why the first failed.
+
 ### Changed
 
 - **Home hero banner loops endlessly.** Swiping past the last slide now continues to the first (and backwards from the

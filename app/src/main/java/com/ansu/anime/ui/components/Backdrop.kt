@@ -2,6 +2,7 @@ package com.ansu.anime.ui.components
 
 import android.os.Build
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,26 +33,48 @@ val backdropBlurSupported: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSIO
  * scrolling behind it. The bar must be a sibling of the content (the Scaffold's bottomBar slot), never
  * inside it, otherwise it would try to draw itself into itself.
  */
-class BackdropState internal constructor(internal val layer: GraphicsLayer) {
-    // Observable on purpose: the bar's draw reads it, so the bar redraws the moment the content has been laid out.
-    // As a plain field the bar had already drawn (with nothing to blur) and stayed that way until something
-    // else, like a scroll, happened to redraw it, which is why the blur seemed to arrive late after launch.
-    internal var coordinates: LayoutCoordinates? by mutableStateOf(null)
+class BackdropState internal constructor() {
+    /**
+     * The content source currently behind the bar. Observable on purpose: the bar's draw reads it, so the bar redraws
+     * the moment a screen has been laid out (as a plain field the bar had already drawn with nothing to blur and
+     * stayed that way until a scroll happened to redraw it).
+     */
+    internal var active: BackdropSource? by mutableStateOf(null)
+}
+
+/**
+ * One screen's own recording layer and position. Each tab screen records into its OWN layer: they used to share a
+ * single layer, so while two tabs were composed at once (a tab change cross-fades) the screen that was not
+ * re-recording drew the other screen's content from the shared layer. That is the "My Space drawn over Home with a
+ * stuck spinner until I touch it" glitch, which showed up exactly when a tab was switched while it was still loading.
+ */
+internal class BackdropSource(val layer: GraphicsLayer) {
+    var coordinates: LayoutCoordinates? by mutableStateOf(null)
 }
 
 @Composable
-fun rememberBackdropState(): BackdropState {
-    val layer = rememberGraphicsLayer()
-    return remember(layer) { BackdropState(layer) }
-}
+fun rememberBackdropState(): BackdropState = remember { BackdropState() }
 
-/** Marks the full-size content behind a floating bar as the source of its blurred backdrop. */
-fun Modifier.backdropSource(state: BackdropState): Modifier = this
-    .onGloballyPositioned { state.coordinates = it }
-    .drawWithContent {
-        state.layer.record { this@drawWithContent.drawContent() }
-        drawLayer(state.layer)
+/**
+ * Marks the full-size content behind a floating bar as the source of its blurred backdrop. The newest source to
+ * appear is the one the bar blurs; a source that leaves only clears the bar if it is still the active one, so the
+ * screen fading out never takes the blur away from the screen fading in.
+ */
+@Composable
+fun Modifier.backdropSource(state: BackdropState): Modifier {
+    val layer = rememberGraphicsLayer()
+    val source = remember(layer) { BackdropSource(layer) }
+    DisposableEffect(state, source) {
+        state.active = source
+        onDispose { if (state.active === source) state.active = null }
     }
+    return this
+        .onGloballyPositioned { source.coordinates = it }
+        .drawWithContent {
+            source.layer.record { this@drawWithContent.drawContent() }
+            drawLayer(source.layer)
+        }
+}
 
 /**
  * The bar's own coordinates. Observable for the same reason as [BackdropState.coordinates]; the instance only
@@ -76,13 +99,14 @@ fun Modifier.frostedBackdrop(state: BackdropState?, enabled: Boolean, shape: Sha
         .onGloballyPositioned { holder.coordinates = it }
         .clip(shape)
         .drawBehind {
-            val source = state.coordinates ?: return@drawBehind
+            val active = state.active ?: return@drawBehind
+            val source = active.coordinates ?: return@drawBehind
             val me = holder.coordinates ?: return@drawBehind
             if (!source.isAttached || !me.isAttached) return@drawBehind
             val topLeft = source.localPositionOf(me, Offset.Zero)
             blurLayer.renderEffect = BlurEffect(radiusPx, radiusPx, TileMode.Clamp)
             blurLayer.record {
-                translate(-topLeft.x, -topLeft.y) { drawLayer(state.layer) }
+                translate(-topLeft.x, -topLeft.y) { drawLayer(active.layer) }
             }
             drawLayer(blurLayer)
         }

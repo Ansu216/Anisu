@@ -50,7 +50,8 @@ class AppContainer(context: Context) {
     val extensionManager: ExtensionManager = ExtensionManager(appContext)
     val extensionRepo: ExtensionRepo = ExtensionRepo(appContext, okHttpClient)
     val newsRepository: com.ansu.anime.data.news.NewsRepository = com.ansu.anime.data.news.NewsRepository(okHttpClient)
-    val sourceTester: SourceTester = SourceTester(okHttpClient)
+    val sourceHealth: com.ansu.anime.extension.SourceHealth = com.ansu.anime.extension.SourceHealth(appContext)
+    val sourceTester: SourceTester = SourceTester(okHttpClient, sourceHealth)
 
     val apiErrorHandler: ApiErrorHandler = ApiErrorHandler(diagnostics)
 
