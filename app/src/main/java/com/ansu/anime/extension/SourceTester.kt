@@ -17,9 +17,15 @@ sealed class TestTarget {
     abstract val key: String
     abstract val label: String
 
-    data class Extension(val source: AnimeCatalogueSource) : TestTarget() {
+    data class Extension(val source: AnimeCatalogueSource, val version: String? = null) : TestTarget() {
         override val key get() = "ext:${source.id}"
-        override val label get() = source.name
+
+        /** "Anikoto · EN · v16.11": the same source name can come from several extensions, so language and version tell them apart. */
+        override val label get() = buildList {
+            add(source.name)
+            source.lang.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }
+            version?.takeIf { it.isNotBlank() }?.let { add("v$it") }
+        }.joinToString(" · ")
     }
 }
 
@@ -49,7 +55,7 @@ class SourceTester(
 ) {
     suspend fun test(target: TestTarget): SourceTestResult = withContext(Dispatchers.IO) {
         when (target) {
-            is TestTarget.Extension -> testExtension(target.source)
+            is TestTarget.Extension -> testExtension(target.source).copy(target = target.label)
         }
     }
 
@@ -192,7 +198,7 @@ class SourceTester(
 
     private companion object {
         const val REQUEST_TIMEOUT_MS = 20_000L
-        const val STREAM_STEP_TIMEOUT_MS = 20_000L
+        const val STREAM_STEP_TIMEOUT_MS = 45_000L
         const val STREAM_TIMEOUT_MS = 30_000L
         const val STREAM_RESOLVE_TIMEOUT_MS = 15_000L
         const val STREAM_RESOLVE_TRIES = 2

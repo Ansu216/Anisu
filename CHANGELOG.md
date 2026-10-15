@@ -22,7 +22,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Home hero banner loops endlessly.** Swiping past the last slide now continues to the first (and backwards from the
+  first to the last) instead of stopping at the ends; the dots and the auto-rotation follow the loop.
+
+- **Search list mode: the whole card opens the page out of its poster.** Like My Space cards, a tap anywhere on a
+  list-mode result (title, tags, empty space) now starts the poster-expands-into-details animation; before only a
+  tap on the poster itself did, and any other tap opened the page with a plain fade.
+
+- **Player subtitles: one joined box.** A multi-line subtitle's rounded bars now join into a single stepped shape
+  (corners between neighbouring lines are squared off, only the outer corners stay rounded). With the rounded
+  background off, the plain rectangle hugs the text instead of stretching across the whole video width.
+
+- **Extensions: choose which repo "Available sources" shows.** With more than one repo added, a chip row above the
+  search box offers **All** (the default, repos merged) and one chip per repo (e.g. "yuzono/anime-repo (120)");
+  picking a repo lists only its extensions, and "Update all" then covers just that list.
+
+- **Extensions: "Available sources" folds.** The catalogue starts collapsed (tap its header to open; typing in the
+  search box opens it). A new **Update all (N)** button, visible even while folded, downloads and installs every
+  installed extension that has a newer build in a repo, one after another, with a progress line and any failures shown.
+
+- **Extensions "Test sources".** Every source in the picker now shows its language and extension version
+  ("Anikoto · EN · v16.11"), so two sources with the same name can be told apart. Several sources can be ticked and
+  tested in one run, and a "Test all" button runs every installed source one after another with a progress line, a
+  "N of M working" summary and one result card per source.
+
+- **Movies on the details page.** A movie (AniList format MOVIE) shows its running time (e.g. "1h 52m", from AniList)
+  in the stats row instead of an episode count, the main button reads "Play movie" / "Continue movie · 12:30" /
+  "Rewatch movie" instead of "Play Ep. 1", and the Episodes section is removed entirely.
+
+### Fixed
+
+- **Extensions built for library 17 (e.g. Kohi-den's Anikoto) listed no episodes.** Their listing entries can be
+  "Seasons" containers whose episodes live in `getSeasonList`; Anisu dropped `fetch_type` / `memo` / `season_number`
+  when it handed an entry back to the source and never asked for seasons. The adapter now keeps the source's own
+  entry, reads the type from the details call, and gathers the episodes of every season (also as a fallback when a
+  plain episode list comes back empty).
+- **Adding a repo from `raw.githubusercontent.com/<user>/<repo>/main/index.min.json` gave HTTP 404.** Extension repos
+  publish the index on the `repo` branch, so a `main`/`master` link now also tries `refs/heads/repo` and `repo`, and a
+  bare `github.com/<user>/<repo>` link resolves to that branch.
+- **Adding a repo gave "Unexpected JSON token ... �".** The index came back as gzip bytes; the repo reader now unpacks
+  gzip before parsing (and drops a UTF-8 BOM).
+- The Extensions "Test a source" episode-list step waits 45 s instead of 20 s, so large lists (One Piece) are not
+  reported as timed out.
+
 ### Added
+
+- **License and attribution screen** (Settings > Info, above About). A card for every service Anisu uses (AniList,
+  MyAnimeList / Jikan, TMDB, ani.zip, Kitsu, AniSkip, YouTube, Anime News Network, Aniyomi and the open-source libraries)
+  with its logo, what Anisu uses it for, the credit line it asks for (including TMDB's required notice) and a link.
+  Logos are the services' own icons fetched when the screen opens, over a coloured letter badge that shows offline.
 
 - **Comments on the details page, through your AniList account.** A new "Comments" card opens a sheet with the show's
   AniList discussions (its forum threads). Pick one to read its comments with the replies nested under them, and load

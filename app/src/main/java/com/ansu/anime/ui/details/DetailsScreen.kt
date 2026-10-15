@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.automirrored.filled.ViewList
@@ -135,9 +136,11 @@ fun DetailsScreen(
 
     // Where the viewer left off in this title, so the main button continues instead of restarting at Ep. 1.
     val resumeEntries by container.continueWatchingRepository.entries.collectAsStateWithLifecycle(initialValue = emptyList())
-    val playTarget = remember(resumeEntries, anime?.anilistId, episodes, upcomingIds) {
+    // A movie has no episode list: one "Play movie" button, and its running time instead of an episode count.
+    val isMovie = (details?.format ?: anime?.format).equals("MOVIE", ignoreCase = true)
+    val playTarget = remember(resumeEntries, anime?.anilistId, episodes, upcomingIds, isMovie) {
         val resume = anime?.anilistId?.let { id -> resumeEntries.firstOrNull { it.anilistId == id } }
-        resolvePlayTarget(episodes.filter { it.id !in upcomingIds }, resume)
+        resolvePlayTarget(episodes.filter { it.id !in upcomingIds }, resume, isMovie)
     }
 
     // Hand the playable episodes to the player (previous/next and its "more episodes" list).
@@ -190,7 +193,7 @@ fun DetailsScreen(
 
             item {
                 PlayLikeRow(
-                    playLabel = playTarget?.label ?: "No episodes yet",
+                    playLabel = playTarget?.label ?: if (isMovie) "Movie not available yet" else "No episodes yet",
                     playEnabled = playTarget != null,
                     onPlay = {
                         playTarget?.episode?.let { episode ->
@@ -216,7 +219,11 @@ fun DetailsScreen(
             item {
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     StatItem(Icons.Filled.Star, details?.averageScore?.let { "$it%" } ?: "—", "SCORE", tint = AnsuColors.ScoreGreen)
-                    StatItem(Icons.AutoMirrored.Filled.ViewList, (details?.episodes ?: episodes.size.takeIf { it > 0 })?.toString() ?: "—", "EPISODES")
+                    if (isMovie) {
+                        StatItem(Icons.Filled.Schedule, formatMovieDuration(details?.durationMinutes), "DURATION")
+                    } else {
+                        StatItem(Icons.AutoMirrored.Filled.ViewList, (details?.episodes ?: episodes.size.takeIf { it > 0 })?.toString() ?: "—", "EPISODES")
+                    }
                     StatItem(Icons.Filled.CalendarToday, details?.year?.toString() ?: anime?.releaseYear?.toString() ?: "—", "YEAR")
                     StatItem(Icons.Filled.Tv, details?.format ?: "TV", "FORMAT")
                 }
@@ -258,59 +265,61 @@ fun DetailsScreen(
                 item { CommentsEntry(onOpen = { showComments = true }) }
             }
 
-            item { DetailsSectionHeader("Episodes") }
-            if (state.isLoading) {
-                item { CircularProgressIndicator(color = AnsuColors.Accent, modifier = Modifier.padding(20.dp)) }
-            } else if (episodes.isEmpty()) {
-                item {
-                    Text(
-                        state.error ?: "No episodes found yet.",
-                        color = AnsuColors.TextTertiary,
-                        modifier = Modifier.padding(horizontal = 20.dp),
-                    )
-                }
-            } else {
-                val groups = episodes.chunked(EPISODE_GROUP_SIZE)
-                val groupIndex = selectedGroup.coerceIn(0, groups.lastIndex)
-                // Nothing to switch between when none of the episodes can be played yet.
-                if (groups.size > 1 && upcomingIds.size < episodes.size) {
+            if (!isMovie) {
+                item { DetailsSectionHeader("Episodes") }
+                if (state.isLoading) {
+                    item { CircularProgressIndicator(color = AnsuColors.Accent, modifier = Modifier.padding(20.dp)) }
+                } else if (episodes.isEmpty()) {
                     item {
-                        EpisodeGroupChips(
-                            groups = groups,
-                            selected = groupIndex,
-                            onSelect = { selectedGroup = it },
+                        Text(
+                            state.error ?: "No episodes found yet.",
+                            color = AnsuColors.TextTertiary,
+                            modifier = Modifier.padding(horizontal = 20.dp),
                         )
                     }
-                }
-                val fullGroup = groups[groupIndex]
-                val collapsed = !episodesExpanded && fullGroup.size > EPISODE_PREVIEW_COUNT
-                val visible = if (collapsed) fullGroup.take(EPISODE_PREVIEW_COUNT) else fullGroup
-                // Upcoming episodes with no announced date carry no information; they collapse into one line.
-                val undated = visible.filter { it.id in upcomingIds && it.airDate.isNullOrBlank() }
-                itemsIndexed(visible.filterNot { it in undated }, key = { index, episode -> "ep:${episode.id}#$index" }) { _, episode ->
-                    if (episode.id in upcomingIds) {
-                        UpcomingEpisodeRow(episode)
-                    } else {
-                        EpisodeRow(
-                            episode = episode,
-                            synopsis = episode.description,
-                            onClick = {
-                                container.diagnostics.log(LogCategory.CLICK, "Episode selected: ${anime?.title} E${episode.episodeNumber}")
-                                onEpisodeSelected(episode)
-                            },
-                        )
-                        androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
+                } else {
+                    val groups = episodes.chunked(EPISODE_GROUP_SIZE)
+                    val groupIndex = selectedGroup.coerceIn(0, groups.lastIndex)
+                    // Nothing to switch between when none of the episodes can be played yet.
+                    if (groups.size > 1 && upcomingIds.size < episodes.size) {
+                        item {
+                            EpisodeGroupChips(
+                                groups = groups,
+                                selected = groupIndex,
+                                onSelect = { selectedGroup = it },
+                            )
+                        }
                     }
-                }
-                if (undated.isNotEmpty()) {
-                    item { UndatedUpcomingRow(undated) }
-                }
-                if (collapsed) {
-                    item(key = "more-episodes") {
-                        MoreEpisodesChip(
-                            remaining = fullGroup.size - EPISODE_PREVIEW_COUNT,
-                            onClick = { episodesExpanded = true },
-                        )
+                    val fullGroup = groups[groupIndex]
+                    val collapsed = !episodesExpanded && fullGroup.size > EPISODE_PREVIEW_COUNT
+                    val visible = if (collapsed) fullGroup.take(EPISODE_PREVIEW_COUNT) else fullGroup
+                    // Upcoming episodes with no announced date carry no information; they collapse into one line.
+                    val undated = visible.filter { it.id in upcomingIds && it.airDate.isNullOrBlank() }
+                    itemsIndexed(visible.filterNot { it in undated }, key = { index, episode -> "ep:${episode.id}#$index" }) { _, episode ->
+                        if (episode.id in upcomingIds) {
+                            UpcomingEpisodeRow(episode)
+                        } else {
+                            EpisodeRow(
+                                episode = episode,
+                                synopsis = episode.description,
+                                onClick = {
+                                    container.diagnostics.log(LogCategory.CLICK, "Episode selected: ${anime?.title} E${episode.episodeNumber}")
+                                    onEpisodeSelected(episode)
+                                },
+                            )
+                            androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
+                        }
+                    }
+                    if (undated.isNotEmpty()) {
+                        item { UndatedUpcomingRow(undated) }
+                    }
+                    if (collapsed) {
+                        item(key = "more-episodes") {
+                            MoreEpisodesChip(
+                                remaining = fullGroup.size - EPISODE_PREVIEW_COUNT,
+                                onClick = { episodesExpanded = true },
+                            )
+                        }
                     }
                 }
             }
@@ -749,9 +758,22 @@ private class PlayTarget(val episode: SEpisode, val label: String)
  * Picks what the main button does: continue the episode that was left unfinished, move on to the next one
  * after a finished episode, or start at the first episode when nothing was watched yet.
  */
-private fun resolvePlayTarget(playable: List<SEpisode>, resume: com.ansu.anime.data.db.ContinueWatchingEntity?): PlayTarget? {
+private fun resolvePlayTarget(playable: List<SEpisode>, resume: com.ansu.anime.data.db.ContinueWatchingEntity?, isMovie: Boolean = false): PlayTarget? {
     val sorted = playable.sortedBy { it.episodeNumber }
     val first = sorted.firstOrNull() ?: return null
+    if (isMovie) {
+        val unfinished = resume != null && resume.positionSeconds > 5 &&
+            !(resume.durationSeconds > 0 && resume.positionSeconds >= resume.durationSeconds * 0.9)
+        val finished = resume != null && resume.durationSeconds > 0 && resume.positionSeconds >= resume.durationSeconds * 0.9
+        return PlayTarget(
+            first,
+            when {
+                unfinished -> "Continue movie · ${formatClock(resume!!.positionSeconds)}"
+                finished -> "Rewatch movie"
+                else -> "Play movie",
+            },
+        )
+    }
     fun start(episode: SEpisode) = PlayTarget(episode, "Play Ep. ${episode.episodeNumber.formatEpisodeNumber()}")
     if (resume == null) return start(first)
     val last = sorted.firstOrNull { it.id == resume.episodeId } ?: sorted.firstOrNull { it.episodeNumber == resume.episodeNumber }
@@ -767,6 +789,18 @@ private fun resolvePlayTarget(playable: List<SEpisode>, resume: com.ansu.anime.d
         PlayTarget(next, "Continue Ep. ${next.episodeNumber.formatEpisodeNumber()}")
     } else {
         PlayTarget(first, "Rewatch from Ep. ${first.episodeNumber.formatEpisodeNumber()}")
+    }
+}
+
+/** "1h 52m" / "45m" from a running time in minutes; a dash when AniList has none. */
+private fun formatMovieDuration(minutes: Int?): String {
+    if (minutes == null || minutes <= 0) return "—"
+    val h = minutes / 60
+    val m = minutes % 60
+    return when {
+        h == 0 -> "${m}m"
+        m == 0 -> "${h}h"
+        else -> "${h}h ${m}m"
     }
 }
 

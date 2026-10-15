@@ -113,12 +113,57 @@ class AniyomiSourceAdapter(
         )
     }
 
-    override suspend fun getEpisodeList(anime: AnsuAnime): List<AnsuEpisode> = io {
-        val episodes = if (libVersion >= LIB_17) {
-            source.getAnimeEpisodeUpdate(anime.toSource(), emptyList(), fetchDetails = false, fetchEpisodes = true).episodes
+    /** Episodes of one SAnime entry, through the lib 17 call when the extension is built for it. */
+    private suspend fun episodesOf(entry: SAnime): List<SEpisode> =
+        if (libVersion >= LIB_17) {
+            source.getAnimeEpisodeUpdate(entry, emptyList(), fetchDetails = false, fetchEpisodes = true).episodes
         } else {
-            source.getEpisodeList(anime.toSource())
+            source.getEpisodeList(entry)
         }
+
+    override suspend fun getEpisodeList(anime: AnsuAnime): List<AnsuEpisode> = io {
+        var entry = anime.toSource()
+        // A listing entry can be a "Seasons" container (lib 16/17): its episodes live in its seasons, and its own
+        // episode list is empty. The type is only reliable after the details call, so read it once.
+        if (!entry.initialized) {
+            runCatching {
+                if (libVersion >= LIB_17) {
+                    source.getAnimeEpisodeUpdate(entry, emptyList(), fetchDetails = true, fetchEpisodes = false).anime
+                } else {
+                    source.getAnimeDetails(entry)
+                }
+            }.getOrNull()?.let { detailed ->
+                if (detailed.fetch_type == eu.kanade.tachiyomi.animesource.model.FetchType.Seasons) {
+                    entry.fetch_type = detailed.fetch_type
+                }
+                detailed.memo.takeIf { it.isNotEmpty() }?.let { entry.memo = it }
+            }
+        }
+        val episodes: List<SEpisode> =
+            if (entry.fetch_type == eu.kanade.tachiyomi.animesource.model.FetchType.Seasons) {
+                val seasons = if (libVersion >= LIB_17) {
+                    source.getAnimeSeasonUpdate(entry, emptyList(), fetchDetails = false, fetchSeasons = true).seasons
+                } else {
+                    source.getSeasonList(entry)
+                }
+                seasons.sortedBy { it.season_number }.flatMap { season ->
+                    runCatching { episodesOf(season) }
+                        .onFailure { android.util.Log.w("AniyomiSource", "$name: season ${season.title} failed", it) }
+                        .getOrDefault(emptyList())
+                }
+            } else {
+                episodesOf(entry).ifEmpty {
+                    // Some sources only answer once the details were fetched; fall back to the season route.
+                    val seasons = runCatching {
+                        if (libVersion >= LIB_17) {
+                            source.getAnimeSeasonUpdate(entry, emptyList(), fetchDetails = false, fetchSeasons = true).seasons
+                        } else {
+                            source.getSeasonList(entry)
+                        }
+                    }.getOrDefault(emptyList())
+                    seasons.sortedBy { it.season_number }.flatMap { runCatching { episodesOf(it) }.getOrDefault(emptyList()) }
+                }
+            }
         episodes.forEach { episodeCache[it.url] = it }
         // Sources list newest first. With real episode numbers sort by them; otherwise number from the bottom up.
         val useNumbers = episodes.isNotEmpty() && episodes.all { it.episode_number > 0f }
@@ -432,7 +477,15 @@ class AniyomiSourceAdapter(
 
     private fun AnimesPage.toAnsu() = AnsuPage(animes.map { it.toAnsu() }, hasNextPage)
 
-    private fun SAnime.toAnsu() = AnsuAnime(
+    /** The source's own SAnime objects by url: they carry `fetch_type`, `memo` and `season_number`, which Ansu's model drops. */
+    private val animeCache = java.util.concurrent.ConcurrentHashMap<String, SAnime>()
+
+    private fun SAnime.toAnsu(): AnsuAnime {
+        animeCache[url] = this
+        return toAnsuModel()
+    }
+
+    private fun SAnime.toAnsuModel() = AnsuAnime(
         id = "${source.id}:$url",
         title = title,
         posterUrl = thumbnail_url,
@@ -443,6 +496,7 @@ class AniyomiSourceAdapter(
 
     private fun AnsuAnime.toSource(): SAnime {
         val path = (origin as? MediaOrigin.Extension)?.urlPath ?: id
+        animeCache[path]?.let { return it.copy() }
         return SAnime.create().apply {
             url = path
             title = this@toSource.title

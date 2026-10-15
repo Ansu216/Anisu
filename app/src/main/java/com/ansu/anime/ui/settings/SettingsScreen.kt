@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
@@ -145,6 +146,12 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
             }
 
             SettingsGroup(title = "Info") {
+                SettingsRow(
+                    icon = Icons.Filled.Description,
+                    title = "License and attribution",
+                    subtitle = "Credits for the services and projects Anisu uses",
+                    onClick = { navController.navigate(Dest.LICENSES) },
+                )
                 SettingsRow(
                     icon = Icons.Filled.Info,
                     title = "About",

@@ -87,6 +87,8 @@ data class AniListMediaDetails(
     val nextAiringEpisode: Int? = null,
     /** YouTube id of the trailer AniList lists for this show; the Trailers row's fallback when Jikan has none. */
     val trailerYoutubeId: String? = null,
+    /** Minutes per episode (for a movie, its running time) as AniList lists it, or null. */
+    val durationMinutes: Int? = null,
 )
 
 /** A show connected to another one on AniList, with how it connects (e.g. "Sequel", "Movie"). */

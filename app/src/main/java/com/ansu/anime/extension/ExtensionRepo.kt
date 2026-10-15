@@ -91,9 +91,29 @@ class ExtensionRepo(
         url = Regex("^https://github\\.com/([^/]+)/([^/]+)/blob/(.+)$").replace(url) { m ->
             "https://raw.githubusercontent.com/${m.groupValues[1]}/${m.groupValues[2]}/${m.groupValues[3]}"
         }
+        // A bare github.com/user/repo link: Keiyoushi-style repos publish the index on the `repo` branch.
+        Regex("^https://github\\.com/([^/]+)/([^/]+?)(?:\\.git)?/?$").matchEntire(url)?.let { m ->
+            val (user, repo) = m.destructured
+            url = "https://raw.githubusercontent.com/$user/$repo/refs/heads/repo"
+        }
         val trimmed = url.trimEnd('/')
         val looksLikeFile = trimmed.substringAfterLast('/').contains('.')
-        return if (looksLikeFile) listOf(trimmed) else listOf("$trimmed/index.min.json", trimmed)
+        val primary = if (looksLikeFile) listOf(trimmed) else listOf("$trimmed/index.min.json", trimmed)
+        return (primary + branchFallbacks(primary.first())).distinct()
+    }
+
+    /**
+     * Extension repos keep the built index on a `repo` branch, not `main`. A pasted
+     * `raw.githubusercontent.com/<user>/<repo>/main/index.min.json` therefore 404s, so the same file is
+     * also tried on `refs/heads/repo` and `repo`.
+     */
+    private fun branchFallbacks(url: String): List<String> {
+        val m = Regex("^(https://raw\\.githubusercontent\\.com/[^/]+/[^/]+)/(?:refs/heads/)?(main|master|repo)/(.+)$")
+            .matchEntire(url) ?: return emptyList()
+        val (root, branch, file) = m.destructured
+        return listOf("refs/heads/repo", "repo", "refs/heads/main", "main")
+            .filterNot { it.substringAfterLast('/') == branch }
+            .map { "$root/$it/$file" }
     }
 
     /** Fetches [input] and works out which kind of JSON it is. */
@@ -113,8 +133,15 @@ class ExtensionRepo(
         val request = Request.Builder().url(url).build()
         val body = client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("HTTP ${response.code} from $url")
-            response.body.string()
-        }
+            val bytes = response.body.bytes()
+            // Some hosts (and `.gz` index files) hand back gzip bytes the HTTP layer did not unpack: reading
+            // those as text gives "Unexpected JSON token ... �". Unpack when the gzip magic number is there.
+            if (bytes.size > 2 && bytes[0] == 0x1f.toByte() && bytes[1] == 0x8b.toByte()) {
+                java.util.zip.GZIPInputStream(bytes.inputStream()).use { it.readBytes() }.toString(Charsets.UTF_8)
+            } else {
+                bytes.toString(Charsets.UTF_8)
+            }
+        }.removePrefix("\uFEFF")
         val root = json.parseToJsonElement(body)
         return classify(url, root)
     }

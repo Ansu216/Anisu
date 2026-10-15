@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -52,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -119,11 +121,19 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     var installError by remember { mutableStateOf<String?>(null) }
     var installingPkgs by remember { mutableStateOf<Set<String>>(emptySet()) }
     var extensionQuery by remember { mutableStateOf("") }
+    // The catalogue is long, so it starts folded; typing in the search box opens it.
+    var availableExpanded by remember { mutableStateOf(false) }
+    // Which repo "Available sources" shows: null = All (the default), else a repo's index URL.
+    var selectedRepo by remember { mutableStateOf<String?>(null) }
+    var updatingAll by remember { mutableStateOf(false) }
+    var updateProgress by remember { mutableStateOf("") }
 
     var settingsFor by remember { mutableStateOf<AniyomiSourceAdapter?>(null) }
-    var selectedKey by remember { mutableStateOf<String?>(null) }
+    // Several sources can be ticked and tested in one run ("Test all" ticks every one).
+    var selectedKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     var testing by remember { mutableStateOf(false) }
-    var result by remember { mutableStateOf<SourceTestResult?>(null) }
+    var testProgress by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<SourceTestResult>>(emptyList()) }
 
     // Re-read every saved repo when the screen opens, so "Available Sources" survives a restart.
     LaunchedEffect(repoUrls) {
@@ -140,8 +150,14 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
         scope.launch { withContext(Dispatchers.IO) { manager.reloadAll() } }
     }
 
-    val available = availableByRepo.flatMap { (indexUrl, entries) -> entries.map { AvailableExtension(indexUrl, it) } }
-        .distinctBy { it.entry.pkg }
+    // "All" merges every repo (an extension in two repos is listed once); a repo chip lists just that repo's own entries.
+    val activeRepo = selectedRepo?.takeIf { it in availableByRepo.keys }
+    val available = if (activeRepo != null) {
+        availableByRepo[activeRepo].orEmpty().map { AvailableExtension(activeRepo, it) }
+    } else {
+        availableByRepo.flatMap { (indexUrl, entries) -> entries.map { AvailableExtension(indexUrl, it) } }
+            .distinctBy { it.entry.pkg }
+    }
     // The search box filters the catalogue by extension name, source name, package or language,
     // so a long repo can be browsed by typing instead of scrolling.
     val query = extensionQuery.trim()
@@ -152,6 +168,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
             item.entry.sources.any { it.name.contains(query, ignoreCase = true) }
     }
     val installedVersions = extensions.associate { it.packageName to it.versionCode }
+    val updatable = available.filter { item -> installedVersions[item.entry.pkg]?.let { item.entry.code > it } == true }
 
     val extensionSources = extensions.flatMap { it.sources }
     val builtInSources = manager.allSourcesIncludingDisabled().filter { built -> extensionSources.none { it.id == built.id } }
@@ -164,9 +181,11 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
         }
     }
 
+    val versionBySourceId = extensions.flatMap { ext -> ext.sources.map { it.id to ext.versionName } }.toMap()
     val targets: List<TestTarget> =
-        (builtInSources + extensionSources).map { TestTarget.Extension(it) }
-    val selected = targets.firstOrNull { it.key == selectedKey }
+        (builtInSources + extensionSources).map { TestTarget.Extension(it, versionBySourceId[it.id]) }
+            .sortedBy { it.label.lowercase() }
+    val selectedTargets = targets.filter { it.key in selectedKeys }
 
     settingsFor?.let { adapter -> ExtensionSettingsSheet(source = adapter, onDismiss = { settingsFor = null }) }
 
@@ -246,7 +265,74 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
             }
 
             // --- Available Sources ---
-            Section("Available sources (${filteredAvailable.size})") {
+            val availableOpen = availableExpanded || query.isNotEmpty()
+            Section(
+                "Available sources (${filteredAvailable.size})",
+                expanded = availableOpen,
+                onToggle = { availableExpanded = !availableOpen },
+            ) {
+                // One button for every installed extension that has a newer build in a repo (always visible, even folded).
+                if (updatable.isNotEmpty() || updatingAll) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Button(
+                            enabled = !updatingAll,
+                            onClick = {
+                                val run = updatable
+                                scope.launch {
+                                    installError = null
+                                    updatingAll = true
+                                    var failed = 0
+                                    run.forEachIndexed { index, item ->
+                                        updateProgress = "Updating ${index + 1}/${run.size}: ${item.entry.name.removePrefix("Aniyomi: ")}"
+                                        installingPkgs = installingPkgs + item.entry.pkg
+                                        repo.downloadApk(item.indexUrl, item.entry)
+                                            .mapCatching { apk -> withContext(Dispatchers.IO) { manager.installPrivate(apk).getOrThrow() } }
+                                            .onFailure {
+                                                failed++
+                                                installError = "${item.entry.name}: ${it.message ?: "Update failed"}"
+                                            }
+                                        installingPkgs = installingPkgs - item.entry.pkg
+                                    }
+                                    updateProgress = if (failed == 0) "" else "$failed of ${run.size} updates failed"
+                                    updatingAll = false
+                                }
+                            },
+                        ) {
+                            if (updatingAll) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            else Text("Update all (${updatable.size})")
+                        }
+                        if (updateProgress.isNotBlank()) {
+                            Text(updateProgress, style = MaterialTheme.typography.bodySmall, color = AnsuColors.TextSecondary, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+                installError?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                }
+                if (availableOpen) {
+                if (availableByRepo.size > 1) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        androidx.compose.material3.FilterChip(
+                            selected = activeRepo == null,
+                            onClick = { selectedRepo = null },
+                            label = { Text("All") },
+                        )
+                        availableByRepo.forEach { (indexUrl, entries) ->
+                            androidx.compose.material3.FilterChip(
+                                selected = activeRepo == indexUrl,
+                                onClick = { selectedRepo = indexUrl },
+                                label = { Text("${repoDisplayName(indexUrl)} (${entries.size})") },
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = extensionQuery,
                     onValueChange = { extensionQuery = it },
@@ -256,9 +342,6 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                     shape = RoundedCornerShape(50),
                     modifier = Modifier.fillMaxWidth().padding(12.dp),
                 )
-                installError?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
-                }
                 if (available.isEmpty()) {
                     EmptyHint("Nothing here yet. Add a repo's index.min.json above.")
                 } else if (filteredAvailable.isEmpty()) {
@@ -303,6 +386,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                         }
                     }
                 }
+                }
             }
 
             // --- Installed Sources ---
@@ -345,7 +429,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
             }
 
             // --- Test Source ---
-            Section("Test a source") {
+            Section("Test sources") {
                 Row(
                     modifier = Modifier.padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -362,9 +446,13 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                selected?.label ?: "Choose from installed sources",
+                                when (selectedTargets.size) {
+                                    0 -> "Choose from installed sources"
+                                    1 -> selectedTargets.first().label
+                                    else -> "${selectedTargets.size} sources selected"
+                                },
                                 modifier = Modifier.weight(1f),
-                                color = if (selected == null) AnsuColors.TextTertiary else AnsuColors.TextPrimary,
+                                color = if (selectedTargets.isEmpty()) AnsuColors.TextTertiary else AnsuColors.TextPrimary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -374,19 +462,30 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                             if (targets.isEmpty()) DropdownMenuItem(text = { Text("No installed sources") }, onClick = { menuOpen = false })
                             targets.forEach { target ->
                                 DropdownMenuItem(
+                                    leadingIcon = {
+                                        androidx.compose.material3.Checkbox(checked = target.key in selectedKeys, onCheckedChange = null)
+                                    },
                                     text = { Text(target.label) },
-                                    onClick = { selectedKey = target.key; result = null; menuOpen = false },
+                                    // The menu stays open so several sources can be ticked in a row.
+                                    onClick = {
+                                        selectedKeys = if (target.key in selectedKeys) selectedKeys - target.key else selectedKeys + target.key
+                                        results = emptyList()
+                                    },
                                 )
                             }
                         }
                     }
                     Button(
-                        enabled = selected != null && !testing,
+                        enabled = selectedTargets.isNotEmpty() && !testing,
                         onClick = {
-                            val target = selected ?: return@Button
+                            val run = selectedTargets
                             scope.launch {
                                 testing = true
-                                result = container.sourceTester.test(target)
+                                results = emptyList()
+                                run.forEachIndexed { index, target ->
+                                    testProgress = "Testing ${index + 1}/${run.size}: ${target.label}"
+                                    results = results + container.sourceTester.test(target)
+                                }
                                 testing = false
                             }
                         },
@@ -394,7 +493,43 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                         if (testing) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Test")
                     }
                 }
-                TestResultBox(result = result, testing = testing)
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(
+                        enabled = targets.isNotEmpty() && !testing,
+                        onClick = {
+                            val run = targets
+                            selectedKeys = run.map { it.key }.toSet()
+                            scope.launch {
+                                testing = true
+                                results = emptyList()
+                                run.forEachIndexed { index, target ->
+                                    testProgress = "Testing ${index + 1}/${run.size}: ${target.label}"
+                                    results = results + container.sourceTester.test(target)
+                                }
+                                testing = false
+                            }
+                        },
+                    ) { Text("Test all (${targets.size})") }
+                    if (selectedKeys.isNotEmpty() && !testing) {
+                        OutlinedButton(onClick = { selectedKeys = emptySet(); results = emptyList() }) { Text("Clear") }
+                    }
+                }
+                if (results.isEmpty()) {
+                    TestResultBox(result = null, testing = testing, progress = testProgress)
+                } else {
+                    if (testing) Text(testProgress, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = AnsuColors.TextSecondary)
+                    else if (results.size > 1) {
+                        Text(
+                            "${results.count { it.ok }} of ${results.size} working",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                    }
+                    results.forEach { TestResultBox(result = it, testing = false) }
+                }
             }
 
             Spacer(Modifier.size(24.dp))
@@ -424,9 +559,21 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     }
 }
 
+/** "user/repo" for a GitHub raw index URL, else the host: the short name shown on a repo chip. */
+private fun repoDisplayName(indexUrl: String): String {
+    val parts = indexUrl.removePrefix("https://").removePrefix("http://").split('/')
+    val host = parts.firstOrNull().orEmpty()
+    return if (host == "raw.githubusercontent.com" && parts.size >= 3) "${parts[1]}/${parts[2]}" else host.ifBlank { indexUrl }
+}
+
 /** A titled, bordered card that holds one block of the screen. */
 @Composable
-private fun Section(title: String, content: @Composable () -> Unit) {
+private fun Section(
+    title: String,
+    expanded: Boolean = true,
+    onToggle: (() -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
     val shape = RoundedCornerShape(18.dp)
     Column(
         modifier = Modifier.fillMaxWidth()
@@ -435,13 +582,27 @@ private fun Section(title: String, content: @Composable () -> Unit) {
             .border(BorderStroke(1.dp, AnsuColors.StrokeGlass), shape)
             .padding(vertical = 4.dp),
     ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleMedium,
-            color = AnsuColors.TextPrimary,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .then(if (onToggle != null) Modifier.clickable { onToggle() } else Modifier)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+                color = AnsuColors.TextPrimary,
+                fontWeight = FontWeight.Bold,
+            )
+            if (onToggle != null) {
+                Icon(
+                    Icons.Filled.KeyboardArrowDown,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    modifier = Modifier.rotate(if (expanded) 180f else 0f),
+                )
+            }
+        }
         content()
     }
 }
@@ -509,7 +670,7 @@ private fun IconSquare(model: Any?, fallback: String) {
 }
 
 @Composable
-private fun TestResultBox(result: SourceTestResult?, testing: Boolean) {
+private fun TestResultBox(result: SourceTestResult?, testing: Boolean, progress: String = "") {
     val shape = RoundedCornerShape(16.dp)
     Column(
         modifier = Modifier.fillMaxWidth().padding(12.dp).clip(shape).background(AnsuColors.SurfaceGlassBase)
@@ -518,8 +679,8 @@ private fun TestResultBox(result: SourceTestResult?, testing: Boolean) {
     ) {
         Text("Test result", style = MaterialTheme.typography.titleSmall)
         when {
-            testing -> Text("Testing…", color = AnsuColors.TextSecondary)
-            result == null -> Text("Pick a source and press Test to see ping, latency and what it returns.", color = AnsuColors.TextSecondary)
+            testing -> Text(progress.ifBlank { "Testing…" }, color = AnsuColors.TextSecondary)
+            result == null -> Text("Tick one or more sources (or press Test all) to see ping, latency and what it returns.", color = AnsuColors.TextSecondary)
             else -> {
                 Text(
                     if (result.ok) "${result.target}: working" else "${result.target}: failed",
