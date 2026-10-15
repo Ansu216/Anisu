@@ -770,7 +770,7 @@ private fun resolvePlayTarget(playable: List<SEpisode>, resume: com.ansu.anime.d
             when {
                 unfinished -> "Continue movie · ${formatClock(resume!!.positionSeconds)}"
                 finished -> "Rewatch movie"
-                else -> "Play movie",
+                else -> "Play movie"
             },
         )
     }
