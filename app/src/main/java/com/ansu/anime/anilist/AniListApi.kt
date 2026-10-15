@@ -766,7 +766,6 @@ class AniListApi(
             genres = this["genres"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
             averageScore = this["averageScore"]?.jsonPrimitive?.content?.toIntOrNull(),
             episodes = this["episodes"]?.jsonPrimitive?.content?.toIntOrNull(),
-            durationMinutes = this["duration"]?.jsonPrimitive?.content?.toIntOrNull(),
             year = this["startDate"]?.jsonObject?.get("year")?.jsonPrimitive?.content?.toIntOrNull(),
             format = this["format"]?.jsonPrimitive?.contentOrNull,
             isAdult = this["isAdult"]?.jsonPrimitive?.content == "true",
@@ -855,6 +854,7 @@ class AniListApi(
             trailerYoutubeId = (this["trailer"] as? JsonObject)?.takeIf {
                 it["site"]?.jsonPrimitive?.contentOrNull.equals("youtube", ignoreCase = true)
             }?.get("id")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() },
+            durationMinutes = this["duration"]?.jsonPrimitive?.content?.toIntOrNull(),
         )
     }
 
