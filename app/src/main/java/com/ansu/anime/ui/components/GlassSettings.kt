@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -48,15 +50,15 @@ import com.ansu.anime.ui.theme.AnsuColors
  * uniform 16dp vertical rhythm — so a row looks the same in Settings, Appearance, Updates and About.
  */
 
-/** The small uppercase label above a card, aligned with the card's own 16dp inset. */
+/** The section heading, sitting outside and above its card, aligned with the card's own 16dp inset. */
 @Composable
 fun GlassGroupLabel(text: String) {
     Text(
-        text = text.uppercase(),
-        style = MaterialTheme.typography.labelSmall,
-        color = AnsuColors.TextTertiary,
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        color = AnsuColors.TextSecondary,
         fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 18.dp, bottom = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 20.dp, bottom = 8.dp),
     )
 }
 
@@ -136,7 +138,7 @@ fun GlassRow(
  */
 @Composable
 fun GlassToggleRow(
-    icon: ImageVector,
+    icon: ImageVector? = null,
     title: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
@@ -248,4 +250,59 @@ fun GlassRowValue(
         color = color,
         fontWeight = if (bold) FontWeight.Bold else FontWeight.Medium,
     )
+}
+
+/**
+ * A row whose body is its own content (chips, swatches, a preview) under the title and description, with the
+ * same padding and divider as every other row, so a mixed card still reads as one list.
+ */
+@Composable
+fun GlassContentRow(
+    title: String,
+    description: String? = null,
+    showDivider: Boolean = true,
+    trailingText: String? = null,
+    content: @Composable () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (showDivider) HorizontalDivider(color = AnsuColors.StrokeGlass)
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary, modifier = Modifier.weight(1f))
+                    trailingText?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = AnsuColors.TextSecondary) }
+                }
+                description?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary) }
+            }
+            content()
+        }
+    }
+}
+
+/** A slider row: title and description on top, the current value on the right, the slider underneath. */
+@Composable
+fun GlassSliderRow(
+    title: String,
+    valueText: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    description: String? = null,
+    showDivider: Boolean = true,
+) {
+    GlassContentRow(title = title, description = description, showDivider = showDivider, trailingText = valueText) {
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = valueRange,
+            colors = SliderDefaults.colors(
+                thumbColor = AnsuColors.Accent,
+                activeTrackColor = AnsuColors.Accent,
+                inactiveTrackColor = AnsuColors.AccentSoft,
+            ),
+        )
+    }
 }

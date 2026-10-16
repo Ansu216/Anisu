@@ -124,14 +124,6 @@ class AniListRepository(
         return guarded("Loading your Repeating list", emptyList()) { api.getMediaListCollection(userId, "REPEATING") }
     }
 
-    /** AniList ids of every favourite (all pages). Waits for the profile, which is still loading right after launch. */
-    suspend fun getLikedIds(): Set<Int> {
-        val userId = _viewer.value?.id
-            ?: kotlinx.coroutines.withTimeoutOrNull(15_000L) { viewer.filterNotNull().first().id }
-            ?: return emptySet()
-        return guarded("Loading your favourites", emptySet<Int>(), quiet = true) { api.getFavouriteIds(userId) }
-    }
-
     suspend fun getLiked(): List<AniListMedia> {
         val userId = _viewer.value?.id ?: return emptyList()
         return guarded("Loading your favourites", emptyList()) { api.getFavouriteAnime(userId) }

@@ -22,88 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **11 more accent colours.** Red, Crimson, Coral, Pink, Purple, Indigo, Blue, Cyan, Teal, Brown and Slate join the
-  palette in Appearance (the row already scrolls sideways). **Constraint:** all are mid-tones so the white text on
-  accent buttons stays readable; saved choices keep their keys.
-
-- **Each source remembers its last test.** The Extensions list now shows "Streams OK" or "Streaming failed" with how long
-  ago it was tested, so you can see which sources work without testing again. **Constraint:** informational only;
-  sources are not hidden or reordered automatically.
-
-### Fixed
-
-- **Switching tabs while one is still loading no longer leaves the old tab drawn on the new one.** All four tab
-  screens recorded their content into one shared layer for the nav bar's blur, and each also drew that layer back as
-  its own content. During a tab change two screens are alive at once, so the screen that was not redrawing showed the
-  other screen's picture (a stuck spinner) until a touch or scroll redrew it. Each screen now records into its own
-  layer, and the bar blurs whichever screen appeared last; a screen fading out can no longer take that from the one
-  fading in.
-
-- **Nav bar: the pill now comes to a pressed tab immediately.** Holding a tab that was not selected left the pill
-  where it was until the finger moved, then it jumped under the finger. A press now sends the pill to that tab with
-  the usual stretchy spring, and dragging only moves the pill's target, so there is no jump. Releasing settles it on the
-  tab under the finger.
-
-- **Kohi-den repo adds work again (it moved off GitHub).** `raw.githubusercontent.com/Kohi-den/extensions/...` now returns
-  HTTP 404 for every branch; the index is published on `kohiden.xyz`. Any Kohi-den link is now also tried there first.
-  The error also lists every address that was tried, instead of only the last fallback branch.
-  **Constraint:** other repos are untouched; only Kohi-den links get the mirror.
-- **Test results keep every title's failure.** A streaming test tries two titles and used to show only the second
-  one's reason, which hid why the first failed.
-
 ### Changed
 
-- **Home hero banner loops endlessly.** Swiping past the last slide now continues to the first (and backwards from the
-  first to the last) instead of stopping at the ends; the dots and the auto-rotation follow the loop.
+- **The app version is now 0.4.1 (version code 2026101701).** `version.txt` is the single source for both, so About, Updates and every build pick the new number up from there. The version code is higher than the previous 2026101401, so the update installs over the current build. **Constraint:** the code is a date-style number that must stay above this one from now on.
 
-- **Search list mode: the whole card opens the page out of its poster.** Like My Space cards, a tap anywhere on a
-  list-mode result (title, tags, empty space) now starts the poster-expands-into-details animation; before only a
-  tap on the poster itself did, and any other tap opened the page with a plain fade.
+- **Every settings screen now has the same shape: heading outside, a box, a line between rows, a description under each title.** Player & Streaming is rebuilt from your sketch as Player gestures (skip amount, double tap to skip, one "swipe to adjust volume & brightness" switch), Picture in picture, Pre-load, Subtitle and Streaming priority. The subtitle live preview is gone. Appearance is split the same way (Title, Color palette, Navigation bar, Reset) with its sliders, presets and blur switch as rows, System's log buttons are rows with descriptions, and the headings on Settings, About, Updates and Backup are now plain sentence-case text instead of small capitals. Shared pieces `GlassContentRow` and `GlassSliderRow` were added, and `GlassToggleRow` no longer needs an icon. **Constraint:** the two gesture switches are now one, so brightness and volume swipes turn on and off together.
 
-- **Player subtitles: one joined box.** A multi-line subtitle's rounded bars now join into a single stepped shape
-  (corners between neighbouring lines are squared off, only the outer corners stay rounded). With the rounded
-  background off, the plain rectangle hugs the text instead of stretching across the whole video width.
+- **TMDB logos, posters and backdrops load much faster.** Answers (ani.zip mapping plus the TMDB images) are now kept on the phone for 14 days, so a show seen once opens with its art instantly, even after a restart. Two screens asking for the same show share one request instead of making two, the slow Kitsu cover can no longer hold the rest up (it gets 4 seconds), every artwork request has a 10 second limit, and Home starts the lookups for the whole carousel as soon as it is known, a few at a time. A failed TMDB call is never stored, so a bad moment does not stick. **Constraint:** the stored answers are dropped when a TMDB key is added or removed, and "clear cache" wipes them too.
 
-- **Extensions: choose which repo "Available sources" shows.** With more than one repo added, a chip row above the
-  search box offers **All** (the default, repos merged) and one chip per repo (e.g. "yuzono/anime-repo (120)");
-  picking a repo lists only its extensions, and "Update all" then covers just that list.
-
-- **Extensions: "Available sources" folds.** The catalogue starts collapsed (tap its header to open; typing in the
-  search box opens it). A new **Update all (N)** button, visible even while folded, downloads and installs every
-  installed extension that has a newer build in a repo, one after another, with a progress line and any failures shown.
-
-- **Extensions "Test sources".** Every source in the picker now shows its language and extension version
-  ("Anikoto · EN · v16.11"), so two sources with the same name can be told apart. Several sources can be ticked and
-  tested in one run, and a "Test all" button runs every installed source one after another with a progress line, a
-  "N of M working" summary and one result card per source.
-
-- **Movies on the details page.** A movie (AniList format MOVIE) shows its running time (e.g. "1h 52m", from AniList)
-  in the stats row instead of an episode count, the main button reads "Play movie" / "Continue movie · 12:30" /
-  "Rewatch movie" instead of "Play Ep. 1", and the Episodes section is removed entirely.
-
-### Fixed
-
-- **Extensions built for library 17 (e.g. Kohi-den's Anikoto) listed no episodes.** Their listing entries can be
-  "Seasons" containers whose episodes live in `getSeasonList`; Anisu dropped `fetch_type` / `memo` / `season_number`
-  when it handed an entry back to the source and never asked for seasons. The adapter now keeps the source's own
-  entry, reads the type from the details call, and gathers the episodes of every season (also as a fallback when a
-  plain episode list comes back empty).
-- **Adding a repo from `raw.githubusercontent.com/<user>/<repo>/main/index.min.json` gave HTTP 404.** Extension repos
-  publish the index on the `repo` branch, so a `main`/`master` link now also tries `refs/heads/repo` and `repo`, and a
-  bare `github.com/<user>/<repo>` link resolves to that branch.
-- **Adding a repo gave "Unexpected JSON token ... �".** The index came back as gzip bytes; the repo reader now unpacks
-  gzip before parsing (and drops a UTF-8 BOM).
-- The Extensions "Test a source" episode-list step waits 45 s instead of 20 s, so large lists (One Piece) are not
-  reported as timed out.
+- **Extensions screen redesigned.** A floating, frosted Available / Installed bar (the Home nav bar's twin: same glass, spring pill and hold-to-drag) sits at the bottom with a circle beside it. The circle opens an "Add extension" card that rises from under the screen over a frosted blur (the plus turns into a close cross); it lists your repos with an on/off switch and a delete button each. On Installed, when an extension has a newer build, the circle becomes a download arrow that opens an "Update sources" card with Update per source, Update all and Not now. Installed rows have a Test button, and holding one floats it over a live blur like Continue Watching, with Configuration, Disable / Enable and Delete. The old stacked page (repository box, long lists, test dropdown) is gone. **Constraint:** deleting a source removes its whole extension when that extension bundles several sources.
 
 ### Added
-
-- **License and attribution screen** (Settings > Info, above About). A card for every service Anisu uses (AniList,
-  MyAnimeList / Jikan, TMDB, ani.zip, Kitsu, AniSkip, YouTube, Anime News Network, Aniyomi and the open-source libraries)
-  with its logo, what Anisu uses it for, the credit line it asks for (including TMDB's required notice) and a link.
-  Logos are the services' own icons fetched when the screen opens, over a coloured letter badge that shows offline.
 
 - **Comments on the details page, through your AniList account.** A new "Comments" card opens a sheet with the show's
   AniList discussions (its forum threads). Pick one to read its comments with the replies nested under them, and load
@@ -165,14 +94,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   restore" behaviour are unchanged — only where you find them moved.
 
 ### Changed
-
-- **Subtitle backgrounds are softer, with a "Rounded subtitle background" switch.** The bars behind each line were
-  nearly pill-shaped; they now have gently rounded corners, a little more side padding, and the bars of a two-line cue
-  touch. A new switch (Settings > Player and streaming > Subtitles, and the player's subtitle panel) turns it off, and
-  the subtitles then sit in one plain rectangle box.
-
-- **The Trailers row lists every trailer.** AniList's own, Jikan's promos and a YouTube search for the show's trailers, PVs,
-  teasers and sub / dub versions (short videos that name the show) are merged without duplicates.
 
 - **Subtitles have rounded corners.** The background behind the subtitle text was a square block, and the player's
   subtitle view cannot draw anything else. Each line of a cue now gets its own rounded bar, as wide as the line, in the
@@ -244,25 +165,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repeats the number.
 
 ### Fixed
-
-- **The home banner's heart now shows a liked title as liked.** Favourites were read before the AniList profile had
-  loaded (so the first read was empty) and only the first 50 were fetched. They now wait for the profile and load every page.
-
-- **"Start discussion" no longer fails with "The server rejected that request".** List values in the request were sent as
-  a quoted string instead of a JSON array, and AniList also needs a forum category. Both are fixed.
-
-- **The navigation bar's frosted blur works on My Space.** The screen's recorded backdrop had no background, so there was
-  nothing solid to blur.
-
-- **Switching tabs while My Space is loading no longer leaves it drawn over another tab.** The bar now waits for the
-  navigation host to report that the previous tab move has finished instead of waiting a guessed time, and My Space shows
-  its spinner from the first frame.
-
-- **Trailers that buffered and then went blank now play.** Every stream YouTube offers is collected (HLS first); one that
-  errors, does not start within 12 s or freezes for 10 s moves on to the next, and the embedded player is the last resort.
-
-- **Upcoming shows and movies show an English title.** When AniList has no English title yet, a Latin-lettered synonym is
-  used before the romaji title. **Constraint:** if AniList lists no English name at all, the romaji title stays.
 
 - **The News tab now shows real, current news.** It listed five fixed sample articles dated September 2026 and never
   changed. It now reads Anime News Network's feed (MyAnimeList's news when ANN cannot be reached), newest first, with

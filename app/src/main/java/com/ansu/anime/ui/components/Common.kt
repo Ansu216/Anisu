@@ -440,12 +440,7 @@ fun HeroCarousel(
 ) {
     if (items.isEmpty()) return
     val shown = items.take(8)
-    // Endless loop: the pager has an enormous page count and page N shows slide N % size, so swiping past the last
-    // slide runs straight on to the first (and back from the first to the last). It starts in the middle, on slide 0.
-    val loops = shown.size > 1
-    val startPage = remember { (Int.MAX_VALUE / 2).let { it - it % shown.size } }
-    val pagerState = rememberPagerState(initialPage = if (loops) startPage else 0, pageCount = { if (loops) Int.MAX_VALUE else shown.size })
-    val activeIndex = pagerState.currentPage % shown.size
+    val pagerState = rememberPagerState(pageCount = { shown.size })
     // AniList id -> logo URL. A key with a null value means "looked up, no logo", so it is not asked twice.
     val logos = remember(logoFor) { mutableStateMapOf<Int, String?>() }
     val posters = remember(posterFor) { mutableStateMapOf<Int, String?>() }
@@ -455,7 +450,7 @@ fun HeroCarousel(
     LaunchedEffect(shown, pagerState.settledPage) {
         kotlinx.coroutines.delay(4000)
         if (!pagerState.isScrollInProgress && shown.size > 1) {
-            val nextPage = pagerState.currentPage + 1
+            val nextPage = (pagerState.currentPage + 1) % shown.size
             pagerState.animateScrollToPage(nextPage, animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing))
         }
     }
@@ -480,7 +475,7 @@ fun HeroCarousel(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
             ) { page ->
-                val anime = shown[page % shown.size]
+                val anime = shown[page]
                 // 0 when this page is centred, -1/+1 when it is fully off to one side.
                 val offset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).coerceIn(-1f, 1f)
                 val isLiked = anime.anilistId?.let { it in favouriteIds } == true
@@ -520,7 +515,7 @@ fun HeroCarousel(
         if (shown.size > 1) {
             Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.Center) {
                 shown.indices.forEach { index ->
-                    val selected = index == activeIndex
+                    val selected = index == pagerState.currentPage
                     val dotWidth by animateDpAsState(
                         targetValue = if (selected) 18.dp else 6.dp,
                         animationSpec = tween(durationMillis = 300),

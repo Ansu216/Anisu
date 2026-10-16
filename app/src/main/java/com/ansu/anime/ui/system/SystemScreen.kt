@@ -53,6 +53,9 @@ import androidx.navigation.NavHostController
 import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.GlassGroup
+import com.ansu.anime.ui.components.GlassGroupLabel
+import com.ansu.anime.ui.components.GlassRow
 import com.ansu.anime.ui.theme.AnsuColors
 import java.io.File
 
@@ -111,59 +114,56 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
                 refreshKey = refresh,
             )
 
-            SectionCard("Diagnostics") {
+            Column {
+                GlassGroupLabel("Diagnostics")
                 Text(
                     text = "Anisu keeps a local log of crashes, playback, taps, navigation and network " +
                         "errors. Nothing is ever uploaded: the report is written on this device, and you " +
                         "choose whether to share it or save it yourself.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = AnsuColors.TextSecondary,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
                 )
-                Button(
-                    onClick = {
-                        val file = diagnostics.buildExportFile()
-                        if (file == null) {
-                            toast(context, "Could not build the diagnostics report")
-                            return@Button
-                        }
-                        val intent = diagnostics.exportIntent(file)
-                        if (intent == null) {
-                            toast(context, "No app available to share the report")
-                            return@Button
-                        }
-                        diagnostics.log(LogCategory.CLICK, "Export logs shared (${file.length()} bytes)")
-                        runCatching { context.startActivity(Intent.createChooser(intent, "Export Anisu logs")) }
-                        refresh++
-                    },
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text("Share logs", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
-                }
-                OutlinedButton(
-                    onClick = { saveLogsLauncher.launch("Anisu-diagnostics-${timestampName()}.txt") },
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text("Save logs to device", modifier = Modifier.padding(start = 8.dp))
-                }
-                OutlinedButton(
-                    onClick = {
-                        container.diagnostics.clear()
-                        container.diagnostics.log(LogCategory.CLICK, "Diagnostics log cleared by the user")
-                        refresh++
-                    },
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text("Clear logs", modifier = Modifier.padding(start = 8.dp))
+                GlassGroup {
+                    GlassRow(
+                        icon = Icons.Filled.FileUpload,
+                        title = "Share logs",
+                        description = "Send the diagnostics report to another app",
+                        showDivider = false,
+                        onClick = {
+                            val file = diagnostics.buildExportFile()
+                            if (file == null) {
+                                toast(context, "Could not build the diagnostics report")
+                            } else {
+                                val intent = diagnostics.exportIntent(file)
+                                if (intent == null) {
+                                    toast(context, "No app available to share the report")
+                                } else {
+                                    diagnostics.log(LogCategory.CLICK, "Export logs shared (${file.length()} bytes)")
+                                    runCatching { context.startActivity(Intent.createChooser(intent, "Export Anisu logs")) }
+                                    refresh++
+                                }
+                            }
+                        },
+                    )
+                    GlassRow(
+                        icon = Icons.Filled.Save,
+                        title = "Save logs to device",
+                        description = "Write the report to a place you choose, like Downloads",
+                        onClick = { saveLogsLauncher.launch("Anisu-diagnostics-${timestampName()}.txt") },
+                    )
+                    GlassRow(
+                        icon = Icons.Filled.Delete,
+                        title = "Clear logs",
+                        description = "Delete everything the log holds right now",
+                        onClick = {
+                            container.diagnostics.clear()
+                            container.diagnostics.log(LogCategory.CLICK, "Diagnostics log cleared by the user")
+                            refresh++
+                        },
+                    )
                 }
             }
-
         }
     }
 }
@@ -202,19 +202,6 @@ private fun HeaderCard(sessionCount: Int, sizeBytes: Long, lastCrashAt: Long, re
 }
 
 /** A black-glass card with a heading. */
-@Composable
-private fun SectionCard(title: String, content: @Composable () -> Unit) {
-    FrostedGlassCard(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, tintAlpha = 0.4f) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary, fontWeight = FontWeight.Bold)
-            content()
-        }
-    }
-}
-
 @Composable
 private fun InfoLine(label: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

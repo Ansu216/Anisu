@@ -105,7 +105,6 @@ internal fun SubtitlePreview(
     bgColor: Int,
     bgOpacity: Int,
     modifier: Modifier = Modifier,
-    roundedBg: Boolean = true,
 ) {
     BoxWithConstraints(
         modifier = modifier
@@ -123,7 +122,7 @@ internal fun SubtitlePreview(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = maxHeight * (height / 100f), start = 12.dp, end = 12.dp)
-                .background(Color(bgColor).copy(alpha = bgOpacity / 100f), RoundedCornerShape(if (roundedBg) 6.dp else 0.dp))
+                .background(Color(bgColor).copy(alpha = bgOpacity / 100f), RoundedCornerShape(4.dp))
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         )
     }

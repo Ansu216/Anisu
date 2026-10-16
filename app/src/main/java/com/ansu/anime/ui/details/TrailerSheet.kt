@@ -140,14 +140,12 @@ fun TrailersRow(trailers: List<Trailer>, onPlay: (Trailer) -> Unit) {
 @Composable
 fun TrailerSheet(trailer: Trailer, trailerRepository: TrailerRepository, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    var streams by remember(trailer.youtubeId) { mutableStateOf<List<TrailerStream>>(emptyList()) }
-    var streamIndex by remember(trailer.youtubeId) { mutableStateOf(0) }
+    var stream by remember(trailer.youtubeId) { mutableStateOf<TrailerStream?>(null) }
     var useEmbedded by remember(trailer.youtubeId) { mutableStateOf(false) }
     LaunchedEffect(trailer.youtubeId) {
-        val found = trailerRepository.resolveStreams(trailer.youtubeId)
-        if (found.isNotEmpty()) streams = found else useEmbedded = true
+        val found = trailerRepository.resolveStream(trailer.youtubeId)
+        if (found != null) stream = found else useEmbedded = true
     }
-    val stream = streams.getOrNull(streamIndex)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -181,10 +179,10 @@ fun TrailerSheet(trailer: Trailer, trailerRepository: TrailerRepository, onDismi
                     resolved != null -> NativeTrailerPlayer(
                         stream = resolved,
                         client = trailerRepository.httpClient,
-                        // A stream that will not play (expired, refused, stalled) gives way to the next one; the
-                        // embedded player is only the last resort.
+                        // A stream that will not play (expired, refused) is replaced by the embedded player.
                         onFailed = {
-                            if (streamIndex + 1 < streams.size) streamIndex += 1 else useEmbedded = true
+                            stream = null
+                            useEmbedded = true
                         },
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -220,23 +218,6 @@ private fun NativeTrailerPlayer(stream: TrailerStream, client: OkHttpClient, onF
             )
             playWhenReady = true
             prepare()
-        }
-    }
-
-    // A stream that buffers for a few seconds and then freezes never raises an error, which is what left a blank
-    // video. If it has not started playing within 12 s, or it stalls for 10 s mid-play, move on to the next stream.
-    LaunchedEffect(player) {
-        var stalledMs = 0L
-        var everPlayed = false
-        while (true) {
-            kotlinx.coroutines.delay(500)
-            if (player.playbackState == Player.STATE_READY && player.playWhenReady) everPlayed = true
-            val stuck = player.playbackState == Player.STATE_BUFFERING || player.playbackState == Player.STATE_IDLE
-            stalledMs = if (stuck) stalledMs + 500 else 0L
-            if (stalledMs >= (if (everPlayed) 10_000L else 12_000L)) {
-                latestOnFailed()
-                return@LaunchedEffect
-            }
         }
     }
 

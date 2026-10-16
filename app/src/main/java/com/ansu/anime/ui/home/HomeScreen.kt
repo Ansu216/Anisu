@@ -94,6 +94,11 @@ fun HomeScreen(
         }
     }
     val trending = state.feed(AniListFeed.TRENDING_NOW).items
+    // Start the logo / poster lookups for the whole carousel as soon as it is known, a few at a time, so
+    // every slide (and its details page) finds its art already cached.
+    LaunchedEffect(trending) {
+        container.artworkRepository.prefetch(trending.mapNotNull { it.anilistId })
+    }
     // Every way into a title goes through here, so one tap line is logged instead of five.
     val selectAnime: (SAnime) -> Unit = { anime ->
         container.diagnostics.log(LogCategory.CLICK, "Anime opened: ${anime.title}")

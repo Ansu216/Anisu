@@ -136,16 +136,6 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putInt(KEY_SUBTITLE_BG_OPACITY, clean).apply()
     }
 
-    private val _subtitleRoundedBg = MutableStateFlow(prefs.getBoolean(KEY_SUBTITLE_ROUNDED_BG, DEFAULT_SUBTITLE_ROUNDED_BG))
-
-    /** True: a soft rounded bar behind each line of subtitles. False: one plain rectangle box behind the whole cue. */
-    val subtitleRoundedBg: StateFlow<Boolean> = _subtitleRoundedBg
-
-    fun setSubtitleRoundedBg(value: Boolean) {
-        _subtitleRoundedBg.value = value
-        prefs.edit().putBoolean(KEY_SUBTITLE_ROUNDED_BG, value).apply()
-    }
-
     /** Puts size, height, colours and background back to their defaults. */
     fun resetSubtitleStyle() {
         setSubtitleSize(DEFAULT_SUBTITLE_SIZE)
@@ -153,7 +143,6 @@ class PlayerPrefs(context: Context) {
         setSubtitleColor(DEFAULT_SUBTITLE_COLOR)
         setSubtitleBgColor(DEFAULT_SUBTITLE_BG_COLOR)
         setSubtitleBgOpacity(DEFAULT_SUBTITLE_BG_OPACITY)
-        setSubtitleRoundedBg(DEFAULT_SUBTITLE_ROUNDED_BG)
     }
 
     private val _sourcePriority = MutableStateFlow(
@@ -185,7 +174,6 @@ class PlayerPrefs(context: Context) {
         const val DEFAULT_SUBTITLE_COLOR = 0xFFFFFFFF.toInt()
         const val DEFAULT_SUBTITLE_BG_COLOR = 0xFF000000.toInt()
         const val DEFAULT_SUBTITLE_BG_OPACITY = 50
-        const val DEFAULT_SUBTITLE_ROUNDED_BG = true
         const val DEFAULT_SKIP_SECONDS = 15 // the buttons were fixed at 15s before this was a setting
 
         private const val KEY_DOUBLE_TAP = "double_tap_seek"
@@ -201,6 +189,5 @@ class PlayerPrefs(context: Context) {
         private const val KEY_SUBTITLE_COLOR = "subtitle_color"
         private const val KEY_SUBTITLE_BG_COLOR = "subtitle_bg_color"
         private const val KEY_SUBTITLE_BG_OPACITY = "subtitle_bg_opacity"
-        private const val KEY_SUBTITLE_ROUNDED_BG = "subtitle_rounded_bg"
     }
 }

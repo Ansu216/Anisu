@@ -73,6 +73,16 @@ class ExtensionRepo(
     fun removeRepoUrl(indexUrl: String) {
         val all = savedRepoUrls() - indexUrl
         prefs.edit().putString(KEY_REPOS, all.joinToString("\n")).apply()
+        setRepoEnabled(indexUrl, true)
+    }
+
+    /** Index URLs of repos that are switched off: still saved, but their extensions are not listed. */
+    fun disabledRepoUrls(): Set<String> =
+        prefs.getString(KEY_DISABLED_REPOS, "").orEmpty().split('\n').filter { it.isNotBlank() }.toSet()
+
+    fun setRepoEnabled(indexUrl: String, enabled: Boolean) {
+        val off = if (enabled) disabledRepoUrls() - indexUrl else disabledRepoUrls() + indexUrl
+        prefs.edit().putString(KEY_DISABLED_REPOS, off.joinToString("\n")).apply()
     }
 
     /**
@@ -91,78 +101,30 @@ class ExtensionRepo(
         url = Regex("^https://github\\.com/([^/]+)/([^/]+)/blob/(.+)$").replace(url) { m ->
             "https://raw.githubusercontent.com/${m.groupValues[1]}/${m.groupValues[2]}/${m.groupValues[3]}"
         }
-        // A bare github.com/user/repo link: Keiyoushi-style repos publish the index on the `repo` branch.
-        Regex("^https://github\\.com/([^/]+)/([^/]+?)(?:\\.git)?/?$").matchEntire(url)?.let { m ->
-            val (user, repo) = m.destructured
-            url = "https://raw.githubusercontent.com/$user/$repo/refs/heads/repo"
-        }
         val trimmed = url.trimEnd('/')
         val looksLikeFile = trimmed.substringAfterLast('/').contains('.')
-        val primary = if (looksLikeFile) listOf(trimmed) else listOf("$trimmed/index.min.json", trimmed)
-        return (mirrorsFor(primary.first()) + primary + branchFallbacks(primary.first())).distinct()
-    }
-
-    /**
-     * Kohi-den moved its extension repo off GitHub (every `raw.githubusercontent.com/Kohi-den/extensions/...` URL now
-     * 404s). Its index lives on its own Forgejo host, so that address is tried first for any Kohi-den link.
-     */
-    private fun mirrorsFor(url: String): List<String> {
-        val m = Regex("^https://raw\\.githubusercontent\\.com/Kohi-den/extensions/(?:refs/heads/)?[^/]+/(.+)$", RegexOption.IGNORE_CASE)
-            .matchEntire(url) ?: return emptyList()
-        return listOf("https://kohiden.xyz/Kohi-den/extensions/raw/branch/main/${m.groupValues[1]}")
-    }
-
-    /**
-     * Extension repos keep the built index on a `repo` branch, not `main`. A pasted
-     * `raw.githubusercontent.com/<user>/<repo>/main/index.min.json` therefore 404s, so the same file is
-     * also tried on `refs/heads/repo` and `repo`.
-     */
-    private fun branchFallbacks(url: String): List<String> {
-        val m = Regex("^(https://raw\\.githubusercontent\\.com/[^/]+/[^/]+)/(?:refs/heads/)?(main|master|repo)/(.+)$")
-            .matchEntire(url) ?: return emptyList()
-        val (root, branch, file) = m.destructured
-        return listOf("refs/heads/repo", "repo", "refs/heads/main", "main")
-            .filterNot { it.substringAfterLast('/') == branch }
-            .map { "$root/$it/$file" }
+        return if (looksLikeFile) listOf(trimmed) else listOf("$trimmed/index.min.json", trimmed)
     }
 
     /** Fetches [input] and works out which kind of JSON it is. */
     suspend fun resolve(input: String): Result<JsonUrlResult> = withContext(Dispatchers.IO) {
         val urls = candidates(input)
         if (urls.isEmpty()) return@withContext Result.failure(IllegalArgumentException("Paste a JSON URL first"))
-        val errors = mutableListOf<Throwable>()
+        var lastError: Throwable? = null
         for (url in urls) {
             val parsed = runCatching { fetchAndClassify(url) }
             if (parsed.isSuccess) return@withContext parsed
-            parsed.exceptionOrNull()?.let { errors += it }
+            lastError = parsed.exceptionOrNull()
         }
-        // Reporting only the last attempt hid the real problem (a 404 on the final fallback branch looked like the
-        // pasted link itself was wrong); every address that was tried is listed instead.
-        val message = if (errors.size <= 1) {
-            errors.firstOrNull()?.message ?: "Could not read that URL"
-        } else {
-            "Could not load a repo from any of ${errors.size} addresses tried:\n" +
-                errors.joinToString("\n") { "• ${it.message ?: it::class.java.simpleName}" } +
-                if (errors.all { it.message.orEmpty().startsWith("HTTP 404") }) {
-                    "\nThe repo may have moved or been removed; check the repo's own page for its current index.min.json link."
-                } else ""
-        }
-        Result.failure(IllegalStateException(message, errors.lastOrNull()))
+        Result.failure(lastError ?: IllegalStateException("Could not read that URL"))
     }
 
     private fun fetchAndClassify(url: String): JsonUrlResult {
         val request = Request.Builder().url(url).build()
         val body = client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("HTTP ${response.code} from $url")
-            val bytes = response.body.bytes()
-            // Some hosts (and `.gz` index files) hand back gzip bytes the HTTP layer did not unpack: reading
-            // those as text gives "Unexpected JSON token ... �". Unpack when the gzip magic number is there.
-            if (bytes.size > 2 && bytes[0] == 0x1f.toByte() && bytes[1] == 0x8b.toByte()) {
-                java.util.zip.GZIPInputStream(bytes.inputStream()).use { it.readBytes() }.toString(Charsets.UTF_8)
-            } else {
-                bytes.toString(Charsets.UTF_8)
-            }
-        }.removePrefix("\uFEFF")
+            response.body.string()
+        }
         val root = json.parseToJsonElement(body)
         return classify(url, root)
     }
@@ -227,5 +189,6 @@ class ExtensionRepo(
 
     private companion object {
         const val KEY_REPOS = "repo_urls"
+        const val KEY_DISABLED_REPOS = "disabled_repo_urls"
     }
 }

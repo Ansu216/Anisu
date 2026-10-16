@@ -50,8 +50,7 @@ class AppContainer(context: Context) {
     val extensionManager: ExtensionManager = ExtensionManager(appContext)
     val extensionRepo: ExtensionRepo = ExtensionRepo(appContext, okHttpClient)
     val newsRepository: com.ansu.anime.data.news.NewsRepository = com.ansu.anime.data.news.NewsRepository(okHttpClient)
-    val sourceHealth: com.ansu.anime.extension.SourceHealth = com.ansu.anime.extension.SourceHealth(appContext)
-    val sourceTester: SourceTester = SourceTester(okHttpClient, sourceHealth)
+    val sourceTester: SourceTester = SourceTester(okHttpClient)
 
     val apiErrorHandler: ApiErrorHandler = ApiErrorHandler(diagnostics)
 
@@ -84,7 +83,7 @@ class AppContainer(context: Context) {
 
     val episodeMetadataRepository: EpisodeMetadataRepository = EpisodeMetadataRepository(okHttpClient, aniListRepository, apiErrorHandler)
 
-    val artworkRepository: ArtworkRepository = ArtworkRepository(okHttpClient, apiErrorHandler, com.ansu.anime.BuildConfig.TMDB_API_KEY)
+    val artworkRepository: ArtworkRepository = ArtworkRepository(okHttpClient, apiErrorHandler, com.ansu.anime.BuildConfig.TMDB_API_KEY, appContext.filesDir)
 
     val selectionHolder: SelectionHolder = SelectionHolder()
 

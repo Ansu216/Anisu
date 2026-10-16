@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
@@ -106,8 +105,8 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
             SettingsGroup(title = "Playback") {
                 SettingsRow(
                     icon = Icons.Filled.PlayCircle,
-                    title = "Player and streaming",
-                    subtitle = "Double tap skip, brightness and volume gestures",
+                    title = "Player & streaming",
+                    subtitle = "Gestures, picture in picture, pre-load, subtitles and source order",
                     showDivider = false,
                     onClick = { navController.navigate(Dest.PLAYER_STREAMING) },
                 )
@@ -147,12 +146,6 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
 
             SettingsGroup(title = "Info") {
                 SettingsRow(
-                    icon = Icons.Filled.Description,
-                    title = "License and attribution",
-                    subtitle = "Credits for the services and projects Anisu uses",
-                    onClick = { navController.navigate(Dest.LICENSES) },
-                )
-                SettingsRow(
                     icon = Icons.Filled.Info,
                     title = "About",
                     subtitle = "Version, credits and links",
@@ -169,9 +162,9 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
 private fun SettingsGroup(title: String, content: @Composable () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
         Text(
-            text = title.uppercase(),
-            style = MaterialTheme.typography.labelSmall,
-            color = AnsuColors.TextTertiary,
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            color = AnsuColors.TextSecondary,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
         )

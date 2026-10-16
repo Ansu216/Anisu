@@ -17,15 +17,9 @@ sealed class TestTarget {
     abstract val key: String
     abstract val label: String
 
-    data class Extension(val source: AnimeCatalogueSource, val version: String? = null) : TestTarget() {
+    data class Extension(val source: AnimeCatalogueSource) : TestTarget() {
         override val key get() = "ext:${source.id}"
-
-        /** "Anikoto · EN · v16.11": the same source name can come from several extensions, so language and version tell them apart. */
-        override val label get() = buildList {
-            add(source.name)
-            source.lang.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }
-            version?.takeIf { it.isNotBlank() }?.let { add("v$it") }
-        }.joinToString(" · ")
+        override val label get() = source.name
     }
 }
 
@@ -52,13 +46,10 @@ data class SourceTestResult(
  */
 class SourceTester(
     private val client: OkHttpClient,
-    private val health: SourceHealth? = null,
 ) {
     suspend fun test(target: TestTarget): SourceTestResult = withContext(Dispatchers.IO) {
         when (target) {
-            is TestTarget.Extension -> testExtension(target.source).copy(target = target.label).also {
-                health?.record(target.source.id, it.ok, it.error)
-            }
+            is TestTarget.Extension -> testExtension(target.source)
         }
     }
 
@@ -118,10 +109,7 @@ class SourceTester(
      */
     private suspend fun checkStreaming(source: AnimeCatalogueSource, titles: List<SAnime>): StreamCheck {
         var reason = "no episodes were listed"
-        // Each title's failure is kept: only the last one used to be shown, which hid why the first title failed.
-        val reasons = mutableListOf<String>()
         for (anime in titles.take(STREAM_TITLES)) {
-            if (reasons.isNotEmpty() || reason != "no episodes were listed") reasons += reason
             val episodes = try {
                 withTimeout(STREAM_STEP_TIMEOUT_MS) { source.getEpisodeList(anime) }
             } catch (e: TimeoutCancellationException) {
@@ -189,8 +177,7 @@ class SourceTester(
             }
             reason = "${listed.size} video(s) were listed for \"${anime.title}\" but none of the first $STREAM_RESOLVE_TRIES could be resolved"
         }
-        reasons += reason
-        return StreamCheck(0, reasons.filter { it != "no episodes were listed" }.distinct().joinToString("  ||  ").ifBlank { reason })
+        return StreamCheck(0, reason)
     }
 
     private fun failure(name: String, pingMs: Long?, status: Int?, message: String) = SourceTestResult(
@@ -205,7 +192,7 @@ class SourceTester(
 
     private companion object {
         const val REQUEST_TIMEOUT_MS = 20_000L
-        const val STREAM_STEP_TIMEOUT_MS = 45_000L
+        const val STREAM_STEP_TIMEOUT_MS = 20_000L
         const val STREAM_TIMEOUT_MS = 30_000L
         const val STREAM_RESOLVE_TIMEOUT_MS = 15_000L
         const val STREAM_RESOLVE_TRIES = 2

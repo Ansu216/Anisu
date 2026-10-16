@@ -48,31 +48,18 @@ class YouTubeStreamResolver(private val client: OkHttpClient) {
     private val json = Json { ignoreUnknownKeys = true }
 
     /** The best stream for [videoId], or null when no identity got a playable answer. */
-    suspend fun resolve(videoId: String): TrailerStream? = resolveAll(videoId).firstOrNull()
-
-    /**
-     * Every stream the identities offered, most reliable first (HLS, which is not throttled and needs no ranged
-     * requests, then single files, then merged picture + sound). The player tries them in turn, so one stream
-     * that stalls or is refused no longer ends in a blank video.
-     */
-    suspend fun resolveAll(videoId: String): List<TrailerStream> = withContext(Dispatchers.IO) {
-        val found = mutableListOf<TrailerStream>()
+    suspend fun resolve(videoId: String): TrailerStream? = withContext(Dispatchers.IO) {
         for (identity in IDENTITIES) {
-            try {
-                request(identity, videoId)?.let { found += it }
+            val stream = try {
+                request(identity, videoId)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // Try the next identity.
+                null
             }
+            if (stream != null) return@withContext stream
         }
-        found.sortedBy {
-            when (it) {
-                is TrailerStream.Hls -> 0
-                is TrailerStream.Progressive -> 1
-                is TrailerStream.Merged -> 2
-            }
-        }
+        null
     }
 
     private fun request(identity: Identity, videoId: String): TrailerStream? {

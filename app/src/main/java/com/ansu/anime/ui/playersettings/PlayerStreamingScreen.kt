@@ -69,8 +69,13 @@ import com.ansu.anime.data.prefs.PlayerPrefs
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.player.ColorSwatchRow
 import com.ansu.anime.ui.player.SubtitleBgColors
-import com.ansu.anime.ui.player.SubtitlePreview
 import com.ansu.anime.ui.player.SubtitleTextColors
+import com.ansu.anime.ui.components.GlassContentRow
+import com.ansu.anime.ui.components.GlassGroup
+import com.ansu.anime.ui.components.GlassGroupLabel
+import com.ansu.anime.ui.components.GlassRow
+import com.ansu.anime.ui.components.GlassSliderRow
+import com.ansu.anime.ui.components.GlassToggleRow
 import com.ansu.anime.ui.theme.AnsuColors
 import com.ansu.anime.extension.BUILT_IN_SOURCE_ID
 
@@ -88,7 +93,6 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val subColor by prefs.subtitleColor.collectAsStateWithLifecycle()
     val subBgColor by prefs.subtitleBgColor.collectAsStateWithLifecycle()
     val subBgOpacity by prefs.subtitleBgOpacity.collectAsStateWithLifecycle()
-    val subRoundedBg by prefs.subtitleRoundedBg.collectAsStateWithLifecycle()
 
     // The page scrolls; the source list asks it to scroll further while a row is dragged to its edge.
     val scrollState = rememberScrollState()
@@ -97,7 +101,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Player and streaming") },
+                title = { Text("Player & Streaming") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -112,13 +116,17 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                 .padding(padding)
                 .onGloballyPositioned { autoScroll.viewport = it }
                 .verticalScroll(scrollState)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp),
         ) {
-            // ===== SKIPPING BOX =====
-            SettingsBox(title = "Skipping") {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Skip amount", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
+            // Every block below is the same shape: the heading outside, a box, and a line between its rows.
+            GlassGroupLabel("Player gestures")
+            GlassGroup {
+                GlassContentRow(
+                    title = "Skip amount",
+                    description = "How far a double tap and the back / forward buttons on the player jump",
+                    showDivider = false,
+                ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                         PlayerPrefs.SKIP_OPTIONS.forEach { seconds ->
                             FilterChip(
@@ -128,91 +136,93 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                             )
                         }
                     }
-                    Hint("How far a double tap and the back/forward buttons on the player controls jump.")
-                    ToggleRow(
-                        title = "Double tap to skip",
-                        subtitle = "Double tap the left side to go back, the right side to go forward",
-                        checked = doubleTap,
-                        onChange = prefs::setDoubleTapSeek,
-                    )
                 }
+                GlassToggleRow(
+                    title = "Double tap to skip",
+                    description = "Double tap the left side to go back, the right side to go forward",
+                    checked = doubleTap,
+                    onCheckedChange = prefs::setDoubleTapSeek,
+                )
+                GlassToggleRow(
+                    title = "Swipe to adjust volume & brightness",
+                    description = "Swipe up or down on the left half for brightness, the right half for volume",
+                    checked = brightness && volume,
+                    onCheckedChange = { on ->
+                        prefs.setBrightnessGesture(on)
+                        prefs.setVolumeGesture(on)
+                    },
+                )
             }
 
-            // ===== GESTURES BOX =====
-            SettingsBox(title = "Gestures") {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ToggleRow(
-                        title = "Brightness gesture",
-                        subtitle = "Swipe up or down on the left half of the video",
-                        checked = brightness,
-                        onChange = prefs::setBrightnessGesture,
-                    )
-                    ToggleRow(
-                        title = "Volume gesture",
-                        subtitle = "Swipe up or down on the right half of the video",
-                        checked = volume,
-                        onChange = prefs::setVolumeGesture,
-                    )
-                }
+            GlassGroupLabel("Picture in picture")
+            GlassGroup {
+                GlassToggleRow(
+                    title = "Picture in picture (PiP)",
+                    description = "Keep the video playing in a small floating window when you leave the app. " +
+                        "When this is off, the video pauses as soon as you leave.",
+                    checked = pip,
+                    onCheckedChange = prefs::setPipEnabled,
+                    showDivider = false,
+                )
             }
 
-            // ===== PICTURE IN PICTURE BOX =====
-            SettingsBox(title = "Picture in picture") {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ToggleRow(
-                        title = "Picture in picture",
-                        subtitle = "Keep the video playing in a small floating window when you leave the app",
-                        checked = pip,
-                        onChange = prefs::setPipEnabled,
-                    )
-                    Hint("When this is off, the video pauses as soon as you leave the app.")
-                }
+            GlassGroupLabel("Pre-load")
+            GlassGroup {
+                GlassToggleRow(
+                    title = "Pre-load your last episode",
+                    description = "When the app opens, load about a minute of the show you were watching so " +
+                        "playback starts instantly. It uses data in the background, so turn it off on a metered connection.",
+                    checked = prefetch,
+                    onCheckedChange = prefs::setPrefetchEnabled,
+                    showDivider = false,
+                )
             }
 
-            // ===== PRE-LOAD BOX =====
-            SettingsBox(title = "Pre-load") {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ToggleRow(
-                        title = "Pre-load the last episode",
-                        subtitle = "When the app opens, load about a minute of the show you were watching",
-                        checked = prefetch,
-                        onChange = prefs::setPrefetchEnabled,
-                    )
-                    Hint("It resolves the source and buffers the next minute into the shared cache, so playback starts instantly. Turn it off on a metered connection: it uses data in the background.")
-                }
-            }
-
-            // ===== SUBTITLES BOX: look =====
-            SettingsBox(title = "Subtitles") {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Live Preview", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextSecondary)
-                    SubtitlePreview(size = subSize, height = subHeight, textColor = subColor, bgColor = subBgColor, bgOpacity = subBgOpacity, roundedBg = subRoundedBg)
-                    ToggleRow("Rounded subtitle background", "Soft rounded bars behind each line. Off shows a plain rectangle box.", subRoundedBg, prefs::setSubtitleRoundedBg)
-                    Text("Text colour", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
+            GlassGroupLabel("Subtitle")
+            GlassGroup {
+                GlassContentRow(title = "Text colour", description = "The colour of the subtitle lettering", showDivider = false) {
                     ColorSwatchRow(SubtitleTextColors, subColor, prefs::setSubtitleColor)
-                    Text("Background colour", style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
+                }
+                GlassContentRow(title = "Background colour", description = "The box drawn behind the lettering") {
                     ColorSwatchRow(SubtitleBgColors, subBgColor, prefs::setSubtitleBgColor)
-                    SliderRow("Background density", "$subBgOpacity %", subBgOpacity.toFloat(), 0f..100f) { prefs.setSubtitleBgOpacity(it.roundToInt()) }
                 }
+                GlassSliderRow(
+                    title = "Background density",
+                    description = "0% is no box at all, 100% is solid",
+                    valueText = "$subBgOpacity %",
+                    value = subBgOpacity.toFloat(),
+                    valueRange = 0f..100f,
+                    onValueChange = { prefs.setSubtitleBgOpacity(it.roundToInt()) },
+                )
+                GlassSliderRow(
+                    title = "Size",
+                    description = "How large the lettering is",
+                    valueText = "$subSize sp",
+                    value = subSize.toFloat(),
+                    valueRange = PlayerPrefs.SUBTITLE_SIZE_RANGE.first.toFloat()..PlayerPrefs.SUBTITLE_SIZE_RANGE.last.toFloat(),
+                    onValueChange = { prefs.setSubtitleSize(it.roundToInt()) },
+                )
+                GlassSliderRow(
+                    title = "Height",
+                    description = "How far the subtitles sit above the bottom edge of the video. The player's Subtitles tab has the same options.",
+                    valueText = "$subHeight %",
+                    value = subHeight.toFloat(),
+                    valueRange = PlayerPrefs.SUBTITLE_HEIGHT_RANGE.first.toFloat()..PlayerPrefs.SUBTITLE_HEIGHT_RANGE.last.toFloat(),
+                    onValueChange = { prefs.setSubtitleHeight(it.roundToInt()) },
+                )
+                GlassRow(
+                    title = "Reset subtitle style",
+                    description = "Put colours, density, size and height back to the defaults",
+                    onClick = prefs::resetSubtitleStyle,
+                )
             }
 
-            // ===== SUBTITLES BOX: size and position =====
-            SettingsBox(title = "Subtitle Size and Position") {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SliderRow("Size", "$subSize sp", subSize.toFloat(), PlayerPrefs.SUBTITLE_SIZE_RANGE.first.toFloat()..PlayerPrefs.SUBTITLE_SIZE_RANGE.last.toFloat()) {
-                        prefs.setSubtitleSize(it.roundToInt())
-                    }
-                    SliderRow("Height", "$subHeight %", subHeight.toFloat(), PlayerPrefs.SUBTITLE_HEIGHT_RANGE.first.toFloat()..PlayerPrefs.SUBTITLE_HEIGHT_RANGE.last.toFloat()) {
-                        prefs.setSubtitleHeight(it.roundToInt())
-                    }
-                    Hint("Height is how far the subtitles sit above the bottom edge of the video. The player's Subtitles tab has the same options.")
-                    TextButton(onClick = prefs::resetSubtitleStyle, modifier = Modifier.align(Alignment.End)) { Text("Reset subtitle style") }
-                }
-            }
-
-            // ===== STREAMING PRIORITY BOX =====
-            SettingsBox(title = "Streaming Priority") {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            GlassGroupLabel("Streaming priority")
+            GlassGroup {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     Hint(
                         "Drag the handle to rank your sources. The player lists streams in this order and starts with " +
                             "the highest-ranked source that has the episode.",
@@ -224,60 +234,9 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     }
 }
 
-/** Rounded, bordered container that groups related settings, same look as the Appearance screen's boxes. */
-@Composable
-private fun SettingsBox(title: String, content: @Composable () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(AnsuColors.BackgroundElevated)
-            .border(1.dp, AnsuColors.StrokeGlass, RoundedCornerShape(16.dp))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text(title, style = MaterialTheme.typography.titleMedium, color = AnsuColors.TextPrimary)
-        content()
-    }
-}
-
-@Composable
-private fun SliderRow(title: String, valueText: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary, modifier = Modifier.weight(1f))
-            Text(valueText, style = MaterialTheme.typography.labelMedium, color = AnsuColors.TextSecondary)
-        }
-        Slider(
-            value = value,
-            onValueChange = onChange,
-            valueRange = range,
-            colors = SliderDefaults.colors(
-                thumbColor = AnsuColors.Accent,
-                activeTrackColor = AnsuColors.Accent,
-                inactiveTrackColor = AnsuColors.AccentSoft,
-            ),
-        )
-    }
-}
-
 @Composable
 private fun Hint(text: String) {
-    Text(text, style = MaterialTheme.typography.labelSmall, color = AnsuColors.TextTertiary)
-}
-
-@Composable
-private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(
-            modifier = Modifier.weight(1f).padding(end = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
-            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary)
-        }
-        Switch(checked = checked, onCheckedChange = onChange)
-    }
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary)
 }
 
 private data class RankedSource(val id: Long, val label: String, val enabled: Boolean)

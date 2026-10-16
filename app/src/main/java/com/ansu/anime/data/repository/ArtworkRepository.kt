@@ -3,10 +3,21 @@ package com.ansu.anime.data.repository
 import com.ansu.anime.core.net.ApiErrorHandler
 import com.ansu.anime.core.net.httpApiException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -17,7 +28,9 @@ import kotlinx.serialization.json.jsonObject
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 /**
  * Extra artwork for one show. Every field is null when the service has nothing for it.
@@ -33,6 +46,7 @@ import java.util.concurrent.ConcurrentHashMap
  * season, one movie) and [season] is the season number ani.zip maps the entry to; together they let
  * [pickHeroImage] give each season and movie its own banner.
  */
+@Serializable
 data class AnimeArtwork(
     val logoUrl: String? = null,
     val posterUrl: String? = null,
@@ -137,33 +151,104 @@ class ArtworkRepository(
     private val client: OkHttpClient,
     private val errors: ApiErrorHandler,
     private val tmdbApiKey: String = "",
+    /** Where answers are kept between launches (the app's files dir); null keeps them in memory only. */
+    cacheDir: File? = null,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val cache = ConcurrentHashMap<Int, AnimeArtwork>()
 
-    /** Forgets every logo and backdrop answer, so the next page asks again. */
+    // Short timeouts: these pictures are optional, so a slow host must never hold a page up for a minute.
+    private val http: OkHttpClient = client.newBuilder()
+        .connectTimeout(6, TimeUnit.SECONDS)
+        .callTimeout(10, TimeUnit.SECONDS)
+        .build()
+
+    // Own scope, so a lookup that was started keeps going when the screen that asked leaves, and the next
+    // screen (Home -> details) joins it instead of starting a second one.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val inFlight = ConcurrentHashMap<Int, Deferred<AnimeArtwork>>()
+    private val limiter = Semaphore(6)
+    private val dir: File? = cacheDir?.let { File(it, "artwork-cache") }?.also { it.mkdirs() }
+
+    @Serializable
+    private class Stored(val savedAt: Long, val hadKey: Boolean, val art: AnimeArtwork)
+
+    /** Forgets every logo and backdrop answer, in memory and on disk, so the next page asks again. */
     fun clearCache() {
         cache.clear()
+        dir?.listFiles()?.forEach { it.delete() }
+    }
+
+    /** Warms the cache for these shows (a few at a time) so their pages and hero slides open with art ready. */
+    fun prefetch(anilistIds: Collection<Int>) {
+        anilistIds.distinct().filter { it !in cache }.forEach { id ->
+            scope.launch { limiter.withPermit { get(id) } }
+        }
     }
 
     suspend fun get(anilistId: Int): AnimeArtwork {
         cache[anilistId]?.let { return it }
-        return try {
-            fetch(anilistId).also { cache[anilistId] = it }
-        } catch (e: CancellationException) {
-            throw e
+        readDisk(anilistId)?.let { cache[anilistId] = it; return it }
+        val job = inFlight.computeIfAbsent(anilistId) { id ->
+            scope.async(start = CoroutineStart.LAZY) {
+                try {
+                    load(id)
+                } finally {
+                    inFlight.remove(id)
+                }
+            }
+        }
+        job.start()
+        return job.await()
+    }
+
+    private suspend fun load(anilistId: Int): AnimeArtwork = try {
+        val (art, persist) = fetch(anilistId)
+        cache[anilistId] = art
+        if (persist) writeDisk(anilistId, art)
+        art
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // Optional extra data: log it, but never interrupt the user over a missing logo. Not cached.
+        errors.report("Loading artwork", e, quiet = true)
+        AnimeArtwork()
+    }
+
+    private fun fileFor(id: Int): File? = dir?.let { File(it, "$id.json") }
+
+    private suspend fun readDisk(id: Int): AnimeArtwork? = withContext(Dispatchers.IO) {
+        val file = fileFor(id)?.takeIf { it.isFile } ?: return@withContext null
+        try {
+            val stored = json.decodeFromString<Stored>(file.readText())
+            val fresh = System.currentTimeMillis() - stored.savedAt < ARTWORK_TTL_MILLIS
+            // An answer made without a TMDB key must not hide the English logo once a key exists.
+            if (fresh && stored.hadKey == tmdbApiKey.isNotBlank()) stored.art else null
         } catch (e: Exception) {
-            // Optional extra data: log it, but never interrupt the user over a missing logo.
-            errors.report("Loading artwork", e, quiet = true)
-            AnimeArtwork()
+            file.delete()
+            null
         }
     }
 
-    private suspend fun fetch(anilistId: Int): AnimeArtwork = coroutineScope {
-        val cover = async { fetchEntryCover(anilistId) }
+    private suspend fun writeDisk(id: Int, art: AnimeArtwork) = withContext(Dispatchers.IO) {
+        val file = fileFor(id) ?: return@withContext
+        try {
+            val tmp = File(file.parentFile, "${file.name}.tmp")
+            tmp.writeText(json.encodeToString(Stored(System.currentTimeMillis(), tmdbApiKey.isNotBlank(), art)))
+            tmp.renameTo(file)
+        } catch (_: Exception) {
+            // A cache that cannot be written just means the next launch asks again.
+        }
+    }
+
+    /** The artwork plus whether it is complete enough to keep on disk (a failed TMDB call is not kept). */
+    private suspend fun fetch(anilistId: Int): Pair<AnimeArtwork, Boolean> = coroutineScope {
+        // Kitsu's cover is a nice-to-have and its API is slow, so it gets a few seconds and never stalls the rest.
+        val cover = async { withTimeoutOrNull(4_000L) { fetchEntryCover(anilistId) } }
         val base = fetchAniZip(anilistId)
         val tmdb = base.tmdbId?.let { fetchTmdbImages(it, base.tmdbIsMovie) }
-        base.copy(entryCoverUrl = cover.await(), englishLogoUrl = tmdb?.logo, tmdbBackdropUrl = tmdb?.backdrop, tmdbPosterUrl = tmdb?.poster)
+        val art = base.copy(entryCoverUrl = cover.await(), englishLogoUrl = tmdb?.logo, tmdbBackdropUrl = tmdb?.backdrop, tmdbPosterUrl = tmdb?.poster)
+        art to (tmdbApiKey.isBlank() || base.tmdbId == null || tmdb != null)
     }
 
     private class TmdbImages(val logo: String?, val backdrop: String?, val poster: String?)
@@ -185,7 +270,7 @@ class ArtworkRepository(
             val request = Request.Builder().url(builder.build())
                 .apply { if (isToken) header("Authorization", "Bearer $tmdbApiKey") }
                 .build()
-            val text = client.newCall(request).execute().use { response ->
+            val text = http.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@use ""
                 response.body.string()
             }
@@ -231,7 +316,7 @@ class ArtworkRepository(
                 .addQueryParameter("include", "item")
                 .build()
             val request = Request.Builder().url(url).header("Accept", "application/vnd.api+json").build()
-            val text = client.newCall(request).execute().use { response ->
+            val text = http.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@use ""
                 response.body.string()
             }
@@ -254,7 +339,7 @@ class ArtworkRepository(
 
     private suspend fun fetchAniZip(anilistId: Int): AnimeArtwork = withContext(Dispatchers.IO) {
         val request = Request.Builder().url("https://api.ani.zip/mappings?anilist_id=$anilistId").build()
-        val text = client.newCall(request).execute().use { response ->
+        val text = http.newCall(request).execute().use { response ->
             // ani.zip answers 404 for shows it has no mapping for; that is "no data", not a failure.
             if (response.code == 404) return@use ""
             if (!response.isSuccessful) throw httpApiException(response.code, response.header("Retry-After")?.toLongOrNull(), null)
@@ -301,3 +386,6 @@ class ArtworkRepository(
         )
     }
 }
+
+/** How long a stored answer is trusted: logos and backdrops of existing shows barely change. */
+private const val ARTWORK_TTL_MILLIS = 14L * 24 * 60 * 60 * 1000
