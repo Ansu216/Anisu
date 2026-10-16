@@ -181,7 +181,7 @@ class ArtworkRepository(
 
     /** Warms the cache for these shows (a few at a time) so their pages and hero slides open with art ready. */
     fun prefetch(anilistIds: Collection<Int>) {
-        anilistIds.distinct().filter { it !in cache }.forEach { id ->
+        anilistIds.distinct().filter { !cache.containsKey(it) }.forEach { id ->
             scope.launch { limiter.withPermit { get(id) } }
         }
     }

@@ -397,7 +397,8 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
 
         // ---------------- The card that rises from under the screen ----------------
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val containerHeightPx = with(density) { maxHeight.toPx() }
+            val containerHeight = maxHeight
+            val containerHeightPx = with(density) { containerHeight.toPx() }
             val card = shownSheet
             if (card != null && (sheet != null || sheetProgress.isRunning)) {
                 Box(
@@ -411,7 +412,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                             alpha = (sheetProgress.value * 3f).coerceIn(0f, 1f)
                         },
                 ) {
-                    BottomCard(modifier = Modifier.heightIn(max = maxHeight * 0.68f)) {
+                    BottomCard(modifier = Modifier.heightIn(max = containerHeight * 0.68f)) {
                         when (card) {
                             ExtensionSheet.Add -> AddExtensionCardContent(
                                 url = jsonUrl,
