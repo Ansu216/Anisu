@@ -137,7 +137,19 @@ enum class AccentPalette(val key: String, val label: String, val color: Color) {
     GOLD("amber", "Amber", Color(0xFFD98E00)),
     ORANGE("orange", "Orange", Color(0xFFF2792B)),
     ROSE("rose", "Rose", Color(0xFFE8456B)),
-    VIOLET("violet", "Violet", Color(0xFF7C5CE6));
+    VIOLET("violet", "Violet", Color(0xFF7C5CE6)),
+    // Added later; kept mid-tone because the text on an accent is white for every colour except White.
+    RED("red", "Red", Color(0xFFE5393B)),
+    CRIMSON("crimson", "Crimson", Color(0xFFB3202F)),
+    CORAL("coral", "Coral", Color(0xFFEE6352)),
+    PINK("pink", "Pink", Color(0xFFD63FA8)),
+    PURPLE("purple", "Purple", Color(0xFFA647D1)),
+    INDIGO("indigo", "Indigo", Color(0xFF4F5BD5)),
+    BLUE("blue", "Blue", Color(0xFF2F6FEB)),
+    CYAN("cyan", "Cyan", Color(0xFF0E9FB5)),
+    TEAL("teal", "Teal", Color(0xFF138F86)),
+    BROWN("brown", "Brown", Color(0xFFA0643C)),
+    SLATE("slate", "Slate", Color(0xFF6B7A99));
 
     companion object {
         fun fromKey(key: String?): AccentPalette = entries.firstOrNull { it.key == key } ?: WHITE

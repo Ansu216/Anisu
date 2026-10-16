@@ -108,6 +108,25 @@ class AniListApi(
     }
 
     /** The signed-in user's favourited anime (the hearts), newest page of up to 50. */
+    /** Ids of all favourite anime, paging until AniList says there are no more. */
+    suspend fun getFavouriteIds(userId: Int): Set<Int> {
+        val ids = mutableSetOf<Int>()
+        var page = 1
+        while (page <= 20) {
+            val query = """
+                query (${'$'}userId: Int, ${'$'}page: Int) {
+                  User(id: ${'$'}userId) { favourites { anime(page: ${'$'}page, perPage: 50) { pageInfo { hasNextPage } nodes { id } } } }
+                }
+            """.trimIndent()
+            val anime = execute(query, mapOf("userId" to userId, "page" to page))
+                ?.get("User")?.jsonObject?.get("favourites")?.jsonObject?.get("anime")?.jsonObject ?: break
+            anime["nodes"]?.jsonArray.orEmpty().forEach { n -> n.jsonObject["id"]?.jsonPrimitive?.content?.toIntOrNull()?.let(ids::add) }
+            if (anime["pageInfo"]?.jsonObject?.get("hasNextPage")?.jsonPrimitive?.content != "true") break
+            page++
+        }
+        return ids
+    }
+
     suspend fun getFavouriteAnime(userId: Int): List<AniListMedia> {
         val query = """
             query (${'$'}userId: Int) {
@@ -328,6 +347,7 @@ class AniListApi(
               Media(id: ${'$'}id, type: ANIME) {
                 id
                 title { romaji english }
+                synonyms
                 coverImage { extraLarge }
                 bannerImage
                 description(asHtml: false)
@@ -335,6 +355,7 @@ class AniListApi(
                 isAdult
                 averageScore
                 episodes
+                duration
                 format
                 isFavourite
                 mediaListEntry { status }
@@ -544,13 +565,14 @@ class AniListApi(
     /** Opens a new discussion thread about [mediaId]. Returns its id, or null. */
     suspend fun saveThread(mediaId: Int, title: String, body: String): Int? {
         val mutation = """
-            mutation (${'$'}title: String, ${'$'}body: String, ${'$'}categories: [Int]) {
-              SaveThread(title: ${'$'}title, body: ${'$'}body, mediaCategories: ${'$'}categories) { id }
+            mutation (${'$'}title: String, ${'$'}body: String, ${'$'}categories: [Int], ${'$'}mediaCategories: [Int]) {
+              SaveThread(title: ${'$'}title, body: ${'$'}body, categories: ${'$'}categories, mediaCategories: ${'$'}mediaCategories) { id }
             }
         """.trimIndent()
         val data = execute(
             mutation,
-            mapOf("title" to title, "body" to body, "categories" to listOf(mediaId)),
+            // AniList rejects a thread with no forum category; 2 is "General". The show goes in mediaCategories.
+            mapOf("title" to title, "body" to body, "categories" to listOf(2), "mediaCategories" to listOf(mediaId)),
             idempotent = false,
         ) ?: return null
         return data["SaveThread"]?.jsonObject?.get("id")?.jsonPrimitive?.content?.toIntOrNull()
@@ -649,6 +671,9 @@ class AniListApi(
                         is Long -> value.toString()
                         is String -> json.encodeToString(kotlinx.serialization.serializer<String>(), value)
                         null -> "null"
+                        // Lists (e.g. thread categories) must be sent as JSON arrays, not as a quoted string.
+                        is List<*> -> value.joinToString(",", "[", "]") { it?.toString() ?: "null" }
+                        is Boolean -> value.toString()
                         else -> json.encodeToString(kotlinx.serialization.serializer<String>(), value.toString())
                     }
                     "\"$key\":$jsonValue"
@@ -704,18 +729,33 @@ class AniListApi(
         }
     }
 
-    /** The title in the chosen language, falling back to the other one when AniList has no such title. */
-    private fun pickTitle(titleObj: JsonObject?): String? {
+    /**
+     * The title in the chosen language, falling back to the other one when AniList has no such title. Upcoming shows
+     * and movies often have no English title yet; for English, a Latin-lettered synonym (AniList lists the official
+     * English name there more often than not) is used before the romaji title.
+     */
+    private fun pickTitle(titleObj: JsonObject?, synonyms: kotlinx.serialization.json.JsonArray? = null): String? {
         fun field(name: String) = (titleObj?.get(name) as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
         return when (titleLanguage()) {
-            TitleLanguage.ENGLISH -> field("english") ?: field("romaji")
+            TitleLanguage.ENGLISH -> field("english") ?: englishSynonym(field("romaji"), synonyms) ?: field("romaji")
             TitleLanguage.ROMAJI -> field("romaji") ?: field("english")
         }
     }
 
+    private fun englishSynonym(romaji: String?, synonyms: kotlinx.serialization.json.JsonArray?): String? =
+        synonyms.orEmpty()
+            .mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.trim() }
+            .filter { name ->
+                name.length >= 4 && name.any { it == ' ' } &&
+                    name.all { it.code < 0x250 } && // Latin letters only: no kana, kanji, Cyrillic...
+                    !name.equals(romaji, ignoreCase = true) &&
+                    !name.any { it.code in 0xC0..0x24F } // accented text is usually a Spanish/French/German title
+            }
+            .firstOrNull()
+
     private fun JsonObject.toMedia(): AniListMedia? {
         val idValue = this["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
-        val title = pickTitle(this["title"] as? JsonObject) ?: return null
+        val title = pickTitle(this["title"] as? JsonObject, this["synonyms"] as? kotlinx.serialization.json.JsonArray) ?: return null
         if (isAdultMedia()) return null
         return AniListMedia(
             id = idValue,
@@ -756,7 +796,7 @@ class AniListApi(
 
     private fun JsonObject.toMediaDetails(): AniListMediaDetails? {
         val idValue = this["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
-        val title = pickTitle(this["title"] as? JsonObject) ?: return null
+        val title = pickTitle(this["title"] as? JsonObject, this["synonyms"] as? kotlinx.serialization.json.JsonArray) ?: return null
         if (isAdultMedia()) return null
 
         // Every one of these lists is drawn with the row's own `id` as the Compose key, and a
@@ -814,6 +854,7 @@ class AniListApi(
             trailerYoutubeId = (this["trailer"] as? JsonObject)?.takeIf {
                 it["site"]?.jsonPrimitive?.contentOrNull.equals("youtube", ignoreCase = true)
             }?.get("id")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() },
+            durationMinutes = this["duration"]?.jsonPrimitive?.content?.toIntOrNull(),
         )
     }
 

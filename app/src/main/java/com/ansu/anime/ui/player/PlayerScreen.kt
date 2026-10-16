@@ -143,6 +143,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     val subtitleColor by container.playerPrefs.subtitleColor.collectAsStateWithLifecycle()
     val subtitleBgColor by container.playerPrefs.subtitleBgColor.collectAsStateWithLifecycle()
     val subtitleBgOpacity by container.playerPrefs.subtitleBgOpacity.collectAsStateWithLifecycle()
+    val subtitleRoundedBg by container.playerPrefs.subtitleRoundedBg.collectAsStateWithLifecycle()
     var locked by remember { mutableStateOf(false) }
     var fitIndex by remember { mutableIntStateOf(0) }
     val doubleTapSeek by container.playerPrefs.doubleTapSeek.collectAsStateWithLifecycle()
@@ -329,6 +330,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 subtitleTextColor = subtitleColor,
                 subtitleBgColor = subtitleBgColor,
                 subtitleBgOpacity = subtitleBgOpacity,
+                subtitleRoundedBg = subtitleRoundedBg,
                 panelWidth = panelWidth,
                 panelProgress = { panelProgress.value },
             ) {
@@ -371,6 +373,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     subtitleTextColor = subtitleColor,
                     subtitleBgColor = subtitleBgColor,
                     subtitleBgOpacity = subtitleBgOpacity,
+                    subtitleRoundedBg = subtitleRoundedBg,
                 ) {
                     if (inPip) {
                         Unit
@@ -427,6 +430,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     textColor = subtitleColor,
                     bgColor = subtitleBgColor,
                     bgOpacity = subtitleBgOpacity,
+                    roundedBg = subtitleRoundedBg,
+                    onRoundedBg = container.playerPrefs::setSubtitleRoundedBg,
                     onTextColor = container.playerPrefs::setSubtitleColor,
                     onBgColor = container.playerPrefs::setSubtitleBgColor,
                     onBgOpacity = container.playerPrefs::setSubtitleBgOpacity,
@@ -481,6 +486,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 textColor = subtitleColor,
                 bgColor = subtitleBgColor,
                 bgOpacity = subtitleBgOpacity,
+                roundedBg = subtitleRoundedBg,
+                onRoundedBg = container.playerPrefs::setSubtitleRoundedBg,
                 onTextColor = container.playerPrefs::setSubtitleColor,
                 onBgColor = container.playerPrefs::setSubtitleBgColor,
                 onBgOpacity = container.playerPrefs::setSubtitleBgOpacity,
@@ -531,6 +538,7 @@ private fun PlayerSurface(
     subtitleTextColor: Int = 0xFFFFFFFF.toInt(),
     subtitleBgColor: Int = 0xFF000000.toInt(),
     subtitleBgOpacity: Int = 50,
+    subtitleRoundedBg: Boolean = true,
     /** Width of the side panel that slides in from the right; 0 for layouts that have none. */
     panelWidth: Dp = 0.dp,
     /** 0 = panel closed, 1 = open. Read inside layout/graphics blocks only, so animating it never recomposes. */
@@ -583,12 +591,13 @@ private fun PlayerSurface(
             var subtitleAreaHeightPx by remember { mutableIntStateOf(0) }
             val subtitleTextSizePx = with(androidx.compose.ui.platform.LocalDensity.current) { subtitleSize.sp.toPx() }
             val subtitleBackground = subtitleBackgroundArgb(subtitleBgColor, subtitleBgOpacity)
-            val placedCues = remember(cues, subtitleHeight, subtitleTextSizePx, subtitleAreaHeightPx, subtitleBackground) {
+            val placedCues = remember(cues, subtitleHeight, subtitleTextSizePx, subtitleAreaHeightPx, subtitleBackground, subtitleRoundedBg) {
                 // The background is drawn by the cues themselves (rounded, one bar per line), not by the view's square one.
                 roundCueBackgrounds(
                     placeCues(cues, subtitleHeight, subtitleTextSizePx, subtitleAreaHeightPx),
                     subtitleBackground,
                     subtitleTextSizePx,
+                    subtitleRoundedBg,
                 )
             }
             AndroidView(

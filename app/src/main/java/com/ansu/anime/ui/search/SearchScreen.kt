@@ -117,7 +117,10 @@ import com.ansu.anime.ui.components.AppBottomBarReserve
 import com.ansu.anime.ui.components.BackdropState
 import com.ansu.anime.ui.components.backdropSource
 import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.PosterOriginHandle
+import com.ansu.anime.ui.components.posterTransitionAnchor
 import com.ansu.anime.ui.components.posterTransitionOrigin
+import com.ansu.anime.ui.components.posterTransitionTrigger
 import com.ansu.anime.ui.theme.AnsuColors
 import kotlinx.coroutines.delay
 
@@ -931,11 +934,14 @@ private fun SearchGridCard(anime: SAnime, onClick: () -> Unit, animateOpen: Bool
 /** List mode: poster on the left; name, episodes and year, genre tags and format on the right. */
 @Composable
 private fun SearchListItem(anime: SAnime, onClick: () -> Unit, animateOpen: Boolean = true) {
+    // A tap anywhere on the row (title, tags, empty space) opens the page out of its poster, not only a tap on the poster.
+    val originHandle = remember { PosterOriginHandle() }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(AnsuColors.BackgroundElevated)
+            .let { if (animateOpen) it.posterTransitionTrigger(originHandle, anime.posterUrl, 12.dp) else it }
             .clickable(onClick = onClick)
             .padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -944,7 +950,7 @@ private fun SearchListItem(anime: SAnime, onClick: () -> Unit, animateOpen: Bool
             modifier = Modifier
                 .width(96.dp)
                 .aspectRatio(2f / 3f)
-                .let { if (animateOpen) it.posterTransitionOrigin(anime.posterUrl, 12.dp) else it }
+                .let { if (animateOpen) it.posterTransitionAnchor(originHandle) else it }
                 .clip(RoundedCornerShape(12.dp))
                 .background(AnsuColors.Background),
         ) {

@@ -64,7 +64,7 @@ private fun Cue.hasOwnPlacement(): Boolean = when (lineType) {
  * @param backgroundArgb the background colour with the person's opacity already in it.
  * @param textSizePx the subtitle text size in pixels, which sets the padding and the corner radius.
  */
-internal fun roundCueBackgrounds(cues: List<Cue>, backgroundArgb: Int, textSizePx: Float): List<Cue> {
+internal fun roundCueBackgrounds(cues: List<Cue>, backgroundArgb: Int, textSizePx: Float, rounded: Boolean = true): List<Cue> {
     val visible = android.graphics.Color.alpha(backgroundArgb) != 0
     return cues.map { cue ->
         val text = cue.text
@@ -73,8 +73,11 @@ internal fun roundCueBackgrounds(cues: List<Cue>, backgroundArgb: Int, textSizeP
         // only added when the person's background is not fully transparent.
         val plain = android.text.SpannableString(text.toString())
         if (visible) {
+            // Rounded: the lines' bars are joined into one stepped, rounded shape. Plain (rounded off): one ordinary
+            // rectangle hugging the widest line. Both are drawn by the span, so the box is only as wide as the text
+            // (the view's own window colour would stretch across the whole video width).
             plain.setSpan(
-                RoundedLineBackgroundSpan(backgroundArgb, textSizePx, cue.textAlignment),
+                RoundedLineBackgroundSpan(backgroundArgb, textSizePx, cue.textAlignment, rounded),
                 0,
                 plain.length,
                 android.text.Spanned.SPAN_INCLUSIVE_INCLUSIVE,
@@ -85,16 +88,23 @@ internal fun roundCueBackgrounds(cues: List<Cue>, backgroundArgb: Int, textSizeP
 }
 
 /**
- * Draws a rounded bar behind one line of text, as wide as that line plus a little padding, so a two-line cue gets two
- * bars of their own widths. The line is positioned the way the cue aligns its text (centred unless the cue says otherwise).
+ * Draws the background of a (possibly multi-line) cue as ONE shape that hugs the text:
+ * - rounded: every line gets a bar as wide as that line plus padding; where two neighbouring bars meet, their shared
+ *   corners are squared off so the lines join into a single stepped shape, and only the outer corners are rounded;
+ * - plain: one rectangle as wide as the widest line, no rounding.
+ * The bars are positioned the way the cue aligns its text (centred unless the cue says otherwise), and never reach
+ * beyond the text, so a subtitle on a wide video no longer gets a bar across the whole screen.
  */
 private class RoundedLineBackgroundSpan(
     private val color: Int,
     private val textSizePx: Float,
     private val alignment: android.text.Layout.Alignment?,
+    private val rounded: Boolean,
 ) : android.text.style.LineBackgroundSpan {
 
     private val rect = android.graphics.RectF()
+    private val path = android.graphics.Path()
+    private val radii = FloatArray(8)
 
     override fun drawBackground(
         canvas: android.graphics.Canvas,
@@ -114,22 +124,56 @@ private class RoundedLineBackgroundSpan(
         while (lineEnd > start && text[lineEnd - 1].isWhitespace()) lineEnd--
         if (lineEnd <= start) return
 
-        val textWidth = paint.measureText(text, start, lineEnd)
-        val padX = textSizePx * 0.4f
-        val barWidth = textWidth + padX * 2f
+        val padX = textSizePx * 0.5f
+        val spanned = text as? android.text.Spanned
+        val spanStart = spanned?.getSpanStart(this)?.takeIf { it >= 0 } ?: start
+        val spanEnd = spanned?.getSpanEnd(this)?.takeIf { it >= 0 } ?: end
+
+        // The cue's lines (split at its line breaks) with their bar widths, to know the neighbours of this line.
+        val widths = ArrayList<Float>()
+        var index = -1
+        var from = spanStart
+        while (from <= spanEnd) {
+            var to = from
+            while (to < spanEnd && text[to] != '\n') to++
+            var trimmed = to
+            while (trimmed > from && text[trimmed - 1].isWhitespace()) trimmed--
+            if (trimmed > from) {
+                if (start in from..to) index = widths.size
+                widths += paint.measureText(text, from, trimmed) + padX * 2f
+            }
+            if (to >= spanEnd) break
+            from = to + 1
+        }
+
+        val own = paint.measureText(text, start, lineEnd) + padX * 2f
+        val barWidth = if (!rounded) (widths.maxOrNull() ?: own) else own
         val barLeft = when (alignment) {
             android.text.Layout.Alignment.ALIGN_NORMAL -> left.toFloat()
             android.text.Layout.Alignment.ALIGN_OPPOSITE -> right - barWidth
             else -> (left + right) / 2f - barWidth / 2f
         }
-        rect.set(barLeft, top.toFloat(), barLeft + barWidth, bottom.toFloat())
+        // A hair of overlap, so the bars of a two-line cue touch instead of leaving a gap between them.
+        rect.set(barLeft, top.toFloat(), barLeft + barWidth, bottom.toFloat() + 1f)
+
+        val radius = if (rounded) (bottom - top) * 0.16f else 0f
+        // A corner is rounded only when it sticks out past the neighbouring line; a corner against a wider (or equal)
+        // neighbour is square, which is what joins the lines into one shape.
+        val outerTop = index <= 0 || barWidth > widths[index - 1] + 0.5f
+        val outerBottom = index < 0 || index >= widths.lastIndex || barWidth > widths[index + 1] + 0.5f
+        val top2 = if (outerTop) radius else 0f
+        val bottom2 = if (outerBottom) radius else 0f
+        radii[0] = top2; radii[1] = top2; radii[2] = top2; radii[3] = top2
+        radii[4] = bottom2; radii[5] = bottom2; radii[6] = bottom2; radii[7] = bottom2
+
+        path.rewind()
+        path.addRoundRect(rect, radii, android.graphics.Path.Direction.CW)
 
         val previousColor = paint.color
         val previousStyle = paint.style
         paint.color = color
         paint.style = android.graphics.Paint.Style.FILL
-        val radius = (bottom - top) * 0.32f
-        canvas.drawRoundRect(rect, radius, radius, paint)
+        canvas.drawPath(path, paint)
         paint.color = previousColor
         paint.style = previousStyle
     }

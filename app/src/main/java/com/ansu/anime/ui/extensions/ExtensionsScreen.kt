@@ -353,6 +353,9 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                                     "Failed" + (it.error?.let { e -> " · $e" } ?: "")
                                 }
                                 text to it.ok
+                            } ?: row.source?.id?.let { id ->
+                                // No test this session: show what the last one found ("Streams OK · 3d ago").
+                                container.sourceHealth.label(id)?.let { it to (container.sourceHealth.isWorking(id) == true) }
                             }
                             InstalledSourceCard(
                                 row = row,

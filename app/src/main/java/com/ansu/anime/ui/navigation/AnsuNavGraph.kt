@@ -55,6 +55,7 @@ object Dest {
     const val APPEARANCE = "appearance"
     const val PLAYER_STREAMING = "player_streaming"
     const val ABOUT = "about"
+    const val LICENSES = "licenses"
     const val UPDATES = "updates"
     const val CONTRIBUTORS = "contributors"
     const val SYSTEM = "system"
@@ -250,6 +251,9 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         }
         composable(Dest.ABOUT) {
             AboutScreen(container = container, navController = navController)
+        }
+        composable(Dest.LICENSES) {
+            com.ansu.anime.ui.about.LicensesScreen(container = container, navController = navController)
         }
         composable(Dest.UPDATES) {
             UpdatesScreen(container = container, navController = navController)

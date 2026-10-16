@@ -93,6 +93,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val subColor by prefs.subtitleColor.collectAsStateWithLifecycle()
     val subBgColor by prefs.subtitleBgColor.collectAsStateWithLifecycle()
     val subBgOpacity by prefs.subtitleBgOpacity.collectAsStateWithLifecycle()
+    val subRoundedBg by prefs.subtitleRoundedBg.collectAsStateWithLifecycle()
 
     // The page scrolls; the source list asks it to scroll further while a row is dragged to its edge.
     val scrollState = rememberScrollState()
@@ -193,6 +194,12 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                     value = subBgOpacity.toFloat(),
                     valueRange = 0f..100f,
                     onValueChange = { prefs.setSubtitleBgOpacity(it.roundToInt()) },
+                )
+                GlassToggleRow(
+                    title = "Rounded background",
+                    description = "Soft rounded bars behind each line. Off shows a plain rectangle box.",
+                    checked = subRoundedBg,
+                    onCheckedChange = prefs::setSubtitleRoundedBg,
                 )
                 GlassSliderRow(
                     title = "Size",

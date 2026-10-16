@@ -162,6 +162,8 @@ internal fun SubtitlesPanel(
     textColor: Int,
     bgColor: Int,
     bgOpacity: Int,
+    roundedBg: Boolean,
+    onRoundedBg: (Boolean) -> Unit,
     onTextColor: (Int) -> Unit,
     onBgColor: (Int) -> Unit,
     onBgOpacity: (Int) -> Unit,
@@ -268,6 +270,13 @@ internal fun SubtitlesPanel(
             item {
                 PanelCard {
                     Text("Background", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text("Rounded background", color = Color.White, fontSize = 13.sp)
+                            Text("Off: a plain rectangle box", color = PanelMuted, fontSize = 11.sp)
+                        }
+                        Switch(checked = roundedBg, onCheckedChange = onRoundedBg)
+                    }
                     ColorSwatchRow(SubtitleBgColors, bgColor, onBgColor)
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 10.dp)) {
                         Text("Density", color = PanelMuted, fontSize = 13.sp, modifier = Modifier.weight(1f))
