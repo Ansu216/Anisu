@@ -1,24 +1,32 @@
 package com.ansu.anime.ui.components
 
 import android.text.format.DateUtils
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateDp
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -52,7 +60,7 @@ import com.ansu.anime.ui.theme.AnsuColors
 
 /**
  * The bell at the top right of the home banner. Collapsed it is a small glass circle (with a dot while something is
- * unread); a tap grows it, the way the search bar opens, into a panel listing every notification received so far,
+ * unread); a tap grows it out of its corner into a full-screen panel listing every notification received so far,
  * newest first. A tap on a row opens that show; the cross (or Back) folds the panel again and marks everything read.
  */
 @Composable
@@ -65,105 +73,128 @@ fun NotificationInbox(
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val unread = entries.count { !it.read }
+    val visibleState = remember { MutableTransitionState(false) }
+    visibleState.targetState = expanded
 
     fun close() {
         expanded = false
         onMarkAllRead()
     }
-    BackHandler(enabled = expanded) { close() }
 
-    BoxWithConstraints(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
-        val width by animateDpAsState(
-            targetValue = if (expanded) maxWidth else 38.dp,
-            animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
-            label = "inboxWidth",
-        )
-        val corner by animateDpAsState(
-            targetValue = if (expanded) 22.dp else 19.dp,
-            animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
-            label = "inboxCorner",
-        )
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
         FrostedGlassCard(
-            modifier = Modifier
-                .width(width)
-                .animateContentSize(tween(durationMillis = 320, easing = FastOutSlowInEasing)),
-            shape = RoundedCornerShape(corner),
-            tintAlpha = if (expanded) 0.88f else 0.5f,
+            modifier = Modifier.size(38.dp),
+            shape = CircleShape,
+            tintAlpha = 0.5f,
         ) {
-            if (!expanded) {
-                Box(modifier = Modifier.size(38.dp)) {
-                    IconButton(
-                        onClick = {
-                            Haptics.tick()
-                            expanded = true
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        Icon(
-                            imageVector = if (unread > 0) Icons.Filled.Notifications else Icons.Outlined.NotificationsNone,
-                            contentDescription = "Notifications",
-                            tint = AnsuColors.TextPrimary,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                    if (unread > 0) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = 8.dp, end = 8.dp)
-                                .size(9.dp)
-                                .clip(CircleShape)
-                                .background(AnsuColors.Accent),
-                        )
-                    }
+            Box(modifier = Modifier.size(38.dp)) {
+                IconButton(
+                    onClick = {
+                        Haptics.tick()
+                        expanded = true
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    Icon(
+                        imageVector = if (unread > 0) Icons.Filled.Notifications else Icons.Outlined.NotificationsNone,
+                        contentDescription = "Notifications",
+                        tint = AnsuColors.TextPrimary,
+                        modifier = Modifier.size(20.dp),
+                    )
                 }
-            } else {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "Notifications",
-                            color = AnsuColors.TextPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (entries.isNotEmpty()) {
-                            TextButton(onClick = { Haptics.tick(); onClear() }) {
-                                Text("Clear", color = AnsuColors.TextSecondary, fontSize = 13.sp)
+                if (unread > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 8.dp, end = 8.dp)
+                            .size(9.dp)
+                            .clip(CircleShape)
+                            .background(AnsuColors.Accent),
+                    )
+                }
+            }
+        }
+    }
+
+    // Opened, the bell grows out of its corner into a panel that fills the whole screen.
+    if (visibleState.currentState || visibleState.targetState) {
+        Dialog(
+            onDismissRequest = { close() },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            AnimatedVisibility(
+                visibleState = visibleState,
+                enter = fadeIn(tween(260)) + scaleIn(
+                    animationSpec = tween(360, easing = FastOutSlowInEasing),
+                    initialScale = 0.08f,
+                    transformOrigin = TransformOrigin(0.92f, 0.04f),
+                ),
+                exit = fadeOut(tween(220)) + scaleOut(
+                    animationSpec = tween(300, easing = FastOutSlowInEasing),
+                    targetScale = 0.08f,
+                    transformOrigin = TransformOrigin(0.92f, 0.04f),
+                ),
+            ) {
+                val corner by transition.animateDp(label = "inboxCorner") { state ->
+                    if (state == EnterExitState.Visible) 0.dp else 40.dp
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(corner))
+                        .background(AnsuColors.SurfaceGlassBase.copy(alpha = 0.97f)),
+                ) {
+                    Column(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "Notifications",
+                                color = AnsuColors.TextPrimary,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (entries.isNotEmpty()) {
+                                TextButton(onClick = { Haptics.tick(); onClear() }) {
+                                    Text("Clear", color = AnsuColors.TextSecondary, fontSize = 14.sp)
+                                }
+                            }
+                            IconButton(onClick = { Haptics.tick(); close() }, modifier = Modifier.size(44.dp)) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "Close notifications",
+                                    tint = AnsuColors.TextPrimary,
+                                    modifier = Modifier.size(24.dp),
+                                )
                             }
                         }
-                        IconButton(onClick = { Haptics.tick(); close() }, modifier = Modifier.size(38.dp)) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = "Close notifications",
-                                tint = AnsuColors.TextPrimary,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                    }
-                    if (entries.isEmpty()) {
-                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp)) {
-                            Text("Nothing yet", color = AnsuColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                text = "Releases and new episodes of shows you follow or are watching will show up here.",
-                                color = AnsuColors.TextSecondary,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(top = 4.dp),
-                            )
-                        }
-                    } else {
-                        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)) {
-                            items(entries, key = { it.key }) { entry ->
-                                InboxRow(entry) {
-                                    close()
-                                    onOpenEntry(entry)
+                        if (entries.isEmpty()) {
+                            Column(
+                                modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp),
+                                verticalArrangement = Arrangement.Center,
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text("Nothing yet", color = AnsuColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    text = "Releases and new episodes of shows you follow or are watching will show up here.",
+                                    color = AnsuColors.TextSecondary,
+                                    fontSize = 14.sp,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(top = 6.dp),
+                                )
+                            }
+                        } else {
+                            LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 8.dp)) {
+                                items(entries, key = { it.key }) { entry ->
+                                    InboxRow(entry) {
+                                        close()
+                                        onOpenEntry(entry)
+                                    }
                                 }
                             }
                         }
-                        Spacer(Modifier.size(6.dp))
                     }
                 }
             }

@@ -527,20 +527,20 @@ fun HeroCarousel(
                     .height(96.dp)
                     .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.4f), Color.Transparent))),
             )
-        }
 
-        // The bell at the top right: grows into the list of every notification received so far.
-        if (notifications != null) {
-            NotificationInbox(
-                entries = notifications,
-                onOpenEntry = onOpenNotification,
-                onMarkAllRead = onNotificationsRead,
-                onClear = onClearNotifications,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .statusBarsPadding()
-                    .padding(top = 8.dp, start = 16.dp, end = 16.dp),
-            )
+            // The bell at the top right: grows into the list of every notification received so far.
+            if (notifications != null) {
+                NotificationInbox(
+                    entries = notifications,
+                    onOpenEntry = onOpenNotification,
+                    onMarkAllRead = onNotificationsRead,
+                    onClear = onClearNotifications,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .statusBarsPadding()
+                        .padding(top = 8.dp, start = 16.dp, end = 16.dp),
+                )
+            }
         }
 
         if (shown.size > 1) {
