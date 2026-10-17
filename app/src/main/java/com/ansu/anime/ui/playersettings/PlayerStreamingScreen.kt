@@ -88,6 +88,9 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val volume by prefs.volumeGesture.collectAsStateWithLifecycle()
     val skipSeconds by prefs.skipSeconds.collectAsStateWithLifecycle()
     val pip by prefs.pipEnabled.collectAsStateWithLifecycle()
+    val pauseScreen by prefs.pauseScreen.collectAsStateWithLifecycle()
+    val preferredQuality by prefs.preferredQuality.collectAsStateWithLifecycle()
+    val preferredLanguage by prefs.preferredLanguage.collectAsStateWithLifecycle()
     val prefetch by prefs.prefetchEnabled.collectAsStateWithLifecycle()
     val subSize by prefs.subtitleSize.collectAsStateWithLifecycle()
     val subHeight by prefs.subtitleHeight.collectAsStateWithLifecycle()
@@ -153,6 +156,50 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                         prefs.setBrightnessGesture(on)
                         prefs.setVolumeGesture(on)
                     },
+                )
+            }
+
+            GlassGroupLabel("Preferred stream")
+            GlassGroup {
+                GlassContentRow(
+                    title = "Preferred Quality",
+                    description = "Playback starts on the closest stream to this resolution",
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        PlayerPrefs.QUALITY_OPTIONS.forEach { height ->
+                            FilterChip(
+                                selected = preferredQuality == height,
+                                onClick = { prefs.setPreferredQuality(height) },
+                                label = { Text("${height}p") },
+                            )
+                        }
+                    }
+                }
+                GlassContentRow(
+                    title = "Preferred Language",
+                    description = "Sub or dub. Falls back to the other when a show has no match",
+                    showDivider = false,
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        listOf(PlayerPrefs.LANGUAGE_SUB to "Sub", PlayerPrefs.LANGUAGE_DUB to "Dub").forEach { (value, label) ->
+                            FilterChip(
+                                selected = preferredLanguage == value,
+                                onClick = { prefs.setPreferredLanguage(value) },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            GlassGroupLabel("Pause screen")
+            GlassGroup {
+                GlassToggleRow(
+                    title = "Pause Screen",
+                    description = "Dim the video and show what you're watching when paused",
+                    checked = pauseScreen,
+                    onCheckedChange = prefs::setPauseScreen,
+                    showDivider = false,
                 )
             }
 

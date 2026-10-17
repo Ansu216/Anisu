@@ -389,7 +389,10 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
         }
 
         // ---------------- Frosted scrim behind the card ----------------
-        if (sheet != null || sheetProgress.isRunning) {
+        // Judged by the progress value, not isRunning: when the sheet is closed the first frame is composed before the
+        // close animation has started, and isRunning would still be false, so the scrim and the card vanished for one
+        // frame and then came back to animate out - the double flash. The value is still 1 in that frame.
+        if (sheet != null || sheetProgress.value > 0f) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -407,9 +410,10 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val containerHeight = maxHeight
             val containerHeightPx = with(density) { containerHeight.toPx() }
-            val card = shownSheet
+            // The open card, or the one still leaving; reading `sheet` first means a card is there from the very first frame.
+            val card = sheet ?: shownSheet
             var cardHeightPx by remember { mutableStateOf(0f) }
-            if (card != null && (sheet != null || sheetProgress.isRunning)) {
+            if (card != null && (sheet != null || sheetProgress.value > 0f)) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)

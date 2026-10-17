@@ -24,6 +24,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Preferred stream: quality and language, in Settings > Playback.** A new "Preferred stream" group has **Preferred
+  Quality** (1080p, 720p, 480p, 360p) and **Preferred Language** (Sub or Dub). When a show starts playing, the app now
+  picks its stream by them instead of just taking the first one: the language first (the other one only when the show
+  has no match), then the closest resolution (the best stream at or below your choice, a higher one only when nothing
+  at or below exists, and a stream that names no resolution last). Streams that still tie fall back to the source this
+  show last played from and then to your source priority. **Constraint:** only the streams that have arrived when
+  playback starts are compared, so a slow source that answers later is not considered, and the choice is read from the
+  stream's label, so a source that labels neither quality nor Sub/Dub is treated as an unknown-quality sub. A stream
+  chosen by hand in the Sources panel sticks: for the next 3 days that show's episodes start on the same stream (same
+  extension, server, language and, when the exact one is not listed, the closest resolution), ahead of the preferred
+  quality and language; picking another stream by hand replaces it.
+- **"Your Next Watch" banner on Home.** Under Continue Watching there is now a horizontal banner of wide cards that
+  loops endlessly and slides on by itself every few seconds (the centred card is full size, its neighbours peek in
+  smaller and dimmer, and the text lags behind the picture as it slides). Each card shows the title on top and, at the
+  bottom, "Because you watched ..." with the show of yours it was suggested by. The suggestions are AniList's own
+  recommendations for what is in Continue Watching plus your Watching and Completed lists (AniList's when signed in,
+  the device's otherwise), one from each show in turn, never a show you already watch, never an adult title. It stays
+  hidden until there is something to base it on. **Constraint:** the banner is rebuilt when the set of shows changes,
+  not while an episode plays.
+- **Pause screen in the player, in the style of Nuvio.** Two and a half seconds after you pause, the controls leave and
+  the frozen video dims under "You're watching", the show's logo (its plain title when there is none), the episode as
+  "S2E5", the episode name and its synopsis, bottom left; the text fades and rises into place. A tap on it resumes.
+  Movies show no episode line, and an episode a source only calls "Episode 5" gets no name line. Portrait has a smaller
+  version over the video. Settings > Playback has a **Pause Screen** switch (on by default).
 - **Release and new-episode notifications, with an inbox.** A small bell at the top right of the home banner grows,
   the way the search bar opens, into a list of every notification received so far (newest first, with poster, message
   and time; a dot on the bell while something is unread). A tap on a row opens that show; the cross or Back folds it
@@ -54,6 +78,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sources are not hidden or reordered automatically.
 
 ### Fixed
+
+- **The "Add extension" / "Update sources" card no longer flashes twice when it closes.** On the frame where the close
+  started, the frosted scrim and the card were removed for a moment (the screen was checking whether the close
+  animation was running, and it had not started yet) and then came back at full strength to animate out, which showed
+  as two flashes. They are now kept on screen by the animation's own progress, so the card slides away and the blur
+  fades out in one motion. The card is also present from the first frame of opening.
 
 - **Switching tabs while one is still loading no longer leaves the old tab drawn on the new one.** All four tab
   screens recorded their content into one shared layer for the nav bar's blur, and each also drew that layer back as

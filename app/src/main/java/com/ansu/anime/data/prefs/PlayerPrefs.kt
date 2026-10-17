@@ -63,6 +63,62 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putBoolean(KEY_PIP, value).apply()
     }
 
+    private val _preferredQuality = MutableStateFlow(prefs.getInt(KEY_PREFERRED_QUALITY, DEFAULT_QUALITY).let { if (it in QUALITY_OPTIONS) it else DEFAULT_QUALITY })
+
+    /** The resolution (1080, 720, 480 or 360) a stream is picked at when the show starts playing. */
+    val preferredQuality: StateFlow<Int> = _preferredQuality
+
+    fun setPreferredQuality(value: Int) {
+        if (value !in QUALITY_OPTIONS) return
+        _preferredQuality.value = value
+        prefs.edit().putInt(KEY_PREFERRED_QUALITY, value).apply()
+    }
+
+    private val _preferredLanguage = MutableStateFlow(prefs.getString(KEY_PREFERRED_LANGUAGE, LANGUAGE_SUB).let { if (it == LANGUAGE_DUB) LANGUAGE_DUB else LANGUAGE_SUB })
+
+    /** [LANGUAGE_SUB] or [LANGUAGE_DUB]: which version of an episode is picked when the show starts playing. */
+    val preferredLanguage: StateFlow<String> = _preferredLanguage
+
+    fun setPreferredLanguage(value: String) {
+        if (value != LANGUAGE_SUB && value != LANGUAGE_DUB) return
+        _preferredLanguage.value = value
+        prefs.edit().putString(KEY_PREFERRED_LANGUAGE, value).apply()
+    }
+
+    /**
+     * The stream the person chose by hand in the Sources panel for a show, kept for 3 days like the last played
+     * source. It beats the preferred quality and language when the next episode picks its stream.
+     */
+    fun manualPickFor(anilistId: Int): com.ansu.anime.data.repository.LastPlayedSource? {
+        val parts = prefs.getString("$KEY_MANUAL_PICK$anilistId", null)?.split('\t') ?: return null
+        val sourceId = parts.getOrNull(0)?.toLongOrNull()
+        val savedAt = parts.getOrNull(3)?.toLongOrNull()
+        if (parts.size != 4 || sourceId == null || savedAt == null) return null
+        if (System.currentTimeMillis() - savedAt > com.ansu.anime.data.repository.ContinueWatchingRepository.LAST_SOURCE_TTL_MILLIS) {
+            prefs.edit().remove("$KEY_MANUAL_PICK$anilistId").apply()
+            return null
+        }
+        return com.ansu.anime.data.repository.LastPlayedSource(sourceId, parts[1].ifEmpty { null }, parts[2].ifEmpty { null })
+    }
+
+    fun setManualPick(anilistId: Int, sourceId: Long, serverName: String?, label: String?) {
+        // Tabs separate the fields; none of them can hold one.
+        fun clean(text: String?) = text.orEmpty().replace('\t', ' ').replace('\n', ' ')
+        prefs.edit()
+            .putString("$KEY_MANUAL_PICK$anilistId", "$sourceId\t${clean(serverName)}\t${clean(label)}\t${System.currentTimeMillis()}")
+            .apply()
+    }
+
+    private val _pauseScreen = MutableStateFlow(prefs.getBoolean(KEY_PAUSE_SCREEN, true))
+
+    /** Pause screen: a few seconds after pausing, the video dims and shows what is being watched. */
+    val pauseScreen: StateFlow<Boolean> = _pauseScreen
+
+    fun setPauseScreen(value: Boolean) {
+        _pauseScreen.value = value
+        prefs.edit().putBoolean(KEY_PAUSE_SCREEN, value).apply()
+    }
+
     private val _prefetchEnabled = MutableStateFlow(prefs.getBoolean(KEY_PREFETCH, true))
 
     /** Pre-load about a minute of the last-watched episode into the media cache when the app opens. */
@@ -178,6 +234,10 @@ class PlayerPrefs(context: Context) {
 
     companion object {
         val SKIP_OPTIONS = listOf(5, 10, 15)
+        val QUALITY_OPTIONS = listOf(1080, 720, 480, 360)
+        const val DEFAULT_QUALITY = 1080
+        const val LANGUAGE_SUB = "sub"
+        const val LANGUAGE_DUB = "dub"
         val SUBTITLE_SIZE_RANGE = 10..40
         val SUBTITLE_HEIGHT_RANGE = 0..40
         const val DEFAULT_SUBTITLE_SIZE = 18
@@ -192,6 +252,10 @@ class PlayerPrefs(context: Context) {
         private const val KEY_BRIGHTNESS = "brightness_gesture"
         private const val KEY_VOLUME = "volume_gesture"
         private const val KEY_PIP = "pip_enabled"
+        private const val KEY_MANUAL_PICK = "manual_pick_"
+        private const val KEY_PREFERRED_QUALITY = "preferred_quality"
+        private const val KEY_PREFERRED_LANGUAGE = "preferred_language"
+        private const val KEY_PAUSE_SCREEN = "pause_screen"
         private const val KEY_PREFETCH = "prefetch_enabled"
         private const val KEY_EPISODE_GRID = "episode_grid"
         private const val KEY_SKIP_SECONDS = "skip_seconds"

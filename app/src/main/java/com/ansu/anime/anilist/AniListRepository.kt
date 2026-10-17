@@ -139,6 +139,10 @@ class AniListRepository(
 
     suspend fun getTrending(page: Int = 1) = guarded("Loading trending anime", emptyList()) { api.getTrending(page) }
 
+    /** Titles AniList users recommend after [mediaId]; empty when there are none or the request failed. */
+    suspend fun getRecommendations(mediaId: Int): List<AniListMedia> =
+        guarded("Loading recommendations", emptyList<AniListMedia>(), quiet = true) { api.getRecommendations(mediaId) }
+
     /** Most popular anime of the current season, for the home screen's "Top Picks" grid. */
     suspend fun getTopThisSeason(season: String, seasonYear: Int) =
         guarded("Loading this season's top picks", emptyList()) { api.getTopThisSeason(season, seasonYear) }

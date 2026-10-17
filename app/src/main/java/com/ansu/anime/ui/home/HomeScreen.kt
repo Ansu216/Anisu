@@ -201,6 +201,13 @@ fun HomeScreen(
                     }
                 }
 
+                // Titles AniList suggests from the shows the user watches; hidden until there is something to base them on.
+                if (state.picks.isNotEmpty()) {
+                    item(key = "next-watch") {
+                        NextWatchBanner(picks = state.picks, onClick = selectAnime)
+                    }
+                }
+
                 item(key = "feed:${AniListFeed.TRENDING_NOW.name}") {
                     FeedShelf(
                         row = state.feed(AniListFeed.TRENDING_NOW),

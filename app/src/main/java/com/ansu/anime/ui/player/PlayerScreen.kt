@@ -47,6 +47,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -76,6 +77,7 @@ import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import androidx.navigation.NavHostController
+import com.ansu.anime.data.repository.AnimeArtwork
 import com.ansu.anime.di.AppContainer
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -92,6 +94,9 @@ private const val PANEL_ANIMATION_MS = 380
 
 /** How long the skip button stays on screen before it hides itself. */
 private const val SKIP_BUTTON_SECONDS = 10
+
+/** How long the video must sit paused before the pause screen fades in. */
+private const val PAUSE_SCREEN_DELAY_MS = 2500L
 
 private val Speeds = listOf(0.5f, 1f, 1.25f, 1.5f, 2f)
 
@@ -144,6 +149,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     val subtitleBgColor by container.playerPrefs.subtitleBgColor.collectAsStateWithLifecycle()
     val subtitleBgOpacity by container.playerPrefs.subtitleBgOpacity.collectAsStateWithLifecycle()
     val subtitleRoundedBg by container.playerPrefs.subtitleRoundedBg.collectAsStateWithLifecycle()
+    val pauseScreenEnabled by container.playerPrefs.pauseScreen.collectAsStateWithLifecycle()
+    val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
     var locked by remember { mutableStateOf(false) }
     var fitIndex by remember { mutableIntStateOf(0) }
     val doubleTapSeek by container.playerPrefs.doubleTapSeek.collectAsStateWithLifecycle()
@@ -252,6 +259,32 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         }
     }
 
+    // Pause screen: once the video has sat paused for a moment (and nothing else is open over it), the controls
+    // leave and the picture dims under the title being watched. A tap on it resumes; anything that restarts
+    // playback, a seek or an opened panel puts the timer back to zero.
+    val resting = !state.isPlaying && !state.isBuffering && !state.isLoadingSources && state.error == null && state.durationMs > 0L
+    val pauseEligible = pauseScreenEnabled && resting && panel == null && sheet == null && !locked && !inPip
+    var pauseIdle by remember { mutableStateOf(false) }
+    LaunchedEffect(pauseEligible, state.positionMs) {
+        pauseIdle = false
+        if (pauseEligible) {
+            delay(PAUSE_SCREEN_DELAY_MS)
+            pauseIdle = true
+        }
+    }
+    val showPauseScreen = pauseEligible && pauseIdle
+    LaunchedEffect(showPauseScreen) {
+        if (showPauseScreen && state.showControls) viewModel.toggleControls()
+    }
+    val anilistIdForArt = state.anime?.anilistId
+    val pausedArtwork by produceState<AnimeArtwork?>(initialValue = null, anilistIdForArt, pauseScreenEnabled) {
+        value = if (pauseScreenEnabled) anilistIdForArt?.let { container.artworkRepository.get(it) } else null
+    }
+    val pausedInfo = remember(state.anime, state.episode, pausedArtwork, titleLanguage) {
+        buildPausedInfo(state.anime, state.episode, pausedArtwork, titleLanguage)
+    }
+    val resumeFromPause = { if (!state.isPlaying) viewModel.togglePlayPause() }
+
     val hasPrev = remember(state.episode, state.episodes) { viewModel.previousEpisode() != null }
     val hasNext = remember(state.episode, state.episodes) { viewModel.nextEpisode() != null }
     // The skip button only appears inside an intro/outro/recap segment that AniSkip has timed. It shows for
@@ -355,8 +388,9 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
             }
         } else {
             Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+                Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
                 PlayerSurface(
-                    modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+                    modifier = Modifier.fillMaxSize(),
                     viewModel = viewModel,
                     state = state,
                     resizeMode = FitModes[fitIndex].second,
@@ -391,6 +425,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                         )
                     }
                 }
+                PausedOverlay(visible = showPauseScreen, info = pausedInfo, onResume = resumeFromPause, compact = true)
+                }
                 if (!inPip) {
                     EpisodeInfoPane(
                         state = state,
@@ -401,6 +437,10 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
             }
         }
 
+        if (isLandscape) {
+            PausedOverlay(visible = showPauseScreen, info = pausedInfo, onResume = resumeFromPause)
+        }
+
         if (isLandscape && panelVisible) {
             val panelModifier = Modifier.align(Alignment.CenterEnd).width(panelWidth)
             val progress = { panelProgress.value }
@@ -409,7 +449,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 PlayerPanel.SOURCES -> SourcesPanel(
                     state = state,
                     progress = progress,
-                    onSelect = viewModel::selectSource,
+                    onSelect = viewModel::pickSource,
                     onRetry = viewModel::retrySources,
                     onClose = close,
                     modifier = panelModifier,
@@ -465,7 +505,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
             PlayerSheet.SOURCES -> SourcesPanel(
                 state = state,
                 progress = { 1f },
-                onSelect = { viewModel.selectSource(it); sheet = null },
+                onSelect = { viewModel.pickSource(it); sheet = null },
                 onRetry = viewModel::retrySources,
                 onClose = { sheet = null },
                 sheet = true,

@@ -14,12 +14,16 @@ import com.ansu.anime.data.repository.LocalListRepository
 import com.ansu.anime.data.repository.toSAnime
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -41,11 +45,19 @@ data class FeedState(
     val loadFailed: Boolean = false,
 )
 
+/** One "Your Next Watch" card: a title worth watching, and the show of the user's it was suggested by. */
+data class WatchPick(val anime: SAnime, val becauseOf: String)
+
+/** A show the user has been watching, which recommendations are drawn from. */
+private data class PickSeed(val id: Int, val title: String)
+
 data class HomeUiState(
     val isLoading: Boolean = true,
     val continueWatching: List<ContinueWatchingEntity> = emptyList(),
     val feeds: List<FeedState> = AniListFeed.entries.map { FeedState(it) },
     val topPicks: List<SAnime> = emptyList(),
+    /** Recommendations built from what the user watches; empty until there is something to base them on. */
+    val picks: List<WatchPick> = emptyList(),
     val shelves: List<Shelf> = emptyList(),
     val error: String? = null,
 ) {
@@ -83,11 +95,57 @@ class HomeViewModel(
                         if (loggedIn) aniListRepository.getLikedIds() else local.map { it.id }.toSet()
                 }
         }
+        viewModelScope.launch { observePicks() }
         refresh()
         // Titles are fetched in the chosen language, so a change in Settings reloads the rows.
         titleLanguage.drop(1)
             .onEach { refresh() }
             .launchIn(viewModelScope)
+    }
+
+    /**
+     * Rebuilds the "Your Next Watch" picks whenever the set of shows the user watches changes: what is in
+     * Continue Watching, plus their Watching and Completed lists (AniList's when signed in, the device's otherwise).
+     * Progress ticks do not change the seed ids, so the picks are not rebuilt while an episode plays.
+     */
+    private suspend fun observePicks() {
+        combine(
+            // Progress is saved every second while an episode plays; only a change of shows should restart the picks.
+            continueWatchingRepository.entries
+                .map { list -> list.take(4).map { PickSeed(it.anilistId, it.title) } }
+                .distinctUntilChanged(),
+            aniListRepository.isLoggedIn,
+            localListRepository.withStatus("CURRENT"),
+            localListRepository.withStatus("COMPLETED"),
+        ) { fromHistory, loggedIn, localCurrent, localCompleted ->
+            val fromLists = if (loggedIn) {
+                (aniListRepository.getCurrentlyWatching().take(4) + aniListRepository.getCompleted().take(4))
+                    .map { PickSeed(it.mediaId, it.media.title) }
+            } else {
+                (localCurrent.take(4) + localCompleted.take(4)).map { PickSeed(it.id, it.title) }
+            }
+            (fromHistory + fromLists).distinctBy { it.id }.take(6)
+        }
+            .distinctUntilChanged()
+            .collectLatest { seeds -> _uiState.update { it.copy(picks = buildPicks(seeds)) } }
+    }
+
+    private suspend fun buildPicks(seeds: List<PickSeed>): List<WatchPick> {
+        if (seeds.isEmpty()) return emptyList()
+        val perSeed = coroutineScope {
+            seeds.map { seed -> async { seed to aniListRepository.getRecommendations(seed.id) } }.awaitAll()
+        }
+        val seen = seeds.map { it.id }.toMutableSet()
+        val picks = mutableListOf<WatchPick>()
+        // One suggestion from each show in turn, so a single favourite cannot fill the whole banner.
+        for (rank in 0 until 4) {
+            for ((seed, recs) in perSeed) {
+                val media = recs.getOrNull(rank) ?: continue
+                if (picks.size >= 8 || !seen.add(media.id)) continue
+                picks += WatchPick(media.toSAnime(), seed.title)
+            }
+        }
+        return picks
     }
 
     /** Hearts or un-hearts [anime]. The heart changes at once; a signed-in change that AniList refuses is put back. */

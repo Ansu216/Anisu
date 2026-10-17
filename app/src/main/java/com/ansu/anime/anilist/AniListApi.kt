@@ -238,6 +238,31 @@ class AniListApi(
         return data["Page"]?.jsonObject?.get("media")?.jsonArray.orEmpty().mapNotNull { it.jsonObject.toMedia() }
     }
 
+    /**
+     * What AniList users who liked [mediaId] also recommend, best rated first. Powers the home screen's
+     * "Your Next Watch" banner. Adult titles are dropped by [toMedia], like everywhere else.
+     */
+    suspend fun getRecommendations(mediaId: Int, perPage: Int = 6): List<AniListMedia> {
+        val gql = """
+            query (${'$'}id: Int, ${'$'}perPage: Int) {
+              Media(id: ${'$'}id, type: ANIME) {
+                recommendations(perPage: ${'$'}perPage, sort: RATING_DESC) {
+                  nodes { rating mediaRecommendation { ...mediaFields } }
+                }
+              }
+            }
+            $MEDIA_FIELDS
+        """.trimIndent()
+        val data = execute(gql, mapOf("id" to mediaId, "perPage" to perPage), cacheTtlMs = DETAILS_TTL_MS) ?: return emptyList()
+        return data["Media"]?.jsonObject?.get("recommendations")?.jsonObject?.get("nodes")?.jsonArray.orEmpty()
+            .mapNotNull { node ->
+                val obj = node.jsonObject
+                // A recommendation people voted down is not worth showing.
+                val rating = obj["rating"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
+                if (rating < 0) null else obj["mediaRecommendation"]?.jsonObject?.toMedia()
+            }
+    }
+
     /** The most popular anime of a given season (e.g. "FALL" 2026) — powers the home screen's "Top Picks". */
     suspend fun getTopThisSeason(season: String, seasonYear: Int, page: Int = 1): List<AniListMedia> {
         val gql = """

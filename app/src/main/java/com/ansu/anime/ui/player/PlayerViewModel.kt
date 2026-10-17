@@ -62,14 +62,69 @@ private const val PRIORITY_GRACE_MS = 3_000L
 /** How long the first pick waits for the source this show last played from, before falling back to the ranking. */
 private const val REMEMBERED_GRACE_MS = 8_000L
 
-/** The stream to start with: the remembered server if it is listed, else that source's first stream, else the first. */
-private fun pickStart(list: List<PlayableSource>, remembered: com.ansu.anime.data.repository.LastPlayedSource?): PlayableSource? {
-    if (remembered == null) return list.firstOrNull()
-    val same = list.filter { it.sourceId == remembered.sourceId }
-    return same.firstOrNull { it.serverName == remembered.serverName && it.label == remembered.label }
-        ?: same.firstOrNull { remembered.serverName != null && it.serverName == remembered.serverName }
-        ?: same.firstOrNull()
-        ?: list.firstOrNull()
+/** Resolution in pixels of a stream, read from its label ("1080p", "4K"); null when the label does not say. */
+private fun PlayableSource.heightOrNull(): Int? = when (val chip = qualityChip()) {
+    null -> null
+    "4K" -> 2160
+    "2K" -> 1440
+    else -> chip.removeSuffix("p").toIntOrNull()
+}
+
+/** 0 when the stream is in the language asked for, 1 when it is not. A stream that does not say is taken as a sub. */
+private fun PlayableSource.languageMiss(preferredLanguage: String): Int {
+    val isDub = kindChip() == "Dub"
+    return if (isDub == (preferredLanguage == com.ansu.anime.data.prefs.PlayerPrefs.LANGUAGE_DUB)) 0 else 1
+}
+
+/**
+ * How far a stream's resolution is from the one asked for; lower is better. The best stream at or below it
+ * wins (1080p asked, 720p beats 480p); a higher one is used only when nothing at or below exists, and a
+ * stream that names no resolution comes last.
+ */
+private fun PlayableSource.qualityMiss(preferredHeight: Int): Int {
+    val height = heightOrNull() ?: return Int.MAX_VALUE
+    return if (height <= preferredHeight) preferredHeight - height else 10_000 + (height - preferredHeight)
+}
+
+/**
+ * The stream to start with. The preferred language comes first (sub or dub, the other only when the show has
+ * none), then the closest resolution to the preferred quality. Streams that tie are told apart by the source
+ * this show last played from (its remembered server first), and after that by the list order, which is the
+ * person's source priority.
+ */
+private fun pickStart(
+    list: List<PlayableSource>,
+    remembered: com.ansu.anime.data.repository.LastPlayedSource?,
+    preferredQuality: Int,
+    preferredLanguage: String,
+    manual: com.ansu.anime.data.repository.LastPlayedSource? = null,
+): PlayableSource? {
+    if (list.isEmpty()) return null
+    // A stream the person picked by hand for this show beats the preference: the same stream if it is listed,
+    // else the same server in the same language (Sub/Dub) at the closest resolution.
+    if (manual != null) {
+        val chosen = PlayableSource(label = manual.label.orEmpty(), url = "")
+        val sameServer = list.filter { it.sourceId == manual.sourceId && it.serverName == manual.serverName }
+        sameServer.firstOrNull { it.label == manual.label }?.let { return it }
+        val wantedHeight = chosen.heightOrNull()
+        sameServer.filter { it.kindChip() == chosen.kindChip() }
+            .minByOrNull { source ->
+                val height = source.heightOrNull()
+                if (wantedHeight == null || height == null) Int.MAX_VALUE else kotlin.math.abs(height - wantedHeight)
+            }
+            ?.let { return it }
+    }
+    fun rememberedMiss(source: PlayableSource): Int = when {
+        remembered == null || source.sourceId != remembered.sourceId -> 2
+        source.serverName == remembered.serverName -> 0
+        else -> 1
+    }
+    // minWith keeps the first of equals, so the priority order of the list settles whatever is left.
+    return list.minWithOrNull(
+        compareBy<PlayableSource> { it.languageMiss(preferredLanguage) }
+            .thenBy { it.qualityMiss(preferredQuality) }
+            .thenBy { rememberedMiss(it) },
+    )
 }
 
 /** Largest subtitle shift, either way, the Subtitles panel offers. */
@@ -296,7 +351,10 @@ class PlayerViewModel(
         graceJob?.cancel()
         expectedSourceIds = emptyList()
         // The source this show last played from (kept 3 days): it is tried first, ahead of the ranking.
-        val remembered = sessionSource?.takeIf { it.first == anime.anilistId }?.second
+        // A stream picked by hand for this show comes first, and its source is the one waited for.
+        val manualPick = anime.anilistId?.let { playerPrefs?.manualPickFor(it) }
+        val remembered = manualPick
+            ?: sessionSource?.takeIf { it.first == anime.anilistId }?.second
             ?: anime.anilistId?.let { continueWatchingRepository.lastSourceFor(it) }
         loadJob = viewModelScope.launch {
             var first = true
@@ -308,7 +366,15 @@ class PlayerViewModel(
                     startPositionMs = savedPositionMs(anime, episode)
                     // The person may have moved to another episode while the saved point was being read.
                     if (_uiState.value.episode?.id != episode.id || collected.isEmpty()) return@launch
-                    selectSource(pickStart(collected, remembered) ?: collected.first())
+                    selectSource(
+                        pickStart(
+                            collected,
+                            remembered,
+                            playerPrefs?.preferredQuality?.value ?: com.ansu.anime.data.prefs.PlayerPrefs.DEFAULT_QUALITY,
+                            playerPrefs?.preferredLanguage?.value ?: com.ansu.anime.data.prefs.PlayerPrefs.LANGUAGE_SUB,
+                            manualPick,
+                        ) ?: collected.first(),
+                    )
                 }
             }
             val onBatch: (List<PlayableSource>) -> Unit = { batch ->
@@ -488,6 +554,14 @@ class PlayerViewModel(
      * same extension and server instead of going back to the ranking. Used ahead of the 3 day memory.
      */
     private var sessionSource: Pair<Int?, com.ansu.anime.data.repository.LastPlayedSource>? = null
+
+    /** The person chose [source] in the Sources panel: it plays now and is kept for this show's next episodes. */
+    fun pickSource(source: PlayableSource) {
+        val anilistId = _uiState.value.anime?.anilistId
+        val sourceId = source.sourceId
+        if (anilistId != null && sourceId != null) playerPrefs?.setManualPick(anilistId, sourceId, source.serverName, source.label)
+        selectSource(source)
+    }
 
     fun selectSource(source: PlayableSource) {
         diagnostics?.log(LogCategory.PLAYBACK, "Source selected: ${source.label} → ${source.url.ifBlank { "(resolved when played)" }}")
