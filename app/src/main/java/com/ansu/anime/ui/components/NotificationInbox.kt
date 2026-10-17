@@ -9,6 +9,10 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.graphicsLayer
@@ -56,10 +60,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,10 +76,26 @@ import com.ansu.anime.data.notify.NotificationEntry
 import com.ansu.anime.ui.theme.AnsuColors
 
 /**
- * The bell at the top right of the home banner. Collapsed it is a small glass circle (with a dot while something is
- * unread); a tap grows it out of its corner into a full-screen panel listing every notification received so far,
- * newest first. A tap on a row opens that show; the cross (or Back) folds the panel again and marks everything read.
+ * What the full-screen inbox shows. The bell lives deep inside the home screen, but the panel has to cover the
+ * whole window (status bar, sides, navigation bar), which a dialog never managed. So the bell only publishes its
+ * data here and flips [open]; [NotificationInboxOverlay], placed at the very top of the app's root layout,
+ * draws the panel.
  */
+object InboxOverlayState {
+    var open by mutableStateOf(false)
+    var entries by mutableStateOf<List<NotificationEntry>>(emptyList())
+    var onOpenEntry: (NotificationEntry) -> Unit = {}
+    var onMarkAllRead: () -> Unit = {}
+    var onClear: () -> Unit = {}
+
+    fun close() {
+        if (!open) return
+        open = false
+        onMarkAllRead()
+    }
+}
+
+/** The bell at the top right of the home banner: a small glass circle (with a dot while something is unread). */
 @Composable
 fun NotificationInbox(
     entries: List<NotificationEntry>,
@@ -87,24 +104,12 @@ fun NotificationInbox(
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
     val unread = entries.count { !it.read }
-    // 0 = nothing covered, 1 = the four black waves have met and the whole screen is black.
-    val cover = remember { Animatable(0f) }
-    var showDialog by remember { mutableStateOf(false) }
-    LaunchedEffect(expanded) {
-        if (expanded) {
-            showDialog = true
-            cover.animateTo(1f, tween(WAVE_IN_MILLIS, easing = FastOutSlowInEasing))
-        } else if (showDialog) {
-            cover.animateTo(0f, tween(WAVE_OUT_MILLIS, easing = FastOutSlowInEasing))
-            showDialog = false
-        }
-    }
-
-    fun close() {
-        expanded = false
-        onMarkAllRead()
+    SideEffect {
+        InboxOverlayState.entries = entries
+        InboxOverlayState.onOpenEntry = onOpenEntry
+        InboxOverlayState.onMarkAllRead = onMarkAllRead
+        InboxOverlayState.onClear = onClear
     }
 
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
@@ -117,7 +122,7 @@ fun NotificationInbox(
                 IconButton(
                     onClick = {
                         Haptics.tick()
-                        expanded = true
+                        InboxOverlayState.open = true
                     },
                     modifier = Modifier.fillMaxSize(),
                 ) {
@@ -141,104 +146,105 @@ fun NotificationInbox(
             }
         }
     }
+}
 
-    // Opened: black waves sweep in from all four sides until the screen is covered, then the list fades in.
-    if (showDialog) {
-        Dialog(
-            onDismissRequest = { close() },
-            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-        ) {
-            // Make the dialog window truly edge to edge: under the status bar and navigation bar, no dim layer.
-            val view = LocalView.current
-            SideEffect {
-                val window = (view.parent as? DialogWindowProvider)?.window ?: return@SideEffect
-                window.setDimAmount(0f)
-                window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-                window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
-                window.setBackgroundDrawableResource(android.R.color.transparent)
-                WindowCompat.setDecorFitsSystemWindows(window, false)
-                window.statusBarColor = AndroidColor.TRANSPARENT
-                window.navigationBarColor = AndroidColor.TRANSPARENT
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    window.attributes = window.attributes.apply {
-                        layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-                    }
+/**
+ * Place this last inside the app's root Box. Black waves sweep in from all four sides over the entire window
+ * (under the status bar and navigation bar too) until it is solid black, then the list fades in.
+ */
+@Composable
+fun NotificationInboxOverlay() {
+    val open = InboxOverlayState.open
+    val cover = remember { Animatable(0f) }
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(open) {
+        if (open) {
+            shown = true
+            cover.animateTo(1f, tween(WAVE_IN_MILLIS, easing = FastOutSlowInEasing))
+        } else if (shown) {
+            cover.animateTo(0f, tween(WAVE_OUT_MILLIS, easing = FastOutSlowInEasing))
+            shown = false
+        }
+    }
+    if (!shown) return
+
+    androidx.activity.compose.BackHandler(enabled = open) { InboxOverlayState.close() }
+    val entries = InboxOverlayState.entries
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            // Swallow every touch, so nothing underneath reacts while the panel is up or folding away.
+            .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent().changes.forEach { it.consume() } } },
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val p = cover.value
+            if (p >= 0.995f) {
+                drawRect(AnsuColors.Background)
+            } else if (p > 0f) {
+                for (side in 0 until 4) {
+                    val local = ((p - side * 0.08f) / 0.68f).coerceIn(0f, 1f)
+                    if (local <= 0f) continue
+                    val dim = if (side % 2 == 0) size.height else size.width
+                    val depth = dim * 0.62f * local
+                    val amp = dim * 0.07f * sin(PI.toFloat() * local)
+                    drawPath(wavePath(side, size.width, size.height, depth, amp, local * 5f), AnsuColors.Background)
                 }
             }
-            Box(modifier = Modifier.fillMaxSize()) {
-                // The waves. Solid black once they have met, so nothing grey or see-through is left.
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val p = cover.value
-                    if (p >= 0.995f) {
-                        drawRect(AnsuColors.Background)
-                    } else if (p > 0f) {
-                        for (side in 0 until 4) {
-                            // Each side starts a little after the one before it, so they roll in like a wave.
-                            val local = ((p - side * 0.08f) / 0.68f).coerceIn(0f, 1f)
-                            if (local <= 0f) continue
-                            val dim = if (side % 2 == 0) size.height else size.width
-                            val depth = dim * 0.62f * local
-                            val amp = dim * 0.07f * sin(PI.toFloat() * local)
-                            drawPath(wavePath(side, size.width, size.height, depth, amp, local * 5f), AnsuColors.Background)
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = if (open) ((cover.value - 0.72f) / 0.28f).coerceIn(0f, 1f) else ((cover.value - 0.9f) / 0.1f).coerceIn(0f, 1f) },
+        ) {
+            Column(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Notifications",
+                        color = AnsuColors.TextPrimary,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (entries.isNotEmpty()) {
+                        TextButton(onClick = { Haptics.tick(); InboxOverlayState.onClear() }) {
+                            Text("Clear", color = AnsuColors.TextSecondary, fontSize = 14.sp)
                         }
                     }
+                    IconButton(onClick = { Haptics.tick(); InboxOverlayState.close() }, modifier = Modifier.size(44.dp)) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Close notifications",
+                            tint = AnsuColors.TextPrimary,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
                 }
-                // The list and header only appear once the screen is covered, and go first on close.
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = if (expanded) ((cover.value - 0.72f) / 0.28f).coerceIn(0f, 1f) else ((cover.value - 0.9f) / 0.1f).coerceIn(0f, 1f) },
-                ) {
-                    Column(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "Notifications",
-                                color = AnsuColors.TextPrimary,
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (entries.isNotEmpty()) {
-                                TextButton(onClick = { Haptics.tick(); onClear() }) {
-                                    Text("Clear", color = AnsuColors.TextSecondary, fontSize = 14.sp)
-                                }
-                            }
-                            IconButton(onClick = { Haptics.tick(); close() }, modifier = Modifier.size(44.dp)) {
-                                Icon(
-                                    imageVector = Icons.Filled.Close,
-                                    contentDescription = "Close notifications",
-                                    tint = AnsuColors.TextPrimary,
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            }
-                        }
-                        if (entries.isEmpty()) {
-                            Column(
-                                modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp),
-                                verticalArrangement = Arrangement.Center,
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Text("Nothing yet", color = AnsuColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    text = "Releases and new episodes of shows you follow or are watching will show up here.",
-                                    color = AnsuColors.TextSecondary,
-                                    fontSize = 14.sp,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.padding(top = 6.dp),
-                                )
-                            }
-                        } else {
-                            LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 8.dp)) {
-                                items(entries, key = { it.key }) { entry ->
-                                    InboxRow(entry) {
-                                        close()
-                                        onOpenEntry(entry)
-                                    }
-                                }
+                if (entries.isEmpty()) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text("Nothing yet", color = AnsuColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = "Releases and new episodes of shows you follow or are watching will show up here.",
+                            color = AnsuColors.TextSecondary,
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 8.dp)) {
+                        items(entries, key = { it.key }) { entry ->
+                            InboxRow(entry) {
+                                val open = InboxOverlayState.onOpenEntry
+                                InboxOverlayState.close()
+                                open(entry)
                             }
                         }
                     }

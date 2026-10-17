@@ -173,6 +173,9 @@ class MainActivity : ComponentActivity() {
                                 .statusBarsPadding()
                                 .padding(top = if (showUpdateBanner) 84.dp else 8.dp),
                         )
+
+                        // Last, so it sits above everything: the notifications panel covers the whole window.
+                        com.ansu.anime.ui.components.NotificationInboxOverlay()
                     }
                 }
             }
