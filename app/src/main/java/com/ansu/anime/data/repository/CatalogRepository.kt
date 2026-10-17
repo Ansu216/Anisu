@@ -95,6 +95,7 @@ fun AniListMedia.toSAnime(sourceId: Long = 1L): SAnime = SAnime(
     episodes = episodes,
     format = formatLabel(format),
     ageRating = ageRatingFor(genres, isAdult),
+    altTitles = altTitles,
     origin = MediaOrigin.Extension(sourceId = sourceId, urlPath = id.toString()),
 )
 

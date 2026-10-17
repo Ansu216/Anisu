@@ -19,6 +19,8 @@ data class SAnime(
     val format: String? = null,
     /** Age-rating chip text ("PG", "PG-13", "R-17+", "R+", "Rx", "NR"); null means derive it from [genres]. */
     val ageRating: String? = null,
+    /** Romaji, English, native and synonym titles, so Search can match a show by any of its names. */
+    val altTitles: List<String> = emptyList(),
     val origin: MediaOrigin,
 )
 

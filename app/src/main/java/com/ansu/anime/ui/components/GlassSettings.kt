@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ansu.anime.ui.theme.AnsuColors
 
 /**
@@ -51,15 +52,33 @@ import com.ansu.anime.ui.theme.AnsuColors
  * uniform 16dp vertical rhythm — so a row looks the same in Settings, Appearance, Updates and About.
  */
 
+/** Settings text, sized and spaced like a roomy system settings page: a plain title over a lighter grey description. */
+internal val SettingsTitleStyle = androidx.compose.ui.text.TextStyle(
+    fontWeight = FontWeight.Normal,
+    fontSize = 17.sp,
+    lineHeight = 24.sp,
+)
+internal val SettingsDescriptionStyle = androidx.compose.ui.text.TextStyle(
+    fontWeight = FontWeight.Normal,
+    fontSize = 14.5.sp,
+    lineHeight = 20.sp,
+)
+internal val SettingsLabelStyle = androidx.compose.ui.text.TextStyle(
+    fontWeight = FontWeight.Bold,
+    fontSize = 12.5.sp,
+    lineHeight = 16.sp,
+    letterSpacing = 1.4.sp,
+)
+internal val SettingsRowVerticalPadding = 18.dp
+
 /** The section heading, sitting outside and above its card, aligned with the card's own 16dp inset. */
 @Composable
 fun GlassGroupLabel(text: String) {
     Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall,
+        text = text.uppercase(),
+        style = SettingsLabelStyle,
         color = AnsuColors.TextSecondary,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 20.dp, bottom = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 24.dp, bottom = 10.dp),
     )
 }
 
@@ -99,13 +118,13 @@ fun GlassRow(
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         if (showDivider) {
-            HorizontalDivider(color = AnsuColors.StrokeGlass)
+            HorizontalDivider(modifier = Modifier.padding(start = 16.dp), color = AnsuColors.StrokeGlass)
         }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+                .padding(horizontal = 16.dp, vertical = SettingsRowVerticalPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             when {
@@ -119,11 +138,11 @@ fun GlassRow(
             }
             Column(
                 modifier = Modifier.weight(1f).padding(start = if (leading != null) 0.dp else 12.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(title, style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
+                Text(title, style = SettingsTitleStyle, color = AnsuColors.TextPrimary)
                 description?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary)
+                    Text(it, style = SettingsDescriptionStyle, color = AnsuColors.TextSecondary)
                 }
             }
             trailing?.let {
@@ -204,13 +223,13 @@ fun GlassDisclosureRow(
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         if (showDivider) {
-            HorizontalDivider(color = AnsuColors.StrokeGlass)
+            HorizontalDivider(modifier = Modifier.padding(start = 16.dp), color = AnsuColors.StrokeGlass)
         }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { onExpandedChange(!expanded) }
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+                .padding(horizontal = 16.dp, vertical = SettingsRowVerticalPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (icon != null) {
@@ -223,11 +242,11 @@ fun GlassDisclosureRow(
             }
             Column(
                 modifier = Modifier.weight(1f).padding(start = if (icon != null) 12.dp else 0.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(title, style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
+                Text(title, style = SettingsTitleStyle, color = AnsuColors.TextPrimary)
                 description?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary)
+                    Text(it, style = SettingsDescriptionStyle, color = AnsuColors.TextSecondary)
                 }
             }
             Icon(
@@ -279,9 +298,9 @@ fun GlassContentRow(
     content: @Composable () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        if (showDivider) HorizontalDivider(color = AnsuColors.StrokeGlass)
+        if (showDivider) HorizontalDivider(modifier = Modifier.padding(start = 16.dp), color = AnsuColors.StrokeGlass)
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = SettingsRowVerticalPadding),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -289,7 +308,7 @@ fun GlassContentRow(
                     Text(title, style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary, modifier = Modifier.weight(1f))
                     trailingText?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = AnsuColors.TextSecondary) }
                 }
-                description?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary) }
+                description?.let { Text(it, style = SettingsDescriptionStyle, color = AnsuColors.TextSecondary) }
             }
             content()
         }

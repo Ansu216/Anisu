@@ -127,13 +127,13 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                 )
                 GlassRow(
                     icon = Icons.Filled.Numbers,
-                    title = "Version code",
+                    title = "Version Code",
                     trailing = { GlassRowValue(BuildConfig.VERSION_CODE.toString()) },
                 )
                 GlassRow(
                     icon = Icons.Filled.SystemUpdate,
                     title = "Updates",
-                    description = if (updateAvailable) "A new build is ready to install" else "Channel, automatic checks and install",
+                    description = if (updateAvailable) "A new build is ready to install" else "Channel and automatic checks",
                     trailing = { if (updateAvailable) NewBuildBadge() },
                     onClick = {
                         container.diagnostics.log(LogCategory.CLICK, "About → Updates opened")
@@ -143,7 +143,7 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                 GlassRow(
                     icon = Icons.Filled.Group,
                     title = "Contributors",
-                    description = "The people who build and test Anisu",
+                    description = "Who builds and tests Anisu",
                     onClick = {
                         container.diagnostics.log(LogCategory.CLICK, "About → Contributors opened")
                         navController.navigate(Dest.CONTRIBUTORS)
@@ -190,7 +190,7 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                 )
                 GlassRow(
                     icon = Icons.Filled.BugReport,
-                    title = "Report an issue",
+                    title = "Report An Issue",
                     description = "$REPO_URL/issues".removePrefix("https://"),
                     trailing = { LinkChevron() },
                     onClick = {

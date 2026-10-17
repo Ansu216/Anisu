@@ -127,8 +127,8 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
                 GlassGroup {
                     GlassRow(
                         icon = Icons.Filled.FileUpload,
-                        title = "Share logs",
-                        description = "Send the diagnostics report to another app",
+                        title = "Share Logs",
+                        description = "Send the report to another app",
                         showDivider = false,
                         onClick = {
                             val file = diagnostics.buildExportFile()
@@ -148,14 +148,14 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
                     )
                     GlassRow(
                         icon = Icons.Filled.Save,
-                        title = "Save logs to device",
-                        description = "Write the report to a place you choose, like Downloads",
+                        title = "Save Logs",
+                        description = "Save the report to a folder you pick",
                         onClick = { saveLogsLauncher.launch("Anisu-diagnostics-${timestampName()}.txt") },
                     )
                     GlassRow(
                         icon = Icons.Filled.Delete,
-                        title = "Clear logs",
-                        description = "Delete everything the log holds right now",
+                        title = "Clear Logs",
+                        description = "Delete all current logs",
                         onClick = {
                             container.diagnostics.clear()
                             container.diagnostics.log(LogCategory.CLICK, "Diagnostics log cleared by the user")

@@ -11,6 +11,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -63,15 +66,55 @@ private fun ansuColorScheme(accent: Color) = darkColorScheme(
     error = AnsuColors.Error,
 )
 
-val AnsuTypography = Typography(
-    displayLarge = TextStyle(fontWeight = FontWeight.ExtraBold, fontSize = 28.sp, lineHeight = 34.sp, letterSpacing = (-0.3).sp),
-    headlineMedium = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 28.sp),
-    titleMedium = TextStyle(fontWeight = FontWeight.Bold, fontSize = 19.sp, lineHeight = 24.sp),
-    titleSmall = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 20.sp),
-    bodyLarge = TextStyle(fontWeight = FontWeight.Normal, fontSize = 15.sp, lineHeight = 21.sp),
-    bodyMedium = TextStyle(fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 21.sp),
-    labelSmall = TextStyle(fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.3.sp),
+fun ansuTypography(family: FontFamily = FontFamily.Default): Typography = withFont(Typography(
+    displayLarge = TextStyle(fontFamily = family, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp, lineHeight = 34.sp, letterSpacing = (-0.3).sp),
+    headlineMedium = TextStyle(fontFamily = family, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 28.sp),
+    titleMedium = TextStyle(fontFamily = family, fontWeight = FontWeight.Bold, fontSize = 19.sp, lineHeight = 24.sp),
+    titleSmall = TextStyle(fontFamily = family, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 20.sp),
+    bodyLarge = TextStyle(fontFamily = family, fontWeight = FontWeight.Normal, fontSize = 15.sp, lineHeight = 21.sp),
+    bodyMedium = TextStyle(fontFamily = family, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 21.sp),
+    labelSmall = TextStyle(fontFamily = family, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.3.sp),
+), family)
+
+/** The styles the app does not define itself (titleLarge, bodySmall, labelLarge, ...) get the same font. */
+private fun withFont(t: Typography, family: FontFamily) = t.copy(
+    displayMedium = t.displayMedium.copy(fontFamily = family),
+    displaySmall = t.displaySmall.copy(fontFamily = family),
+    headlineLarge = t.headlineLarge.copy(fontFamily = family),
+    headlineSmall = t.headlineSmall.copy(fontFamily = family),
+    titleLarge = t.titleLarge.copy(fontFamily = family),
+    bodySmall = t.bodySmall.copy(fontFamily = family),
+    labelLarge = t.labelLarge.copy(fontFamily = family),
+    labelMedium = t.labelMedium.copy(fontFamily = family),
 )
+
+/**
+ * The app's own font, read from assets/fonts (see the README there). Only files that exist are used, so the app
+ * never fails to start without them; with none it keeps the phone's system font.
+ */
+@Composable
+private fun rememberAnsuFontFamily(): FontFamily {
+    val context = LocalContext.current
+    return remember {
+        val assets = context.assets
+        val present = runCatching { assets.list("fonts")?.toSet() }.getOrNull().orEmpty()
+        fun file(name: String) = name.takeIf { it in present }
+        val regular = file("ansu_sans_regular.ttf")
+        if (regular == null) {
+            FontFamily.Default
+        } else {
+            val medium = file("ansu_sans_medium.ttf") ?: regular
+            val bold = file("ansu_sans_bold.ttf") ?: medium
+            FontFamily(
+                Font("fonts/$regular", assets, FontWeight.Normal),
+                Font("fonts/$medium", assets, FontWeight.Medium),
+                Font("fonts/$medium", assets, FontWeight.SemiBold),
+                Font("fonts/$bold", assets, FontWeight.Bold),
+                Font("fonts/$bold", assets, FontWeight.ExtraBold),
+            )
+        }
+    }
+}
 
 val AnsuShapes = Shapes(
     extraSmall = RoundedCornerShape(4.dp),
@@ -84,9 +127,10 @@ val AnsuShapes = Shapes(
 @Composable
 fun AnsuTheme(content: @Composable () -> Unit) {
     val accent = AnsuColors.Accent
+    val family = rememberAnsuFontFamily()
     MaterialTheme(
         colorScheme = remember(accent) { ansuColorScheme(accent) },
-        typography = AnsuTypography,
+        typography = remember(family) { ansuTypography(family) },
         shapes = AnsuShapes,
         content = content,
     )

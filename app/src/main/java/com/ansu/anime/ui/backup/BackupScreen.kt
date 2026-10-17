@@ -176,8 +176,8 @@ fun BackupScreen(container: AppContainer, navController: NavHostController) {
             GlassGroup(modifier = Modifier.padding(top = 16.dp)) {
                 GlassToggleRow(
                     icon = Icons.Filled.Schedule,
-                    title = "Automatic backup",
-                    description = "An .anisu copy every day, keeping the last 3",
+                    title = "Auto Backup",
+                    description = "Daily copy, last 3 kept",
                     checked = autoBackup,
                     onCheckedChange = { enabled ->
                         backupManager.setAutoBackup(enabled)
@@ -189,7 +189,7 @@ fun BackupScreen(container: AppContainer, navController: NavHostController) {
                     // Every row that names an archive carries the same tile, so the summary and the copies
                     // under it read as one list.
                     icon = Icons.Filled.Backup,
-                    title = "Last backup",
+                    title = "Last Backup",
                     description = if (autoBackup) {
                         "The daily job runs even while Anisu is closed"
                     } else {
@@ -199,8 +199,8 @@ fun BackupScreen(container: AppContainer, navController: NavHostController) {
                 )
                 GlassRow(
                     icon = Icons.Filled.Save,
-                    title = "Back up now",
-                    description = "Write one right away, without waiting for the daily run",
+                    title = "Back Up Now",
+                    description = "Create one right away",
                     onClick = {
                         val file = backupManager.writeAutoBackup()
                         autoFiles = backupManager.autoBackupFiles()
@@ -219,7 +219,7 @@ fun BackupScreen(container: AppContainer, navController: NavHostController) {
                     GlassRow(
                         icon = Icons.Filled.Backup,
                         title = "No automatic backups yet",
-                        description = "Switch automatic backups on and the first one lands within a day",
+                        description = "The first one appears within a day",
                     )
                 } else {
                     autoFiles.forEach { file ->
@@ -235,8 +235,8 @@ fun BackupScreen(container: AppContainer, navController: NavHostController) {
                 }
                 // What an archive holds is worth reading once, not on every visit, so it waits here.
                 GlassDisclosureRow(
-                    title = "What's inside",
-                    description = "Settings, watch progress and your library",
+                    title = "Backup Contents",
+                    description = "Settings, progress and library",
                     expanded = insideOpen,
                     onExpandedChange = { insideOpen = it },
                 ) {

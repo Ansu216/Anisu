@@ -1,6 +1,7 @@
 package com.ansu.anime.data.db
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -32,6 +33,8 @@ data class ContinueWatchingEntity(
     val durationSeconds: Long,
     val originExtensionSourceId: Long?,
     val lastWatchedAt: Long,
+    /** True for a movie: its Continue Watching card shows just the title, with no episode line. */
+    @ColumnInfo(defaultValue = "0") val isMovie: Boolean = false,
 )
 
 @Dao
@@ -107,7 +110,7 @@ interface LocalListDao {
 
 @Database(
     entities = [ContinueWatchingEntity::class, LocalListEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -178,9 +181,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v4 -> v5: continue-watching remembers whether the entry is a movie. */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `continue_watching` ADD COLUMN `isMovie` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "ansu.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .fallbackToDestructiveMigration()
                 .build()
     }

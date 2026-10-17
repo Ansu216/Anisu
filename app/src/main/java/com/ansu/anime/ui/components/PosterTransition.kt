@@ -18,10 +18,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Outline
@@ -195,10 +193,32 @@ private class OffsetHolder {
     var offset: Offset = Offset.Zero
 }
 
-/** The window's rounded rectangle. A data class, so an unchanged window does not invalidate the layer. */
+/**
+ * The window's rounded rectangle, with "continuous" corners (a squircle, like iOS and modern launchers): the
+ * curve eases into the straight edges instead of meeting them at a hard circular arc, which is what made the
+ * corners look boxy. A data class, so an unchanged window does not invalidate the layer.
+ */
 private data class WindowShape(val rect: Rect, val radiusPx: Float) : Shape {
-    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
-        Outline.Rounded(RoundRect(rect, CornerRadius(radiusPx)))
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        if (radiusPx < 0.5f) return Outline.Rectangle(rect)
+        // The curve starts a little further out along each edge than a circle's would.
+        val e = (radiusPx * 1.28f).coerceAtMost(minOf(rect.width, rect.height) / 2f)
+        val k = e * 0.36f // control point distance from the corner
+        val l = rect.left; val t = rect.top; val r = rect.right; val b = rect.bottom
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(l + e, t)
+            lineTo(r - e, t)
+            cubicTo(r - k, t, r, t + k, r, t + e)
+            lineTo(r, b - e)
+            cubicTo(r, b - k, r - k, b, r - e, b)
+            lineTo(l + e, b)
+            cubicTo(l + k, b, l, b - k, l, b - e)
+            lineTo(l, t + e)
+            cubicTo(l, t + k, l + k, t, l + e, t)
+            close()
+        }
+        return Outline.Generic(path)
+    }
 }
 
 /** The window at progress [p]: the poster's bounds at 0, the whole container at 1. Container coordinates. */
@@ -213,9 +233,17 @@ private fun windowBounds(origin: Rect?, containerOffset: Offset, containerSize: 
     )
 }
 
-/** Poster radius -> phone-screen radius by halfway, then the screen's own square edge at full size. */
-private fun windowCornerPx(posterPx: Float, screenPx: Float, p: Float): Float =
-    if (p < 0.5f) lerp(posterPx, screenPx, p / 0.5f) else lerp(screenPx, 0f, (p - 0.5f) / 0.5f)
+/**
+ * Poster radius -> the phone's own screen-corner radius, smoothly, and it stays rounded all the way to full size
+ * (the way an app opening from its icon does), instead of going square before the end, which looked blocky.
+ * Only the very last frame drops the clip: the display's own rounded corners hide that.
+ */
+private fun windowCornerPx(posterPx: Float, screenPx: Float, p: Float): Float {
+    if (p >= 0.999f) return 0f
+    val t = (p / 0.7f).coerceIn(0f, 1f)
+    val eased = t * t * (3f - 2f * t)
+    return lerp(posterPx, screenPx, eased)
+}
 
 /**
  * Hosts a details destination so it opens out of the tapped poster and closes back into it.
@@ -261,7 +289,7 @@ fun AnimatedContentScope.PosterExpandContainer(
         }
     }
     val density = LocalDensity.current
-    val screenCornerPx = with(density) { 28.dp.toPx() }
+    val screenCornerPx = with(density) { 40.dp.toPx() }
     val posterCornerPx = with(density) { (origin?.cornerRadius ?: 0.dp).toPx() }
     val originBounds = origin?.bounds
     // A poster image is what makes the morph look right: with no image to draw inside the window the

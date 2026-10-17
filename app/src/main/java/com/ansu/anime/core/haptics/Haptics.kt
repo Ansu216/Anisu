@@ -31,9 +31,9 @@ object Haptics {
      * phones get a one-shot at the same percentage of full amplitude.
      */
     private enum class Strength(val millis: Long, val percent: Int) {
-        Tick(millis = 12L, percent = 30),
-        Soft(millis = 16L, percent = 50),
-        Hold(millis = 22L, percent = 70);
+        Tick(millis = 20L, percent = 30),
+        Soft(millis = 28L, percent = 50),
+        Hold(millis = 40L, percent = 70);
 
         val scale: Float get() = percent / 100f
         val amplitude: Int get() = (255 * percent / 100f).toInt().coerceIn(1, 255)
@@ -60,24 +60,35 @@ object Haptics {
     private fun play(strength: Strength) {
         val v = vibrator ?: return
         if (prefs?.hapticsEnabled?.value != true) return
-        if (!v.hasVibrator() || !systemTouchFeedbackOn()) return
+        if (!v.hasVibrator()) return
         // A burst of events (a fast swipe over several tabs) must not turn into a buzz.
         val now = SystemClock.uptimeMillis()
         if (now - lastAt < MIN_GAP_MILLIS) return
         lastAt = now
-        runCatching { v.vibrate(effectFor(v, strength)) }
+        runCatching {
+            val effect = effectFor(v, strength)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Tagged as touch feedback, so it is not dropped as an "unknown" vibration (e.g. in silent mode).
+                v.vibrate(effect, android.os.VibrationAttributes.createForUsage(android.os.VibrationAttributes.USAGE_TOUCH))
+            } else {
+                @Suppress("DEPRECATION")
+                v.vibrate(effect, android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build())
+            }
+        }
     }
 
     private fun effectFor(v: Vibrator, strength: Strength): VibrationEffect {
+        // Amplitude one-shot first: it is the same on every phone and exactly the stated percentage of full strength.
+        if (v.hasAmplitudeControl()) {
+            return VibrationEffect.createOneShot(strength.millis, strength.amplitude)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && v.areAllPrimitivesSupported(PRIMITIVE_TICK)) {
             return VibrationEffect.startComposition().addPrimitive(PRIMITIVE_TICK, strength.scale).compose()
         }
-        // Without amplitude control the amplitude is ignored, so keep the pulse as short as it can be.
-        return if (v.hasAmplitudeControl()) {
-            VibrationEffect.createOneShot(strength.millis, strength.amplitude)
-        } else {
-            VibrationEffect.createOneShot(strength.millis, VibrationEffect.DEFAULT_AMPLITUDE)
-        }
+        return VibrationEffect.createOneShot(strength.millis, VibrationEffect.DEFAULT_AMPLITUDE)
     }
 
     private fun systemTouchFeedbackOn(): Boolean {

@@ -388,11 +388,13 @@ fun ContinueWatchingCard(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 6.dp),
         )
-        Text(
-            text = "Episode ${entry.episodeNumber.formatEpisodeNumber()}",
-            style = MaterialTheme.typography.labelSmall,
-            color = AnsuColors.TextTertiary,
-        )
+        if (!entry.isMovie) {
+            Text(
+                text = "Episode ${entry.episodeNumber.formatEpisodeNumber()}",
+                style = MaterialTheme.typography.labelSmall,
+                color = AnsuColors.TextTertiary,
+            )
+        }
     }
 }
 

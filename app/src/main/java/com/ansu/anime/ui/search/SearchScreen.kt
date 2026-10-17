@@ -691,7 +691,7 @@ private fun SearchPanel(
                         isGrid -> item(key = "top-grid") { PanelGrid(topResults, onOpen) }
                         else -> items(topResults, key = { "top-${it.resultKey()}" }) { anime ->
                             Box(modifier = Modifier.padding(horizontal = 12.dp)) {
-                                SearchListItem(anime = anime, onClick = { onOpen(anime) }, animateOpen = false)
+                                SearchListItem(anime = anime, onClick = { onOpen(anime) }, animateOpen = true)
                             }
                         }
                     }
@@ -715,7 +715,7 @@ private fun PanelGrid(animes: List<SAnime>, onOpen: (SAnime) -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 rowItems.forEach { anime ->
                     Box(modifier = Modifier.weight(1f)) {
-                        SearchGridCard(anime = anime, onClick = { onOpen(anime) }, animateOpen = false)
+                        SearchGridCard(anime = anime, onClick = { onOpen(anime) }, animateOpen = true)
                     }
                 }
                 repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }

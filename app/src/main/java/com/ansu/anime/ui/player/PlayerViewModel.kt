@@ -296,7 +296,8 @@ class PlayerViewModel(
         graceJob?.cancel()
         expectedSourceIds = emptyList()
         // The source this show last played from (kept 3 days): it is tried first, ahead of the ranking.
-        val remembered = anime.anilistId?.let { continueWatchingRepository.lastSourceFor(it) }
+        val remembered = sessionSource?.takeIf { it.first == anime.anilistId }?.second
+            ?: anime.anilistId?.let { continueWatchingRepository.lastSourceFor(it) }
         loadJob = viewModelScope.launch {
             var first = true
             val collected = mutableListOf<PlayableSource>()
@@ -482,8 +483,17 @@ class PlayerViewModel(
     )
 
     @androidx.annotation.OptIn(UnstableApi::class)
+    /**
+     * The source picked in this session (by the person or by a fallback), kept so the next episode starts on the
+     * same extension and server instead of going back to the ranking. Used ahead of the 3 day memory.
+     */
+    private var sessionSource: Pair<Int?, com.ansu.anime.data.repository.LastPlayedSource>? = null
+
     fun selectSource(source: PlayableSource) {
         diagnostics?.log(LogCategory.PLAYBACK, "Source selected: ${source.label} → ${source.url.ifBlank { "(resolved when played)" }}")
+        source.sourceId?.let { id ->
+            sessionSource = _uiState.value.anime?.anilistId to com.ansu.anime.data.repository.LastPlayedSource(id, source.serverName, source.label)
+        }
         _uiState.value = _uiState.value.copy(selectedSource = source)
         // Switching source (or falling back to the next one) carries on from where the video is now.
         if (player.mediaItemCount > 0 && player.currentPosition > 2_000L) startPositionMs = player.currentPosition

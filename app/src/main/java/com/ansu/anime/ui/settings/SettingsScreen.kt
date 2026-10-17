@@ -106,7 +106,7 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                 SettingsRow(
                     icon = Icons.Filled.Palette,
                     title = "Appearance",
-                    subtitle = "Floating bar roundness, opacity and blur",
+                    subtitle = "Titles, accent and navigation bar",
                     showDivider = false,
                     onClick = { navController.navigate(Dest.APPEARANCE) },
                 )
@@ -115,8 +115,8 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
             SettingsGroup(title = "Notifications") {
                 GlassToggleRow(
                     icon = Icons.Filled.Notifications,
-                    title = "Anime notifications",
-                    description = "Tell me when a show I follow releases or a new episode airs",
+                    title = "Release Notifications",
+                    description = "New releases and episodes of shows you follow",
                     checked = notificationsEnabled,
                     onCheckedChange = { on ->
                         container.notificationPrefs.setEnabled(on)
@@ -129,8 +129,8 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                 )
                 GlassToggleRow(
                     icon = Icons.Filled.NotificationsActive,
-                    title = "Watching list episodes",
-                    description = "New episodes of everything on your Watching list, without following each show",
+                    title = "Watching List Alerts",
+                    description = "New episodes of your whole Watching list",
                     checked = notifyWatching && notificationsEnabled,
                     onCheckedChange = { container.notificationPrefs.setNewEpisodes(it) },
                     enabled = notificationsEnabled,
@@ -138,11 +138,11 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                 )
             }
 
-            SettingsGroup(title = "Feedback") {
+            SettingsGroup(title = "Haptics") {
                 GlassToggleRow(
                     icon = Icons.Filled.Vibration,
-                    title = "Haptic feedback",
-                    description = "Soft vibration when you tap a poster, flip a switch, change tabs or hold",
+                    title = "Haptic Feedback",
+                    description = "Soft vibration on taps, switches and holds",
                     checked = hapticsEnabled,
                     onCheckedChange = { on ->
                         container.appearancePrefs.setHapticsEnabled(on)
@@ -152,11 +152,11 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                 )
             }
 
-            SettingsGroup(title = "Playback") {
+            SettingsGroup(title = "Player") {
                 SettingsRow(
                     icon = Icons.Filled.PlayCircle,
-                    title = "Player & streaming",
-                    subtitle = "Gestures, picture in picture, pre-load, subtitles and source order",
+                    title = "Playback",
+                    subtitle = "Gestures, PiP, preload, subtitles, sources",
                     showDivider = false,
                     onClick = { navController.navigate(Dest.PLAYER_STREAMING) },
                 )
@@ -166,7 +166,7 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                 SettingsRow(
                     icon = Icons.Filled.Extension,
                     title = "Extensions",
-                    subtitle = "Manage installed anime source extensions",
+                    subtitle = "Manage anime sources",
                     showDivider = false,
                     onClick = { navController.navigate(Dest.EXTENSIONS) },
                 )
@@ -176,20 +176,20 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                 SettingsRow(
                     icon = Icons.Filled.SystemUpdate,
                     title = "Updates",
-                    subtitle = "Channel, automatic checks and install",
+                    subtitle = "Channel and automatic checks",
                     showDivider = false,
                     onClick = { navController.navigate(Dest.UPDATES) },
                 )
                 SettingsRow(
                     icon = Icons.Filled.BugReport,
                     title = "System",
-                    subtitle = "Diagnostics and export logs",
+                    subtitle = "Logs and diagnostics",
                     onClick = { navController.navigate(Dest.SYSTEM) },
                 )
                 SettingsRow(
                     icon = Icons.Filled.Backup,
                     title = "Backup",
-                    subtitle = "Save or restore your settings and library (.anisu)",
+                    subtitle = "Save or restore your data",
                     onClick = { navController.navigate(Dest.BACKUP) },
                 )
             }
@@ -198,13 +198,13 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                 SettingsRow(
                     icon = Icons.Filled.Description,
                     title = "License and attribution",
-                    subtitle = "Credits for the services and projects Anisu uses",
+                    subtitle = "Services and projects Anisu uses",
                     onClick = { navController.navigate(Dest.LICENSES) },
                 )
                 SettingsRow(
                     icon = Icons.Filled.Info,
                     title = "About",
-                    subtitle = "Version, credits and links",
+                    subtitle = "Version and links",
                     showDivider = false,
                     onClick = { navController.navigate(Dest.ABOUT) },
                 )
@@ -218,11 +218,10 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
 private fun SettingsGroup(title: String, content: @Composable () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
         Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
+            text = title.uppercase(),
+            style = com.ansu.anime.ui.components.SettingsLabelStyle,
             color = AnsuColors.TextSecondary,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
+            modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 10.dp),
         )
         FrostedGlassCard(
             modifier = Modifier.fillMaxWidth(),
@@ -289,7 +288,7 @@ private fun SettingsRow(
             HorizontalDivider(color = AnsuColors.StrokeGlass)
         }
         Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 16.dp),
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = com.ansu.anime.ui.components.SettingsRowVerticalPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -300,10 +299,10 @@ private fun SettingsRow(
             }
             Column(
                 modifier = Modifier.weight(1f).padding(start = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(title, style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = AnsuColors.TextSecondary)
+                Text(title, style = com.ansu.anime.ui.components.SettingsTitleStyle, color = AnsuColors.TextPrimary)
+                Text(subtitle, style = com.ansu.anime.ui.components.SettingsDescriptionStyle, color = AnsuColors.TextSecondary)
             }
             Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = AnsuColors.TextTertiary)
         }

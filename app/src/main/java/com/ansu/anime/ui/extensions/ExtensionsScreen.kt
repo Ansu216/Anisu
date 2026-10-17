@@ -4,7 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -221,12 +221,14 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
         else -> ExtensionsAction.Add
     }
 
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     LaunchedEffect(sheet) {
+        if (sheet == null) focusManager.clearFocus(force = true)
         if (sheet != null) {
             shownSheet = sheet
-            sheetProgress.animateTo(1f, spring(dampingRatio = 0.86f, stiffness = 380f))
+            sheetProgress.animateTo(1f, spring(dampingRatio = 0.9f, stiffness = 420f))
         } else {
-            sheetProgress.animateTo(0f, tween(260, easing = FastOutLinearInEasing))
+            sheetProgress.animateTo(0f, tween(230, easing = androidx.compose.animation.core.CubicBezierEasing(0.3f, 0f, 0.6f, 1f)))
         }
     }
     // Nothing left to update: the card has done its job.
@@ -391,7 +393,10 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer { alpha = sheetProgress.value.coerceIn(0f, 1f) }
+                    .graphicsLayer {
+                        // Fades out ahead of the card leaving, so the blur never holds until the end and then snaps off.
+                        alpha = (sheetProgress.value * 1.5f).coerceIn(0f, 1f)
+                    }
                     .frostedBackdrop(backdrop, enabled = true, shape = RectangleShape, radius = 26.dp)
                     .background(Color.Black.copy(alpha = if (backdropBlurSupported) 0.42f else 0.82f))
                     .pointerInput(Unit) { detectTapGestures { sheet = null } },
@@ -403,6 +408,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
             val containerHeight = maxHeight
             val containerHeightPx = with(density) { containerHeight.toPx() }
             val card = shownSheet
+            var cardHeightPx by remember { mutableStateOf(0f) }
             if (card != null && (sheet != null || sheetProgress.isRunning)) {
                 Box(
                     modifier = Modifier
@@ -410,9 +416,15 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                         .navigationBarsPadding()
                         .padding(start = 16.dp, end = 16.dp, bottom = ExtensionsBarHeight + 8.dp + 16.dp)
                         .imePadding()
+                        .onSizeChanged { cardHeightPx = it.height.toFloat() }
                         .graphicsLayer {
-                            translationY = (1f - sheetProgress.value) * containerHeightPx
-                            alpha = (sheetProgress.value * 3f).coerceIn(0f, 1f)
+                            // Only as far as the card needs to leave the screen (not the whole screen height),
+                            // so the exit is visible from its first frame instead of lagging, then vanishing.
+                            val travel = (cardHeightPx + with(density) { (ExtensionsBarHeight + 48.dp).toPx() })
+                                .coerceIn(1f, containerHeightPx)
+                            translationY = (1f - sheetProgress.value) * travel
+                            alpha = (sheetProgress.value * 2.2f).coerceIn(0f, 1f)
+                            compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
                         },
                 ) {
                     BottomCard(modifier = Modifier.heightIn(max = containerHeight * 0.68f)) {

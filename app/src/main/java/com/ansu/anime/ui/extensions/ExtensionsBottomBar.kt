@@ -261,11 +261,11 @@ fun ExtensionsActionButton(
         animationSpec = spring(dampingRatio = 0.55f, stiffness = 520f),
         label = "extActionPress",
     )
-    val plusAlpha = animateFloatAsState(if (action == ExtensionsAction.Download) 0f else 1f, tween(200), label = "extPlusAlpha")
-    val downloadAlpha = animateFloatAsState(if (action == ExtensionsAction.Download) 1f else 0f, tween(200), label = "extDownloadAlpha")
+    val plusAlpha = animateFloatAsState(if (action == ExtensionsAction.Download) 0f else 1f, tween(160), label = "extPlusAlpha")
+    val downloadAlpha = animateFloatAsState(if (action == ExtensionsAction.Download) 1f else 0f, tween(160), label = "extDownloadAlpha")
     val turn = animateFloatAsState(
         targetValue = if (action == ExtensionsAction.Close) 45f else 0f,
-        animationSpec = spring(dampingRatio = 0.7f, stiffness = 320f),
+        animationSpec = tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing),
         label = "extActionTurn",
     )
     val description = when (action) {

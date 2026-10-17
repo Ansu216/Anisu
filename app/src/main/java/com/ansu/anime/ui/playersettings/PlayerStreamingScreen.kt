@@ -103,7 +103,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Player & Streaming") },
+                title = { Text("Playback") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -122,11 +122,11 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                 .padding(bottom = 32.dp),
         ) {
             // Every block below is the same shape: the heading outside, a box, and a line between its rows.
-            GlassGroupLabel("Player gestures")
+            GlassGroupLabel("Gestures")
             GlassGroup {
                 GlassContentRow(
-                    title = "Skip amount",
-                    description = "How far a double tap and the back / forward buttons on the player jump",
+                    title = "Skip Duration",
+                    description = "Jump length for double tap and skip buttons",
                     showDivider = false,
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -140,14 +140,14 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                     }
                 }
                 GlassToggleRow(
-                    title = "Double tap to skip",
-                    description = "Double tap the left side to go back, the right side to go forward",
+                    title = "Double Tap To Seek",
+                    description = "Left side rewinds, right side forwards",
                     checked = doubleTap,
                     onCheckedChange = prefs::setDoubleTapSeek,
                 )
                 GlassToggleRow(
-                    title = "Swipe to adjust volume & brightness",
-                    description = "Swipe up or down on the left half for brightness, the right half for volume",
+                    title = "Swipe Controls",
+                    description = "Swipe left half for brightness, right half for volume",
                     checked = brightness && volume,
                     onCheckedChange = { on ->
                         prefs.setBrightnessGesture(on)
@@ -159,88 +159,85 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
             GlassGroupLabel("Picture in picture")
             GlassGroup {
                 GlassToggleRow(
-                    title = "Picture in picture (PiP)",
-                    description = "Keep the video playing in a small floating window when you leave the app. " +
-                        "When this is off, the video pauses as soon as you leave.",
+                    title = "Picture In Picture",
+                    description = "Keep playing in a floating window when you leave the app",
                     checked = pip,
                     onCheckedChange = prefs::setPipEnabled,
                     showDivider = false,
                 )
             }
 
-            GlassGroupLabel("Pre-load")
+            GlassGroupLabel("Preload")
             GlassGroup {
                 GlassToggleRow(
-                    title = "Pre-load your last episode",
-                    description = "When the app opens, load about a minute of the show you were watching so " +
-                        "playback starts instantly. It uses data in the background, so turn it off on a metered connection.",
+                    title = "Preload Last Episode",
+                    description = "Loads a minute ahead for an instant start. Uses data",
                     checked = prefetch,
                     onCheckedChange = prefs::setPrefetchEnabled,
                     showDivider = false,
                 )
             }
 
-            GlassGroupLabel("Subtitle")
+            GlassGroupLabel("Subtitles")
             GlassGroup {
                 GlassContentRow(
-                    title = "Live preview",
-                    description = "A sample frame that follows every change below as you make it",
+                    title = "Live Preview",
+                    description = "A sample that follows your changes",
                     showDivider = false,
                 ) {
                     SubtitlePreview(size = subSize, height = subHeight, textColor = subColor, bgColor = subBgColor, bgOpacity = subBgOpacity, roundedBg = subRoundedBg)
                 }
-                GlassContentRow(title = "Text colour", description = "The colour of the subtitle lettering") {
+                GlassContentRow(title = "Text Colour", description = "Colour of the subtitle text") {
                     ColorSwatchRow(SubtitleTextColors, subColor, prefs::setSubtitleColor)
                 }
-                GlassContentRow(title = "Background colour", description = "The box drawn behind the lettering") {
+                GlassContentRow(title = "Background Colour", description = "Box behind the text") {
                     ColorSwatchRow(SubtitleBgColors, subBgColor, prefs::setSubtitleBgColor)
                 }
                 GlassSliderRow(
-                    title = "Background density",
-                    description = "0% is no box at all, 100% is solid",
+                    title = "Background Opacity",
+                    description = "0% is clear, 100% is solid",
                     valueText = "$subBgOpacity %",
                     value = subBgOpacity.toFloat(),
                     valueRange = 0f..100f,
                     onValueChange = { prefs.setSubtitleBgOpacity(it.roundToInt()) },
                 )
                 GlassToggleRow(
-                    title = "Rounded background",
-                    description = "Soft rounded bars behind each line. Off shows a plain rectangle box.",
+                    title = "Rounded Background",
+                    description = "Soft bars behind each line. Off gives a plain box",
                     checked = subRoundedBg,
                     onCheckedChange = prefs::setSubtitleRoundedBg,
                 )
                 GlassSliderRow(
-                    title = "Size",
-                    description = "How large the lettering is",
+                    title = "Text Size",
+                    description = "Subtitle text size",
                     valueText = "$subSize sp",
                     value = subSize.toFloat(),
                     valueRange = PlayerPrefs.SUBTITLE_SIZE_RANGE.first.toFloat()..PlayerPrefs.SUBTITLE_SIZE_RANGE.last.toFloat(),
                     onValueChange = { prefs.setSubtitleSize(it.roundToInt()) },
                 )
                 GlassSliderRow(
-                    title = "Height",
-                    description = "How far the subtitles sit above the bottom edge of the video. The player's Subtitles tab has the same options.",
+                    title = "Vertical Position",
+                    description = "Distance from the bottom of the video",
                     valueText = "$subHeight %",
                     value = subHeight.toFloat(),
                     valueRange = PlayerPrefs.SUBTITLE_HEIGHT_RANGE.first.toFloat()..PlayerPrefs.SUBTITLE_HEIGHT_RANGE.last.toFloat(),
                     onValueChange = { prefs.setSubtitleHeight(it.roundToInt()) },
                 )
                 GlassRow(
-                    title = "Reset subtitle style",
-                    description = "Put colours, density, size and height back to the defaults",
+                    title = "Reset Subtitle Style",
+                    description = "Back to the default look",
                     onClick = prefs::resetSubtitleStyle,
                 )
             }
 
-            GlassGroupLabel("Streaming priority")
+            GlassGroupLabel("Source Priority")
             GlassGroup {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Hint(
-                        "Drag the handle to rank your sources. The player lists streams in this order and starts with " +
-                            "the highest-ranked source that has the episode.",
+                        "Drag to rank sources. The highest-ranked one with the episode plays first.",
                     )
                     SourcePriorityList(container, scrollState, autoScroll)
                 }

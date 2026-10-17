@@ -104,12 +104,11 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp),
         ) {
-            GlassGroupLabel("Title")
+            GlassGroupLabel("Titles")
             GlassGroup {
                 GlassContentRow(
-                    title = "Language",
-                    description = "Show anime titles as Romaji (Shingeki no Kyojin) or English (Attack on Titan). " +
-                        "Titles and posters across the app follow this choice.",
+                    title = "Title Language",
+                    description = "Show titles in Romaji or English",
                     showDivider = false,
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -124,12 +123,11 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                 }
             }
 
-            GlassGroupLabel("Color palette")
+            GlassGroupLabel("Colours")
             GlassGroup {
                 GlassContentRow(
-                    title = "Accent colour",
-                    description = "Colours the white pills, play buttons, selected chips and the player's progress bar. " +
-                        "Pick White to go back to the original look.",
+                    title = "Accent Colour",
+                    description = "Buttons, chips and the progress bar. White is default",
                     showDivider = false,
                 ) {
                     Row(
@@ -149,7 +147,7 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                         }
                     }
                 }
-                GlassContentRow(title = "Preview", description = "A sample of what the colour is used for") {
+                GlassContentRow(title = "Preview", description = "Where the colour is used") {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(AnsuColors.Accent).padding(horizontal = 20.dp, vertical = 10.dp),
@@ -164,8 +162,8 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
             GlassGroupLabel("Navigation bar")
             GlassGroup {
                 GlassContentRow(
-                    title = "Live preview",
-                    description = "The bar over colourful bands, so the effect of each setting shows",
+                    title = "Live Preview",
+                    description = "Shows each change as you make it",
                     showDivider = false,
                 ) {
                     // A flat backdrop would hide the effect of the frostiness setting (a translucent bar over a
@@ -198,7 +196,7 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                         )
                     }
                 }
-                GlassContentRow(title = "Style presets", description = "Pick a ready-made corner shape") {
+                GlassContentRow(title = "Style Presets", description = "Ready-made corner shapes") {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                         presets.forEach { value ->
                             val selected = (roundness * 100).roundToInt() == (value * 100).roundToInt()
@@ -216,24 +214,24 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                 }
                 GlassSliderRow(
                     title = "Roundness",
-                    description = "From square corners to a full pill",
+                    description = "Square corners to a full pill",
                     valueText = "${(roundness * 100).roundToInt()}%",
                     value = roundness,
                     onValueChange = { container.appearancePrefs.setNavBarRoundness(it) },
                 )
                 GlassSliderRow(
-                    title = "Frostiness (opacity)",
-                    description = "0% is nearly clear glass; 100% is a fully opaque bar.",
+                    title = "Opacity",
+                    description = "0% is clear, 100% is solid",
                     valueText = "${(frostiness * 100).roundToInt()}%",
                     value = frostiness,
                     onValueChange = { container.appearancePrefs.setNavBarFrostiness(it) },
                 )
                 GlassToggleRow(
-                    title = "Frosted blur",
+                    title = "Blur",
                     description = if (backdropBlurSupported) {
-                        "Blurs whatever scrolls behind the bar, like frosted glass."
+                        "Blurs content behind the bar"
                     } else {
-                        "Real blur needs Android 12 or newer; this device keeps the plain frosted look."
+                        "Needs Android 12 or newer"
                     },
                     checked = backdropBlur,
                     onCheckedChange = { container.appearancePrefs.setNavBarBackdropBlur(it) },
@@ -243,8 +241,8 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
             GlassGroupLabel("Reset")
             GlassGroup {
                 GlassRow(
-                    title = "Reset to default",
-                    description = "Navigation bar look and the accent colour go back to the original",
+                    title = "Reset Appearance",
+                    description = "Bar look and accent back to default",
                     showDivider = false,
                     onClick = {
                         container.appearancePrefs.setNavBarRoundness(AppearancePrefs.DEFAULT_NAV_ROUNDNESS)

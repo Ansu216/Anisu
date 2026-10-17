@@ -26,6 +26,11 @@ class ContinueWatchingRepository(
         durationSeconds: Long,
     ) {
         val anilistId = anime.anilistId ?: return
+        // The format may be unknown here (an entry opened from Continue Watching); keep what was stored then.
+        val isMovie = when {
+            anime.format != null -> anime.format.equals("Movie", ignoreCase = true) || anime.format.equals("MOVIE", ignoreCase = true)
+            else -> dao.get(anilistId)?.isMovie ?: false
+        }
         dao.upsert(
             ContinueWatchingEntity(
                 anilistId = anilistId,
@@ -39,6 +44,7 @@ class ContinueWatchingRepository(
                 durationSeconds = durationSeconds,
                 originExtensionSourceId = (anime.origin as? MediaOrigin.Extension)?.sourceId,
                 lastWatchedAt = System.currentTimeMillis(),
+                isMovie = isMovie,
             ),
         )
 

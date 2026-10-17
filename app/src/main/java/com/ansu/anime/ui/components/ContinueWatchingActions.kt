@@ -466,14 +466,16 @@ fun ContinueWatchingActionOverlay(
                     .revealWith(menu, density),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = episodeLine(entry),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AnsuColors.TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                )
+                if (!entry.isMovie) {
+                    Text(
+                        text = episodeLine(entry),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AnsuColors.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
 
             Spacer(Modifier.height(GapBeforeMenu))

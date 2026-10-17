@@ -23,6 +23,33 @@ object TitleMatcher {
             .filter { it.isNotEmpty() }
             .joinToString(" ")
 
+    /**
+     * Romaji has several spellings for the same sound (Kyoujin / Kyojin, Shounen / Shonen, Tsubasa / Tubasa).
+     * Both sides are folded to one spelling before comparing, so any of them finds the show.
+     */
+    fun foldRomaji(text: String): String {
+        var s = text.lowercase()
+            .replace('ā', 'a').replace('ī', 'i').replace('ū', 'u').replace('ē', 'e').replace('ō', 'o')
+        s = s.replace("ou", "o").replace("oo", "o").replace("uu", "u").replace("aa", "a").replace("ee", "e")
+            .replace("tsu", "tu").replace("chi", "ti").replace("shi", "si").replace("fu", "hu")
+            .replace("sha", "sya").replace("shu", "syu").replace("sho", "syo")
+            .replace("cha", "tya").replace("chu", "tyu").replace("cho", "tyo")
+            .replace("ja", "zya").replace("ju", "zyu").replace("jo", "zyo").replace("ji", "zi")
+            .replace("wo", "o")
+        return s
+    }
+
+    /** The best score of [query] against the main [title] or any of its other names (romaji, native, synonyms). */
+    fun scoreAny(query: String, title: String, altTitles: List<String>): Float {
+        val foldedQuery = foldRomaji(query)
+        var best = 0f
+        for (name in listOf(title) + altTitles) {
+            best = max(best, max(score(query, name), score(foldedQuery, foldRomaji(name))))
+            if (best >= 1f) break
+        }
+        return best
+    }
+
     /** 0..1: the average of how well each typed word matches its closest word in the title. */
     fun score(query: String, title: String): Float {
         val queryWords = normalize(query).split(' ').filter { it.isNotEmpty() }
@@ -63,7 +90,11 @@ object TitleMatcher {
 
     /** The items whose title is close enough, best match first. Equal scores keep their original order. */
     fun <T> rank(query: String, items: Collection<T>, title: (T) -> String): List<T> =
-        items.map { it to score(query, title(it)) }
+        rankBy(items) { score(query, title(it)) }
+
+    /** Like [rank], with the caller supplying the score (so it can look at every name of an item). */
+    fun <T> rankBy(items: Collection<T>, scoreOf: (T) -> Float): List<T> =
+        items.map { it to scoreOf(it) }
             .filter { it.second >= MIN_SCORE }
             .sortedByDescending { it.second }
             .map { it.first }
@@ -71,4 +102,4 @@ object TitleMatcher {
 
 /** Titles only, for callers that have [SAnime] values in hand. */
 fun rankAnime(query: String, items: Collection<SAnime>): List<SAnime> =
-    TitleMatcher.rank(query, items) { it.title }
+    TitleMatcher.rankBy(items) { TitleMatcher.scoreAny(query, it.title, it.altTitles) }

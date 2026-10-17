@@ -154,7 +154,7 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                 GlassDisclosureRow(
                     icon = Icons.Filled.Menu,
                     title = "Options",
-                    description = "Channel, checks, notifications, storage",
+                    description = "Channel, checks and notifications",
                     expanded = optionsOpen,
                     onExpandedChange = { optionsOpen = it },
                     showDivider = false,
@@ -187,7 +187,7 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                     )
                     GlassToggleRow(
                         icon = Icons.Filled.Update,
-                        title = "Check automatically",
+                        title = "Auto Check",
                         description = "On open and every 12 hours",
                         checked = autoCheck,
                         onCheckedChange = { container.updateManager.setAutoCheck(it) },
@@ -195,7 +195,7 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                     GlassRow(
                         icon = Icons.Filled.NotificationsActive,
                         title = "Notifications",
-                        description = "Ansu's notifications in Android",
+                        description = "Android notification settings",
                         trailing = {
                             GlassRowValue(if (container.updateManager.notificationsEnabled()) "On" else "Off")
                         },
@@ -203,7 +203,7 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                     )
                     GlassRow(
                         icon = Icons.Filled.Refresh,
-                        title = "Check for updates",
+                        title = "Check For Updates",
                         description = if (state.isChecking) "Checking…" else state.error ?: checkSummary(state),
                         onClick = {
                             container.diagnostics.log(LogCategory.CLICK, "Updates → check")
@@ -212,8 +212,8 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                     )
                     GlassRow(
                         icon = Icons.Filled.Notifications,
-                        title = "Test notification",
-                        description = testResult ?: "Post a real system notification now",
+                        title = "Test Notification",
+                        description = testResult ?: "Send a test notification",
                         trailing = {
                             TextButton(
                                 onClick = {
@@ -244,8 +244,8 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                     }
                     GlassRow(
                         icon = Icons.Filled.Delete,
-                        title = "Clear downloaded updates",
-                        description = "Frees the update APKs Anisu downloaded",
+                        title = "Clear Downloaded Updates",
+                        description = "Free space used by update files",
                         trailing = {
                             GlassRowValue(
                                 text = if (apkCount > 0) "$apkCount in the cache" else "Empty",
@@ -266,7 +266,7 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                     GlassRow(
                         icon = Icons.AutoMirrored.Filled.Article,
                         title = "Changelog",
-                        description = "What changed in this build",
+                        description = "What's new in this build",
                         onClick = {
                             container.diagnostics.log(LogCategory.CLICK, "Updates → changelog opened")
                             openChangelog(context)

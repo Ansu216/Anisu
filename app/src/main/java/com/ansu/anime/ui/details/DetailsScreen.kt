@@ -987,5 +987,6 @@ private fun AniListMedia.toSAnime(): SAnime = SAnime(
     releaseYear = year,
     rating = averageScore?.div(10.0),
     anilistId = id,
+    altTitles = altTitles,
     origin = MediaOrigin.Extension(sourceId = 1L, urlPath = id.toString()),
 )
