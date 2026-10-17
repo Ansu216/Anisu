@@ -94,7 +94,7 @@ class PlayerPrefs(context: Context) {
         val sourceId = parts.getOrNull(0)?.toLongOrNull()
         val savedAt = parts.getOrNull(3)?.toLongOrNull()
         if (parts.size != 4 || sourceId == null || savedAt == null) return null
-        if (System.currentTimeMillis() - savedAt > com.ansu.anime.data.repository.ContinueWatchingRepository.LAST_SOURCE_TTL_MILLIS) {
+        if (System.currentTimeMillis() - savedAt > MANUAL_PICK_TTL_MILLIS) {
             prefs.edit().remove("$KEY_MANUAL_PICK$anilistId").apply()
             return null
         }
@@ -253,6 +253,9 @@ class PlayerPrefs(context: Context) {
         private const val KEY_VOLUME = "volume_gesture"
         private const val KEY_PIP = "pip_enabled"
         private const val KEY_MANUAL_PICK = "manual_pick_"
+
+        /** How long a stream picked by hand is kept: 3 days, the same as the last played source. */
+        private const val MANUAL_PICK_TTL_MILLIS = 3L * 24 * 60 * 60 * 1000
         private const val KEY_PREFERRED_QUALITY = "preferred_quality"
         private const val KEY_PREFERRED_LANGUAGE = "preferred_language"
         private const val KEY_PAUSE_SCREEN = "pause_screen"
