@@ -15,7 +15,7 @@ import com.ansu.anime.data.prefs.AppearancePrefs
  * with a modern haptic motor, the soft "low tick" primitive) instead of the stock sharp click that
  * `performHapticFeedback` gives on many devices.
  *
- * Three strengths, from lightest to firmest:
+ * Three strengths (30% / 50% / 70%), from lightest to firmest:
  *  - [tick]  - selection changes: switching tabs, flipping a switch, picking a chip.
  *  - [soft]  - taps on content: a poster, a card, a play button.
  *  - [hold]  - a press-and-hold that opens something: the Continue Watching menu, a drag pick-up.
@@ -25,10 +25,18 @@ import com.ansu.anime.data.prefs.AppearancePrefs
  */
 object Haptics {
 
-    private enum class Strength(val millis: Long, val amplitude: Int, val primitive: Int, val scale: Float) {
-        Tick(millis = 10L, amplitude = 36, primitive = PRIMITIVE_LOW_TICK, scale = 0.55f),
-        Soft(millis = 16L, amplitude = 64, primitive = PRIMITIVE_LOW_TICK, scale = 0.85f),
-        Hold(millis = 24L, amplitude = 96, primitive = PRIMITIVE_TICK, scale = 0.45f),
+    /**
+     * Intensity is a plain percentage of the motor's range: tick 30%, tap 50%, hold 70%. The same primitive is
+     * used for all three, so the percentages mean the same thing on phones with a modern haptic motor; older
+     * phones get a one-shot at the same percentage of full amplitude.
+     */
+    private enum class Strength(val millis: Long, val percent: Int) {
+        Tick(millis = 12L, percent = 30),
+        Soft(millis = 16L, percent = 50),
+        Hold(millis = 22L, percent = 70);
+
+        val scale: Float get() = percent / 100f
+        val amplitude: Int get() = (255 * percent / 100f).toInt().coerceIn(1, 255)
     }
 
     private var appContext: Context? = null
@@ -61,14 +69,14 @@ object Haptics {
     }
 
     private fun effectFor(v: Vibrator, strength: Strength): VibrationEffect {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && v.areAllPrimitivesSupported(strength.primitive)) {
-            return VibrationEffect.startComposition().addPrimitive(strength.primitive, strength.scale).compose()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && v.areAllPrimitivesSupported(PRIMITIVE_TICK)) {
+            return VibrationEffect.startComposition().addPrimitive(PRIMITIVE_TICK, strength.scale).compose()
         }
         // Without amplitude control the amplitude is ignored, so keep the pulse as short as it can be.
         return if (v.hasAmplitudeControl()) {
             VibrationEffect.createOneShot(strength.millis, strength.amplitude)
         } else {
-            VibrationEffect.createOneShot(strength.millis - 4L, VibrationEffect.DEFAULT_AMPLITUDE)
+            VibrationEffect.createOneShot(strength.millis, VibrationEffect.DEFAULT_AMPLITUDE)
         }
     }
 
@@ -82,7 +90,6 @@ object Haptics {
 
     // VibrationEffect.Composition.PRIMITIVE_* values, inlined so this file compiles without an API-30 guard.
     private const val PRIMITIVE_TICK = 7
-    private const val PRIMITIVE_LOW_TICK = 8
 }
 
 /** `clickable` that plays a soft tap first - the drop-in for posters and cards. */

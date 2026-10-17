@@ -1,6 +1,22 @@
 package com.ansu.anime.ui.components
 
 import android.text.format.DateUtils
+import android.app.Activity
+import android.graphics.Color as AndroidColor
+import android.os.Build
+import android.view.WindowManager
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
+import kotlin.math.PI
+import kotlin.math.sin
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.core.MutableTransitionState
@@ -73,8 +89,18 @@ fun NotificationInbox(
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val unread = entries.count { !it.read }
-    val visibleState = remember { MutableTransitionState(false) }
-    visibleState.targetState = expanded
+    // 0 = nothing covered, 1 = the four black waves have met and the whole screen is black.
+    val cover = remember { Animatable(0f) }
+    var showDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(expanded) {
+        if (expanded) {
+            showDialog = true
+            cover.animateTo(1f, tween(WAVE_IN_MILLIS, easing = FastOutSlowInEasing))
+        } else if (showDialog) {
+            cover.animateTo(0f, tween(WAVE_OUT_MILLIS, easing = FastOutSlowInEasing))
+            showDialog = false
+        }
+    }
 
     fun close() {
         expanded = false
@@ -116,33 +142,53 @@ fun NotificationInbox(
         }
     }
 
-    // Opened, the bell grows out of its corner into a panel that fills the whole screen.
-    if (visibleState.currentState || visibleState.targetState) {
+    // Opened: black waves sweep in from all four sides until the screen is covered, then the list fades in.
+    if (showDialog) {
         Dialog(
             onDismissRequest = { close() },
             properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
         ) {
-            AnimatedVisibility(
-                visibleState = visibleState,
-                enter = fadeIn(tween(260)) + scaleIn(
-                    animationSpec = tween(360, easing = FastOutSlowInEasing),
-                    initialScale = 0.08f,
-                    transformOrigin = TransformOrigin(0.92f, 0.04f),
-                ),
-                exit = fadeOut(tween(220)) + scaleOut(
-                    animationSpec = tween(300, easing = FastOutSlowInEasing),
-                    targetScale = 0.08f,
-                    transformOrigin = TransformOrigin(0.92f, 0.04f),
-                ),
-            ) {
-                val corner by transition.animateDp(label = "inboxCorner") { state ->
-                    if (state == EnterExitState.Visible) 0.dp else 40.dp
+            // Make the dialog window truly edge to edge: under the status bar and navigation bar, no dim layer.
+            val view = LocalView.current
+            SideEffect {
+                val window = (view.parent as? DialogWindowProvider)?.window ?: return@SideEffect
+                window.setDimAmount(0f)
+                window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+                window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
+                window.setBackgroundDrawableResource(android.R.color.transparent)
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+                window.statusBarColor = AndroidColor.TRANSPARENT
+                window.navigationBarColor = AndroidColor.TRANSPARENT
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    window.attributes = window.attributes.apply {
+                        layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    }
                 }
+            }
+            Box(modifier = Modifier.fillMaxSize()) {
+                // The waves. Solid black once they have met, so nothing grey or see-through is left.
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val p = cover.value
+                    if (p >= 0.995f) {
+                        drawRect(AnsuColors.Background)
+                    } else if (p > 0f) {
+                        for (side in 0 until 4) {
+                            // Each side starts a little after the one before it, so they roll in like a wave.
+                            val local = ((p - side * 0.08f) / 0.68f).coerceIn(0f, 1f)
+                            if (local <= 0f) continue
+                            val dim = if (side % 2 == 0) size.height else size.width
+                            val depth = dim * 0.62f * local
+                            val amp = dim * 0.07f * sin(PI.toFloat() * local)
+                            drawPath(wavePath(side, size.width, size.height, depth, amp, local * 5f), AnsuColors.Background)
+                        }
+                    }
+                }
+                // The list and header only appear once the screen is covered, and go first on close.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(RoundedCornerShape(corner))
-                        .background(AnsuColors.SurfaceGlassBase.copy(alpha = 0.97f)),
+                        .graphicsLayer { alpha = if (expanded) ((cover.value - 0.72f) / 0.28f).coerceIn(0f, 1f) else ((cover.value - 0.9f) / 0.1f).coerceIn(0f, 1f) },
                 ) {
                     Column(modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
                         Row(
@@ -199,6 +245,34 @@ fun NotificationInbox(
                 }
             }
         }
+    }
+}
+
+private const val WAVE_IN_MILLIS = 700
+private const val WAVE_OUT_MILLIS = 520
+
+/**
+ * One black bar entering from [side] (0 top, 1 right, 2 bottom, 3 left). Its leading edge is a sine wave of
+ * height [amp] that travels with [phase], so the four bars read as waves washing over the screen.
+ */
+private fun wavePath(side: Int, w: Float, h: Float, depth: Float, amp: Float, phase: Float): Path {
+    val along = if (side % 2 == 0) w else h
+    fun at(u: Float, v: Float): Offset = when (side) {
+        0 -> Offset(u, v)
+        1 -> Offset(w - v, u)
+        2 -> Offset(u, h - v)
+        else -> Offset(v, u)
+    }
+    val steps = 48
+    return Path().apply {
+        moveTo(at(0f, 0f).x, at(0f, 0f).y)
+        at(along, 0f).let { lineTo(it.x, it.y) }
+        for (i in steps downTo 0) {
+            val u = along * i / steps
+            val v = depth + amp * sin(u / along * 2f * PI.toFloat() * 2f + phase)
+            at(u, v).let { lineTo(it.x, it.y) }
+        }
+        close()
     }
 }
 
