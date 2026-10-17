@@ -51,6 +51,22 @@ data class AniListSearchFilters(
     val isActive: Boolean get() = activeCount > 0
 }
 
+/** What the notification worker needs to know about a show: where it is in its release and its newest aired episode. */
+data class AniListReleaseInfo(
+    val id: Int,
+    val title: String,
+    val posterUrl: String?,
+    /** FINISHED, RELEASING, NOT_YET_RELEASED, CANCELLED or HIATUS. */
+    val status: String,
+    val episodes: Int?,
+    /** The episode that airs next, or null when none is scheduled. */
+    val nextEpisode: Int?,
+) {
+    /** Newest episode that has already aired, when it can be worked out (next - 1, or the total for a finished show). */
+    val airedEpisodes: Int?
+        get() = nextEpisode?.let { it - 1 } ?: if (status == "FINISHED") episodes else null
+}
+
 /** One row of the signed-in user's list: a media plus their personal progress on it. */
 data class AniListMediaListEntry(
     val mediaId: Int,

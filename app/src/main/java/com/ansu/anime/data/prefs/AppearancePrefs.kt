@@ -54,6 +54,16 @@ class AppearancePrefs(context: Context) {
         prefs.edit().putBoolean(KEY_NAV_BACKDROP_BLUR, value).apply()
     }
 
+    private val _hapticsEnabled = MutableStateFlow(prefs.getBoolean(KEY_HAPTICS, DEFAULT_HAPTICS))
+
+    /** Soft vibration on taps, toggles, tab changes and long-presses (the "Haptic feedback" switch in Settings). */
+    val hapticsEnabled: StateFlow<Boolean> = _hapticsEnabled
+
+    fun setHapticsEnabled(value: Boolean) {
+        _hapticsEnabled.value = value
+        prefs.edit().putBoolean(KEY_HAPTICS, value).apply()
+    }
+
     private val _titleLanguage = MutableStateFlow(
         TitleLanguage.fromKey(prefs.getString(KEY_TITLE_LANGUAGE, null)),
     )
@@ -106,6 +116,9 @@ class AppearancePrefs(context: Context) {
         private const val KEY_SEARCH_GRID = "search_grid_layout"
         private const val KEY_MY_SPACE_TAB = "my_space_tab"
         private const val KEY_TITLE_LANGUAGE = "title_language"
+
+        private const val KEY_HAPTICS = "haptics_enabled"
+        const val DEFAULT_HAPTICS = true
 
         private const val KEY_NAV_ROUNDNESS = "nav_bar_roundness"
         const val DEFAULT_NAV_ROUNDNESS = 0.7f // ≈ the previous fixed 24dp corners

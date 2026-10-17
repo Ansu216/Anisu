@@ -1,5 +1,7 @@
 package com.ansu.anime.ui.myspace
 
+import com.ansu.anime.core.haptics.softClickable
+import com.ansu.anime.core.haptics.tickClickable
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -289,7 +291,7 @@ private fun ProfileHeader(name: String?, avatarUrl: String?, isLoggedIn: Boolean
 /** Small frosted pill with a sync icon; shows a spinner while a sync is running. */
 @Composable
 private fun SyncButton(syncing: Boolean, onClick: () -> Unit) {
-    FrostedGlassCard(modifier = Modifier.clickable(onClick = onClick), shape = RoundedCornerShape(20.dp), tintAlpha = 0.45f) {
+    FrostedGlassCard(modifier = Modifier.tickClickable(onClick = onClick), shape = RoundedCornerShape(20.dp), tintAlpha = 0.45f) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -311,11 +313,11 @@ private fun ListChip(text: String, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(20.dp)
     if (selected) {
         Box(
-            modifier = Modifier.clip(shape).background(AnsuColors.Accent).clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 9.dp),
+            modifier = Modifier.clip(shape).background(AnsuColors.Accent).tickClickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 9.dp),
             contentAlignment = Alignment.Center,
         ) { Text(text, color = AnsuColors.OnAccent, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
     } else {
-        FrostedGlassCard(modifier = Modifier.clickable(onClick = onClick), shape = shape, tintAlpha = 0.45f) {
+        FrostedGlassCard(modifier = Modifier.tickClickable(onClick = onClick), shape = shape, tintAlpha = 0.45f) {
             Text(
                 text,
                 color = AnsuColors.TextSecondary,
@@ -334,7 +336,7 @@ private fun ListItemRow(media: AniListMedia, onDetails: () -> Unit) {
     // A tap anywhere on the card opens the page out of its poster, not only a tap on the poster itself.
     val originHandle = remember { PosterOriginHandle() }
     FrostedGlassCard(
-        modifier = Modifier.fillMaxWidth().posterTransitionTrigger(originHandle, media.posterUrl, 10.dp).clickable(onClick = onDetails),
+        modifier = Modifier.fillMaxWidth().posterTransitionTrigger(originHandle, media.posterUrl, 10.dp).softClickable(onClick = onDetails),
         shape = RoundedCornerShape(16.dp),
         tintAlpha = 0.4f,
     ) {

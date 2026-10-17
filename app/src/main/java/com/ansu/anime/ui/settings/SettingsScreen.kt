@@ -27,6 +27,9 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -47,7 +50,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
+import com.ansu.anime.core.haptics.Haptics
 import com.ansu.anime.di.AppContainer
+import com.ansu.anime.ui.components.GlassToggleRow
 import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
@@ -62,6 +67,10 @@ import com.ansu.anime.ui.theme.AnsuColors
 fun SettingsScreen(container: AppContainer, navController: NavHostController) {
     val viewer by container.aniListRepository.viewer.collectAsStateWithLifecycle()
     val isLoggedIn by container.aniListRepository.isLoggedIn.collectAsStateWithLifecycle()
+    val hapticsEnabled by container.appearancePrefs.hapticsEnabled.collectAsStateWithLifecycle()
+    val notificationsEnabled by container.notificationPrefs.enabled.collectAsStateWithLifecycle()
+    val notifyWatching by container.notificationPrefs.newEpisodes.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Scaffold(
         topBar = {
@@ -100,6 +109,46 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                     subtitle = "Floating bar roundness, opacity and blur",
                     showDivider = false,
                     onClick = { navController.navigate(Dest.APPEARANCE) },
+                )
+            }
+
+            SettingsGroup(title = "Notifications") {
+                GlassToggleRow(
+                    icon = Icons.Filled.Notifications,
+                    title = "Anime notifications",
+                    description = "Tell me when a show I follow releases or a new episode airs",
+                    checked = notificationsEnabled,
+                    onCheckedChange = { on ->
+                        container.notificationPrefs.setEnabled(on)
+                        if (on) {
+                            com.ansu.anime.data.notify.ReleaseCheckWorker.schedule(context)
+                        } else {
+                            com.ansu.anime.data.notify.ReleaseCheckWorker.cancel(context)
+                        }
+                    },
+                )
+                GlassToggleRow(
+                    icon = Icons.Filled.NotificationsActive,
+                    title = "Watching list episodes",
+                    description = "New episodes of everything on your Watching list, without following each show",
+                    checked = notifyWatching && notificationsEnabled,
+                    onCheckedChange = { container.notificationPrefs.setNewEpisodes(it) },
+                    enabled = notificationsEnabled,
+                    showDivider = false,
+                )
+            }
+
+            SettingsGroup(title = "Feedback") {
+                GlassToggleRow(
+                    icon = Icons.Filled.Vibration,
+                    title = "Haptic feedback",
+                    description = "Soft vibration when you tap a poster, flip a switch, change tabs or hold",
+                    checked = hapticsEnabled,
+                    onCheckedChange = { on ->
+                        container.appearancePrefs.setHapticsEnabled(on)
+                        if (on) Haptics.tick()
+                    },
+                    showDivider = false,
                 )
             }
 

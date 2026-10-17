@@ -1,5 +1,6 @@
 package com.ansu.anime.ui.home
 
+import com.ansu.anime.core.haptics.softClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -82,6 +83,7 @@ fun HomeScreen(
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val favouriteIds by viewModel.favouriteIds.collectAsStateWithLifecycle()
+    val notifications by container.notificationHistory.entries.collectAsStateWithLifecycle()
     val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
     // Stable until the language changes, so the carousel re-resolves its logos exactly then.
     val logoLookup: suspend (Int) -> String? = remember(titleLanguage) {
@@ -145,6 +147,23 @@ fun HomeScreen(
                             posterFor = posterLookup,
                             favouriteIds = favouriteIds,
                             onToggleFavourite = viewModel::toggleFavourite,
+                            notifications = notifications,
+                            onOpenNotification = { entry ->
+                                selectAnime(
+                                    SAnime(
+                                        id = entry.anilistId.toString(),
+                                        title = entry.title,
+                                        posterUrl = entry.posterUrl,
+                                        anilistId = entry.anilistId,
+                                        origin = com.ansu.anime.core.model.MediaOrigin.Extension(
+                                            sourceId = 1L,
+                                            urlPath = entry.anilistId.toString(),
+                                        ),
+                                    ),
+                                )
+                            },
+                            onNotificationsRead = container.notificationHistory::markAllRead,
+                            onClearNotifications = container.notificationHistory::clear,
                         )
                     }
                 }
@@ -347,7 +366,7 @@ private fun TopPickCard(anime: SAnime, onClick: () -> Unit, modifier: Modifier =
             .posterTransitionOrigin(anime.posterUrl, 12.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(AnsuColors.BackgroundElevated)
-            .clickable(onClick = onClick),
+            .softClickable(onClick = onClick),
     ) {
         AsyncImage(
             model = anime.posterUrl,

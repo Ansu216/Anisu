@@ -1,5 +1,6 @@
 package com.ansu.anime.ui.extensions
 
+import com.ansu.anime.core.haptics.Haptics
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -58,12 +59,10 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -343,7 +342,10 @@ internal fun AddExtensionCardContent(
                     )
                     Switch(
                         checked = repoUrl !in disabledRepos,
-                        onCheckedChange = { onRepoEnabled(repoUrl, it) },
+                        onCheckedChange = {
+                            Haptics.tick()
+                            onRepoEnabled(repoUrl, it)
+                        },
                         modifier = Modifier.padding(horizontal = 6.dp),
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
@@ -430,7 +432,6 @@ internal fun ExtensionActionOverlay(
 ) {
     val row = target.row
     val density = LocalDensity.current
-    val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
 
     var phase by remember { mutableStateOf(OverlayPhase.Menu) }
@@ -442,7 +443,7 @@ internal fun ExtensionActionOverlay(
     val vanish = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
-        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        Haptics.hold()
         launch { bg.animateTo(1f, tween(320, easing = FastOutSlowInEasing)) }
         launch { open.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = 330f)) }
         launch {

@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.extensions
 
+import com.ansu.anime.core.haptics.Haptics
 import android.content.Context
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -198,6 +199,7 @@ private fun PreferenceRow(preference: Preference, onEdit: (Preference) -> Unit, 
                 checked = preference.isChecked,
                 enabled = enabled,
                 onCheckedChange = { checked ->
+                    Haptics.tick()
                     if (preference.callChangeListener(checked)) preference.isChecked = checked
                     onChanged()
                 },

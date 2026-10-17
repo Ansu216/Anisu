@@ -59,6 +59,19 @@ private const val RESOLVE_TIMEOUT_MS = 30_000L
 /** How long the first pick waits for a higher-priority source before playing what it already has. */
 private const val PRIORITY_GRACE_MS = 3_000L
 
+/** How long the first pick waits for the source this show last played from, before falling back to the ranking. */
+private const val REMEMBERED_GRACE_MS = 8_000L
+
+/** The stream to start with: the remembered server if it is listed, else that source's first stream, else the first. */
+private fun pickStart(list: List<PlayableSource>, remembered: com.ansu.anime.data.repository.LastPlayedSource?): PlayableSource? {
+    if (remembered == null) return list.firstOrNull()
+    val same = list.filter { it.sourceId == remembered.sourceId }
+    return same.firstOrNull { it.serverName == remembered.serverName && it.label == remembered.label }
+        ?: same.firstOrNull { remembered.serverName != null && it.serverName == remembered.serverName }
+        ?: same.firstOrNull()
+        ?: list.firstOrNull()
+}
+
 /** Largest subtitle shift, either way, the Subtitles panel offers. */
 private const val MAX_SUBTITLE_OFFSET_MS = 10_000L
 
@@ -282,6 +295,8 @@ class PlayerViewModel(
         loadJob?.cancel()
         graceJob?.cancel()
         expectedSourceIds = emptyList()
+        // The source this show last played from (kept 3 days): it is tried first, ahead of the ranking.
+        val remembered = anime.anilistId?.let { continueWatchingRepository.lastSourceFor(it) }
         loadJob = viewModelScope.launch {
             var first = true
             val collected = mutableListOf<PlayableSource>()
@@ -292,7 +307,7 @@ class PlayerViewModel(
                     startPositionMs = savedPositionMs(anime, episode)
                     // The person may have moved to another episode while the saved point was being read.
                     if (_uiState.value.episode?.id != episode.id || collected.isEmpty()) return@launch
-                    selectSource(collected.first())
+                    selectSource(pickStart(collected, remembered) ?: collected.first())
                 }
             }
             val onBatch: (List<PlayableSource>) -> Unit = { batch ->
@@ -307,7 +322,19 @@ class PlayerViewModel(
                         _uiState.value = _uiState.value.copy(error = null)
                         selectSource(fresh.first())
                     }
-                    if (first) {
+                    val rememberedId = remembered?.sourceId
+                    if (first && rememberedId != null && collected.any { it.sourceId == rememberedId }) {
+                        diagnostics?.log(LogCategory.PLAYBACK, "Resuming with the source this show last played from")
+                        startNow()
+                    } else if (first && rememberedId != null && rememberedId in expectedSourceIds) {
+                        // That source was asked and has not answered yet: give it a little longer than the ranking would.
+                        if (graceJob?.isActive != true) {
+                            graceJob = viewModelScope.launch {
+                                delay(REMEMBERED_GRACE_MS)
+                                if (first && collected.isNotEmpty()) startNow()
+                            }
+                        }
+                    } else if (first) {
                         // Start at once when the best-ranked source being asked has answered. Otherwise give
                         // it a few seconds to catch up, so a fast low-priority source does not win by speed alone.
                         val bestWanted = expectedSourceIds.minOfOrNull { rankOf(it) }
@@ -895,6 +922,11 @@ class PlayerViewModel(
                 val anime = _uiState.value.anime
                 val episode = _uiState.value.episode
                 if (anime != null && episode != null && duration > 0) {
+                    val playing = _uiState.value.selectedSource
+                    val anilistId = anime.anilistId
+                    if (player.isPlaying && playing?.sourceId != null && anilistId != null) {
+                        continueWatchingRepository.rememberSource(anilistId, playing.sourceId, playing.serverName, playing.label)
+                    }
                     continueWatchingRepository.updateProgress(
                         anime = anime,
                         episode = episode,

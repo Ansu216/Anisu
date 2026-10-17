@@ -1,5 +1,6 @@
 package com.ansu.anime.ui.components
 
+import com.ansu.anime.core.haptics.Haptics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -308,6 +309,7 @@ fun NavBarSurface(
                         // made it look like it teleported once the finger moved a little.
                         val pressed = (lastX / slotPx).toInt().coerceIn(0, maxIndex)
                         pressIndex = pressed
+                        Haptics.tick()
                         scope.launch { pill.animateTo(pressed * slotPx) }
                         while (true) {
                             val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
@@ -315,7 +317,10 @@ fun NavBarSurface(
                             if (!change.pressed) break
                             if (!moved && abs(lastX - down.position.x) > viewConfiguration.touchSlop) moved = true
                             if (moved) {
-                                pressIndex = (lastX / slotPx).toInt().coerceIn(0, maxIndex)
+                                val over = (lastX / slotPx).toInt().coerceIn(0, maxIndex)
+                                // A soft tick each time the held pill crosses into another tab.
+                                if (over != pressIndex) Haptics.tick()
+                                pressIndex = over
                                 // Only the pill's target follows the finger; its springs carry it there, so the
                                 // hand-over from the press position is smooth.
                                 val target = (lastX - slotPx / 2).coerceIn(0f, maxLeft)

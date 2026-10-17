@@ -24,6 +24,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Release and new-episode notifications, with an inbox.** A small bell at the top right of the home banner grows,
+  the way the search bar opens, into a list of every notification received so far (newest first, with poster, message
+  and time; a dot on the bell while something is unread). A tap on a row opens that show; the cross or Back folds it
+  and marks everything read, and "Clear" empties it. The inbox is filled even when the system cannot show the
+  notification. Notifications themselves: an unreleased show you asked about is announced the moment it releases, and
+  everything on your Watching list (AniList or on-device) or followed gets one per new episode. Upcoming shows'
+  details page says **Notify me** (then "Notifying you") where it used to say "No episodes yet". A background check
+  runs about every three hours with a network; the first time a show is seen it only records where it is, so nothing
+  fires for episodes that were already out. A tap on the system notification opens that show's details page.
+  Settings > Notifications has a master switch and a Watching-list switch; the notifications use their own
+  "New episodes & releases" channel. **Constraint:** AniList only knows a show's next episode, so a notification can
+  arrive a few hours after the episode aired, and Android 13+ needs the notification permission the app already asks
+  for at launch.
+- **Soft haptic feedback, with an on/off switch.** The phone now gives a short, gentle vibration when you tap a poster or
+  card, flip a switch, change tab (the nav-bar pill also ticks as you drag it across tabs), pick a chip or detail tab,
+  press play/pause or seek in the player, use the player's side panels, and when a press-and-hold opens the Continue
+  Watching or Extensions menu. The pulses are deliberately light - the soft "low tick" primitive on phones that have it,
+  a very short low-amplitude pulse elsewhere - and the old sharp system long-press buzz was replaced with them.
+  Settings > Feedback > "Haptic feedback" turns all of it off. **Constraint:** the system's own "touch feedback" setting
+  is respected too, so nothing vibrates if the phone has that off; the auto-rotating home banner never vibrates on its own.
+
 - **11 more accent colours.** Red, Crimson, Coral, Pink, Purple, Indigo, Blue, Cyan, Teal, Brown and Slate join the
   palette in Appearance (the row already scrolls sideways). **Constraint:** all are mid-tones so the white text on
   accent buttons stays readable; saved choices keep their keys.
@@ -55,9 +76,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Resuming a show now tries the source it last played from.** While a stream plays, the app remembers which extension, server and quality it came from, and keeps that for 3 days after it last played. Resuming from Continue Watching (or opening the next episode of that show) starts with the same source as soon as it answers, waits up to 8 seconds for it if it is slow, and only then falls back to your source ranking. Pre-load warms that same source. Removing a show from Continue Watching forgets its source, and after 3 days without playing the memory expires on its own. **Constraint:** if the remembered source does not have the episode or fails, the normal ranking takes over, and the exact server is only matched when it is listed for that episode.
+
+- **The app version is now 0.4.2 (version code 2026101703).** `version.txt` is the single source for both. The code is one above 2026101702 (0.4.1), so the update installs over it. **Constraint:** the code is a date-style number that must stay above this one from now on.
+
 - **The app version is now 0.4.1 (version code 2026101702).** `version.txt` is the single source for both. The code is higher than the previous 2026101503 and than 2026101701, so the update installs over either build. **Constraint:** the code is a date-style number that must stay above this one from now on.
 
-- **Every settings screen now has the same shape: heading outside, a box, a line between rows, a description under each title.** Player & Streaming is rebuilt from your sketch as Player gestures (skip amount, double tap to skip, one "swipe to adjust volume & brightness" switch), Picture in picture, Pre-load, Subtitle and Streaming priority. The subtitle live preview is gone. Appearance is split the same way (Title, Color palette, Navigation bar, Reset) with its sliders, presets and blur switch as rows, System's log buttons are rows with descriptions, and the headings on Settings, About, Updates and Backup are now plain sentence-case text instead of small capitals. Shared pieces `GlassContentRow` and `GlassSliderRow` were added, and `GlassToggleRow` no longer needs an icon. **Constraint:** the two gesture switches are now one, so brightness and volume swipes turn on and off together.
+- **Every settings screen now has the same shape: heading outside, a box, a line between rows, a description under each title.** Player & Streaming is rebuilt from your sketch as Player gestures (skip amount, double tap to skip, one "swipe to adjust volume & brightness" switch), Picture in picture, Pre-load, Subtitle and Streaming priority. The subtitle live preview stays, as the first row of the Subtitle box. Appearance is split the same way (Title, Color palette, Navigation bar, Reset) with its sliders, presets and blur switch as rows, System's log buttons are rows with descriptions, and the headings on Settings, About, Updates and Backup are now plain sentence-case text instead of small capitals. Shared pieces `GlassContentRow` and `GlassSliderRow` were added, and `GlassToggleRow` no longer needs an icon. **Constraint:** the two gesture switches are now one, so brightness and volume swipes turn on and off together.
 
 - **TMDB logos, posters and backdrops load much faster.** Answers (ani.zip mapping plus the TMDB images) are now kept on the phone for 14 days, so a show seen once opens with its art instantly, even after a restart. Two screens asking for the same show share one request instead of making two, the slow Kitsu cover can no longer hold the rest up (it gets 4 seconds), every artwork request has a 10 second limit, and Home starts the lookups for the whole carousel as soon as it is known, a few at a time. A failed TMDB call is never stored, so a bad moment does not stick. **Constraint:** the stored answers are dropped when a TMDB key is added or removed, and "clear cache" wipes them too.
 

@@ -2,6 +2,8 @@
 
 package com.ansu.anime.ui.player
 
+import com.ansu.anime.core.haptics.Haptics
+import com.ansu.anime.core.haptics.softClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
@@ -299,7 +301,7 @@ private fun EpisodeSkipButton(icon: ImageVector, description: String, enabled: B
 @Composable
 private fun SeekGlyph(forward: Boolean, seconds: Int, scale: Float, onClick: () -> Unit) {
     Box(
-        modifier = Modifier.size((48 * scale).dp).clip(CircleShape).clickable(onClick = onClick),
+        modifier = Modifier.size((48 * scale).dp).clip(CircleShape).softClickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -317,7 +319,7 @@ private fun SeekGlyph(forward: Boolean, seconds: Int, scale: Float, onClick: () 
 private fun PlayPauseGlyph(isPlaying: Boolean, isBuffering: Boolean, scale: Float, onClick: () -> Unit) {
     val morph = rememberBufferingMorph(isBuffering)
     Box(
-        modifier = Modifier.size((64 * scale).dp).clip(CircleShape).clickable(onClick = onClick),
+        modifier = Modifier.size((64 * scale).dp).clip(CircleShape).softClickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         // While it buffers the bars squeeze, curl into a spinner and spring back (see BufferingGlyph.kt).
@@ -354,7 +356,7 @@ internal fun SkipOutroButton(label: String, progress: Float = 0f, onClick: () ->
                 drawRect(AnsuColors.Accent.copy(alpha = 0.35f), size = Size(size.width * progress.coerceIn(0f, 1f), size.height))
             }
             .border(1.dp, AnsuColors.Accent.copy(alpha = 0.85f), shape)
-            .clickable(onClick = onClick)
+            .softClickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 6.dp),
     ) {
         Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -385,7 +387,10 @@ private fun ControlPill(fitLabel: String, speedLabel: String, actions: PlayerAct
 @Composable
 private fun PillItem(icon: ImageVector, label: String, onClick: () -> Unit) {
     Row(
-        modifier = Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+        modifier = Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+            Haptics.tick()
+            onClick()
+        },
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

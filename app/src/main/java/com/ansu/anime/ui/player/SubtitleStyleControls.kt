@@ -1,8 +1,8 @@
 package com.ansu.anime.ui.player
 
+import com.ansu.anime.core.haptics.tickClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -77,7 +77,7 @@ internal fun ColorSwatchRow(colors: List<Int>, selected: Int, onSelect: (Int) ->
                         color = if (isSelected) AnsuColors.Accent else Color.Gray.copy(alpha = 0.6f),
                         shape = CircleShape,
                     )
-                    .clickable { onSelect(argb) },
+                    .tickClickable { onSelect(argb) },
                 contentAlignment = Alignment.Center,
             ) {
                 if (isSelected) {

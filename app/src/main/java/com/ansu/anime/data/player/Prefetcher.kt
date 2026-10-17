@@ -104,9 +104,15 @@ class Prefetcher(
         }.getOrDefault(emptyList())
         val episode = episodes.firstOrNull { it.episodeNumber == entry.episodeNumber } ?: wanted
 
+        // Warm the source this show last played from (kept 3 days), the one playback will start with.
+        val remembered = continueWatching.lastSourceFor(entry.anilistId)
+        val candidates = listOf(episode.copy(alternates = emptyList())) + episode.alternates
+        val chosen = remembered?.let { r -> candidates.firstOrNull { (it.sourceId ?: sourceId) == r.sourceId } } ?: episode
+        val chosenSource = extensionManager.getSource(chosen.sourceId ?: sourceId) ?: source
+
         var listed: Video? = null
         runCatching {
-            source.streamVideos(episode, {}) { videos -> if (listed == null) listed = videos.firstOrNull() }
+            chosenSource.streamVideos(chosen, {}) { videos -> if (listed == null) listed = videos.firstOrNull() }
         }
         val first = listed ?: return null
         // A source that lists the video without resolving it (Aniyomi library 16) has to be resolved now.

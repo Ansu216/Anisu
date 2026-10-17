@@ -451,6 +451,51 @@ class AniListApi(
         return result
     }
 
+    /**
+     * Release status and next episode for a set of shows in one request per 50 ids, for the background notification
+     * check. Never cached: it exists to notice a change. A failed page is skipped and the rest still returned.
+     */
+    suspend fun getReleaseInfo(ids: Collection<Int>): List<AniListReleaseInfo> {
+        val gql = """
+            query (${'$'}ids: [Int]) {
+              Page(page: 1, perPage: 50) {
+                media(id_in: ${'$'}ids, type: ANIME) {
+                  id
+                  title { romaji english userPreferred }
+                  synonyms
+                  coverImage { large }
+                  status
+                  episodes
+                  nextAiringEpisode { episode }
+                }
+              }
+            }
+        """.trimIndent()
+        val result = mutableListOf<AniListReleaseInfo>()
+        ids.distinct().chunked(50).forEach { chunk ->
+            val data = try {
+                execute(gql, mapOf("ids" to chunk))
+            } catch (e: ApiException) {
+                null
+            } ?: return@forEach
+            data["Page"]?.jsonObject?.get("media")?.jsonArray.orEmpty().forEach { element ->
+                val obj = element.jsonObject
+                val id = obj["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return@forEach
+                val title = pickTitle(obj["title"] as? JsonObject, obj["synonyms"]?.jsonArray) ?: return@forEach
+                result += AniListReleaseInfo(
+                    id = id,
+                    title = title,
+                    posterUrl = ((obj["coverImage"] as? JsonObject)?.get("large") as? JsonPrimitive)?.contentOrNull,
+                    status = (obj["status"] as? JsonPrimitive)?.contentOrNull ?: return@forEach,
+                    episodes = (obj["episodes"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull(),
+                    nextEpisode = ((obj["nextAiringEpisode"] as? JsonObject)?.get("episode") as? JsonPrimitive)
+                        ?.contentOrNull?.toIntOrNull(),
+                )
+            }
+        }
+        return result
+    }
+
     /** The signed-in user's heart and list entry for one show; null on a network/API failure. */
     suspend fun getUserState(mediaId: Int): AniListUserState? = getUserEntry(mediaId)?.second
 

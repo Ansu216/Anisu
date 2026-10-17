@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.components
 
+import com.ansu.anime.core.haptics.Haptics
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -144,17 +145,30 @@ fun GlassToggleRow(
     onCheckedChange: (Boolean) -> Unit,
     description: String? = null,
     showDivider: Boolean = true,
+    /** False greys the switch out and ignores taps on the row (a sub-option of a switch that is off). */
+    enabled: Boolean = true,
 ) {
     GlassRow(
         icon = icon,
         title = title,
         description = description,
         showDivider = showDivider,
-        onClick = { onCheckedChange(!checked) },
+        onClick = if (enabled) {
+            {
+                Haptics.tick()
+                onCheckedChange(!checked)
+            }
+        } else {
+            null
+        },
         trailing = {
             Switch(
                 checked = checked,
-                onCheckedChange = onCheckedChange,
+                enabled = enabled,
+                onCheckedChange = {
+                    Haptics.tick()
+                    onCheckedChange(it)
+                },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = AnsuColors.OnAccent,
                     checkedTrackColor = AnsuColors.Accent,

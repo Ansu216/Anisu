@@ -56,7 +56,9 @@ class AppContainer(context: Context) {
     val apiErrorHandler: ApiErrorHandler = ApiErrorHandler(diagnostics)
 
     val aniListAuthManager: AniListAuthManager = AniListAuthManager(appContext)
-    val appearancePrefs: AppearancePrefs = AppearancePrefs(appContext)
+    val appearancePrefs: AppearancePrefs = AppearancePrefs(appContext).also {
+        com.ansu.anime.core.haptics.Haptics.init(appContext, it)
+    }
     val playerPrefs: com.ansu.anime.data.prefs.PlayerPrefs = com.ansu.anime.data.prefs.PlayerPrefs(appContext)
     val searchHistory: com.ansu.anime.data.prefs.SearchHistoryPrefs = com.ansu.anime.data.prefs.SearchHistoryPrefs(appContext)
     val searchSession: com.ansu.anime.ui.search.SearchSession = com.ansu.anime.ui.search.SearchSession()
@@ -78,6 +80,7 @@ class AppContainer(context: Context) {
         database.continueWatchingDao(),
         aniListRepository,
         localListRepository,
+        appContext.getSharedPreferences("last_played_source", android.content.Context.MODE_PRIVATE),
     )
 
     val catalogRepository: CatalogRepository = CatalogRepository(extensionManager, aniListRepository)
@@ -91,6 +94,27 @@ class AppContainer(context: Context) {
     val contributorsRepository: ContributorsRepository = ContributorsRepository(appContext, okHttpClient, apiErrorHandler)
 
     val updateManager: UpdateManager = UpdateManager(appContext, okHttpClient, diagnostics)
+
+    /** What the user asked to be notified about (followed shows, Watching-list episodes) and the master switch. */
+    val notificationPrefs: com.ansu.anime.data.notify.NotificationPrefs = com.ansu.anime.data.notify.NotificationPrefs(appContext)
+    /** Everything the app notified about, listed by the bell on the home banner. */
+    val notificationHistory: com.ansu.anime.data.notify.NotificationHistory = com.ansu.anime.data.notify.NotificationHistory(appContext)
+    val releaseNotifier: com.ansu.anime.data.notify.ReleaseNotifier =
+        com.ansu.anime.data.notify.ReleaseNotifier(appContext, notificationHistory, diagnostics)
+
+    /** Follows or unfollows a show and returns whether it is followed now; following also triggers a first check. */
+    fun toggleFollow(anilistId: Int, status: String? = null): Boolean {
+        val following = notificationPrefs.toggleFollow(anilistId, status)
+        if (following) {
+            // Asking to be notified about a show is a clear "yes": switch notifications back on if they were off.
+            if (!notificationPrefs.enabled.value) {
+                notificationPrefs.setEnabled(true)
+                com.ansu.anime.data.notify.ReleaseCheckWorker.schedule(appContext)
+            }
+            com.ansu.anime.data.notify.ReleaseCheckWorker.runSoon(appContext)
+        }
+        return following
+    }
 
     /** The automatic-backup switch and the time of its last run, shared with the scheduled worker. */
     val backupPrefs: com.ansu.anime.data.prefs.BackupPrefs = com.ansu.anime.data.prefs.BackupPrefs(appContext)

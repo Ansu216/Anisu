@@ -2,6 +2,8 @@
 
 package com.ansu.anime.ui.search
 
+import com.ansu.anime.core.haptics.softClickable
+import com.ansu.anime.core.haptics.tickClickable
 import androidx.compose.foundation.background
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -842,7 +844,7 @@ private fun GlassIconButton(
     Box(modifier = modifier.size(52.dp)) {
         FrostedGlassCard(modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(18.dp), tintAlpha = 0.55f) {
             Box(
-                modifier = Modifier.fillMaxSize().clickable(onClick = onClick),
+                modifier = Modifier.fillMaxSize().tickClickable(onClick = onClick),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(imageVector = icon, contentDescription = contentDescription, tint = AnsuColors.TextPrimary)
@@ -899,7 +901,7 @@ private fun SearchGridCard(anime: SAnime, onClick: () -> Unit, animateOpen: Bool
             .let { if (animateOpen) it.posterTransitionOrigin(anime.posterUrl, 14.dp) else it }
             .clip(RoundedCornerShape(14.dp))
             .background(AnsuColors.BackgroundElevated)
-            .clickable(onClick = onClick),
+            .softClickable(onClick = onClick),
     ) {
         AsyncImage(
             model = anime.posterUrl,
@@ -942,7 +944,7 @@ private fun SearchListItem(anime: SAnime, onClick: () -> Unit, animateOpen: Bool
             .clip(RoundedCornerShape(16.dp))
             .background(AnsuColors.BackgroundElevated)
             .let { if (animateOpen) it.posterTransitionTrigger(originHandle, anime.posterUrl, 12.dp) else it }
-            .clickable(onClick = onClick)
+            .softClickable(onClick = onClick)
             .padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {

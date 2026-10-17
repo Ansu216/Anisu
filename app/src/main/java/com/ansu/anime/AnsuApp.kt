@@ -31,6 +31,12 @@ class AnsuApp : Application(), ImageLoaderFactory {
         container.updateManager.applyAutoCheck()
         // Same for the daily automatic backup, so a fresh install gets one without a tap.
         container.backupManager.applyAutoBackup()
+        // Release / new-episode notifications: one scheduled check, kept in step with the master switch.
+        if (container.notificationPrefs.enabled.value) {
+            com.ansu.anime.data.notify.ReleaseCheckWorker.schedule(this)
+        } else {
+            com.ansu.anime.data.notify.ReleaseCheckWorker.cancel(this)
+        }
         // Must be installed as early as possible so a crash at startup is captured too.
         container.diagnostics.installCrashHandler()
         installLinkageGuard()

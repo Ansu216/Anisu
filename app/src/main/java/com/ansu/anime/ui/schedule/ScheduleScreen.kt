@@ -1,5 +1,8 @@
 package com.ansu.anime.ui.schedule
 
+import com.ansu.anime.core.haptics.Haptics
+import com.ansu.anime.core.haptics.softClickable
+import com.ansu.anime.core.haptics.tickClickable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -285,7 +288,10 @@ private fun ToggleSegment(
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick),
+            .clickable(interactionSource = interactionSource, indication = null) {
+                Haptics.tick()
+                onClick()
+            },
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -435,7 +441,7 @@ private fun DayPillBar(selectedDate: LocalDate, onSelectDate: (LocalDate) -> Uni
                         .width(62.dp)
                         .clip(RoundedCornerShape(22.dp))
                         .background(if (isSelected) AnsuColors.Accent else Color.Transparent)
-                        .clickable { onSelectDate(date) }
+                        .tickClickable { onSelectDate(date) }
                         .padding(vertical = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
@@ -463,7 +469,7 @@ private fun ScheduleCard(entry: ScheduleEntry, onClick: () -> Unit) {
     FrostedGlassCard(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .softClickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
     ) {
         Row(

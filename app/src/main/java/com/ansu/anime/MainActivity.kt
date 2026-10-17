@@ -67,6 +67,9 @@ class MainActivity : ComponentActivity() {
     /** Set by a tap on the update notification, then consumed once the nav graph is ready. */
     private val openUpdatesRequest = mutableStateOf(false)
 
+    /** Set by a tap on a release / new-episode notification: the AniList id and title to open, until consumed. */
+    private val openAnimeRequest = mutableStateOf<Pair<Int, String>?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -111,6 +114,24 @@ class MainActivity : ComponentActivity() {
                     if (openUpdatesRequest.value) {
                         openUpdatesRequest.value = false
                         navController.navigate(Dest.UPDATES) { launchSingleTop = true }
+                    }
+                }
+
+                LaunchedEffect(openAnimeRequest.value) {
+                    openAnimeRequest.value?.let { (anilistId, title) ->
+                        openAnimeRequest.value = null
+                        container.selectionHolder.selectAnime(
+                            com.ansu.anime.core.model.SAnime(
+                                id = anilistId.toString(),
+                                title = title,
+                                anilistId = anilistId,
+                                origin = com.ansu.anime.core.model.MediaOrigin.Extension(
+                                    sourceId = 1L,
+                                    urlPath = anilistId.toString(),
+                                ),
+                            ),
+                        )
+                        navController.navigate(Dest.DETAILS)
                     }
                 }
 
@@ -235,6 +256,14 @@ class MainActivity : ComponentActivity() {
             intent.removeExtra(EXTRA_OPEN_UPDATES)
         }
 
+        // A tap on a release / new-episode notification opens that show's details page.
+        val animeId = intent.getIntExtra(EXTRA_OPEN_ANIME_ID, -1)
+        if (animeId > 0) {
+            openAnimeRequest.value = animeId to intent.getStringExtra(EXTRA_OPEN_ANIME_TITLE).orEmpty()
+            intent.removeExtra(EXTRA_OPEN_ANIME_ID)
+            intent.removeExtra(EXTRA_OPEN_ANIME_TITLE)
+        }
+
         val uri = intent.data ?: return
         if (container.aniListAuthManager.handleRedirect(uri)) {
             MainScope().launch { container.aniListRepository.refreshViewer() }
@@ -253,6 +282,10 @@ class MainActivity : ComponentActivity() {
 
         /** Intent extra set by [com.ansu.anime.data.update.UpdateNotifier] when its notification is tapped. */
         const val EXTRA_OPEN_UPDATES = "com.ansu.anime.extra.OPEN_UPDATES"
+
+        /** Intent extras set by [com.ansu.anime.data.notify.ReleaseNotifier] when one of its notifications is tapped. */
+        const val EXTRA_OPEN_ANIME_ID = "com.ansu.anime.extra.OPEN_ANIME_ID"
+        const val EXTRA_OPEN_ANIME_TITLE = "com.ansu.anime.extra.OPEN_ANIME_TITLE"
 
         /** How long the in-app update banner stays before it hides itself (4 seconds). */
         private const val BANNER_AUTO_DISMISS_MS = 4_000L

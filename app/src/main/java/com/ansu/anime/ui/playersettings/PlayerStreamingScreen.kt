@@ -69,6 +69,7 @@ import com.ansu.anime.data.prefs.PlayerPrefs
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.player.ColorSwatchRow
 import com.ansu.anime.ui.player.SubtitleBgColors
+import com.ansu.anime.ui.player.SubtitlePreview
 import com.ansu.anime.ui.player.SubtitleTextColors
 import com.ansu.anime.ui.components.GlassContentRow
 import com.ansu.anime.ui.components.GlassGroup
@@ -181,7 +182,14 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
 
             GlassGroupLabel("Subtitle")
             GlassGroup {
-                GlassContentRow(title = "Text colour", description = "The colour of the subtitle lettering", showDivider = false) {
+                GlassContentRow(
+                    title = "Live preview",
+                    description = "A sample frame that follows every change below as you make it",
+                    showDivider = false,
+                ) {
+                    SubtitlePreview(size = subSize, height = subHeight, textColor = subColor, bgColor = subBgColor, bgOpacity = subBgOpacity, roundedBg = subRoundedBg)
+                }
+                GlassContentRow(title = "Text colour", description = "The colour of the subtitle lettering") {
                     ColorSwatchRow(SubtitleTextColors, subColor, prefs::setSubtitleColor)
                 }
                 GlassContentRow(title = "Background colour", description = "The box drawn behind the lettering") {

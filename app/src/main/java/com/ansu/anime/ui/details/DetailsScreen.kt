@@ -1,5 +1,10 @@
 package com.ansu.anime.ui.details
 
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.outlined.NotificationsNone
+import com.ansu.anime.core.haptics.Haptics
+import com.ansu.anime.core.haptics.softClickable
+import com.ansu.anime.core.haptics.tickClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -143,6 +148,12 @@ fun DetailsScreen(
         resolvePlayTarget(episodes.filter { it.id !in upcomingIds }, resume, isMovie)
     }
 
+    // An unreleased show has nothing to play: its main button becomes "Notify me" (release notification).
+    val followedIds by container.notificationPrefs.followedIds.collectAsStateWithLifecycle()
+    val notifyMode = details?.status == "NOT_YET_RELEASED" && playTarget == null && anime?.anilistId != null
+    val notifyOn = anime?.anilistId?.let { it in followedIds } == true
+    val appContext = androidx.compose.ui.platform.LocalContext.current
+
     // Hand the playable episodes to the player (previous/next and its "more episodes" list).
     LaunchedEffect(episodes, upcomingIds) {
         container.selectionHolder.selectEpisodes(episodes.filter { it.id !in upcomingIds })
@@ -195,6 +206,19 @@ fun DetailsScreen(
                 PlayLikeRow(
                     playLabel = playTarget?.label ?: if (isMovie) "Movie not available yet" else "No episodes yet",
                     playEnabled = playTarget != null,
+                    notifyMode = notifyMode,
+                    notifyOn = notifyOn,
+                    onNotify = {
+                        anime?.anilistId?.let { id ->
+                            val following = container.toggleFollow(id, details?.status)
+                            container.diagnostics.log(LogCategory.CLICK, "Notify me ${if (following) "on" else "off"}: ${anime?.title}")
+                            android.widget.Toast.makeText(
+                                appContext,
+                                if (following) "We'll notify you when it releases" else "Notification turned off",
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    },
                     onPlay = {
                         playTarget?.episode?.let { episode ->
                             container.diagnostics.log(LogCategory.CLICK, "Play pressed: ${anime?.title} E${episode.episodeNumber}")
@@ -536,6 +560,9 @@ private fun Synopsis(blocks: List<SynopsisBlock>, expanded: Boolean, onToggle: (
 private fun PlayLikeRow(
     playLabel: String,
     playEnabled: Boolean,
+    notifyMode: Boolean,
+    notifyOn: Boolean,
+    onNotify: () -> Unit,
     onPlay: () -> Unit,
     isLiked: Boolean,
     onToggleLike: () -> Unit,
@@ -549,17 +576,38 @@ private fun PlayLikeRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Button(
-            onClick = onPlay,
-            enabled = playEnabled,
+            onClick = if (notifyMode) {
+                { Haptics.tick(); onNotify() }
+            } else {
+                onPlay
+            },
+            enabled = notifyMode || playEnabled,
             modifier = Modifier.weight(1f).height(50.dp),
             colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
             shape = RoundedCornerShape(14.dp),
         ) {
-            Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = AnsuColors.OnAccent)
-            Text(playLabel, color = AnsuColors.OnAccent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
+            Icon(
+                imageVector = when {
+                    !notifyMode -> Icons.Filled.PlayArrow
+                    notifyOn -> Icons.Filled.NotificationsActive
+                    else -> Icons.Outlined.NotificationsNone
+                },
+                contentDescription = null,
+                tint = AnsuColors.OnAccent,
+            )
+            Text(
+                text = when {
+                    !notifyMode -> playLabel
+                    notifyOn -> "Notifying you"
+                    else -> "Notify me"
+                },
+                color = AnsuColors.OnAccent,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 8.dp),
+            )
         }
         FrostedGlassCard(modifier = Modifier.size(50.dp), shape = CircleShape, tintAlpha = 0.5f) {
-            IconButton(onClick = onToggleLike, modifier = Modifier.fillMaxSize()) {
+            IconButton(onClick = { Haptics.tick(); onToggleLike() }, modifier = Modifier.fillMaxSize()) {
                 Icon(
                     imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                     contentDescription = "Favourite",
@@ -623,7 +671,7 @@ private fun CommentsEntry(onOpen: () -> Unit) {
             .padding(horizontal = 20.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(AnsuColors.BackgroundElevated)
-            .clickable(onClick = onOpen)
+            .softClickable(onClick = onOpen)
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -654,7 +702,7 @@ private fun MoreEpisodesChip(remaining: Int, onClick: () -> Unit) {
             modifier = Modifier
                 .clip(CircleShape)
                 .background(AnsuColors.Accent)
-                .clickable(onClick = onClick)
+                .softClickable(onClick = onClick)
                 .padding(horizontal = 24.dp, vertical = 12.dp),
         ) {
             Text(
@@ -685,7 +733,7 @@ private fun EpisodeGroupChips(groups: List<List<SEpisode>>, selected: Int, onSel
                 modifier = Modifier
                     .clip(CircleShape)
                     .background(if (isSelected) AnsuColors.Accent else AnsuColors.SurfaceGlassBase)
-                    .clickable { onSelect(index) }
+                    .tickClickable { onSelect(index) }
                     .padding(horizontal = 22.dp, vertical = 10.dp),
             ) {
                 Text(
@@ -702,7 +750,7 @@ private fun EpisodeGroupChips(groups: List<List<SEpisode>>, selected: Int, onSel
 @Composable
 private fun EpisodeRow(episode: SEpisode, synopsis: String?, onClick: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp),
+        modifier = Modifier.fillMaxWidth().softClickable(onClick = onClick).padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Box(
@@ -904,7 +952,7 @@ private fun EpisodeBadge(episode: SEpisode) {
 
 @Composable
 private fun RelatedPoster(media: AniListMedia, onClick: () -> Unit, badge: String? = null) {
-    Column(modifier = Modifier.width(120.dp).clickable(onClick = onClick)) {
+    Column(modifier = Modifier.width(120.dp).softClickable(onClick = onClick)) {
         Box(
             modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).posterTransitionOrigin(media.posterUrl, 10.dp).clip(RoundedCornerShape(10.dp)).background(AnsuColors.BackgroundElevated),
         ) {
