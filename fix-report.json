@@ -1,0 +1,230 @@
+{
+  "type": "fix-zip",
+  "apkBuiltFromFix": true,
+  "commit": {
+    "sha": "17a588ff12150f3ff7747453f16f11dc38b9feda",
+    "short": "17a588f",
+    "message": "extract fix.zip and updated the app",
+    "author": {
+      "name": "github-actions[bot]",
+      "email": "41898282+github-actions[bot]@users.noreply.github.com"
+    },
+    "authoredAt": "2026-10-17T14:12:28Z",
+    "committedBy": {
+      "name": "github-actions[bot]",
+      "email": "41898282+github-actions[bot]@users.noreply.github.com"
+    },
+    "committedAt": "2026-10-17T14:12:28Z",
+    "url": "https://github.com/Ansu216/Anisu/commit/17a588ff12150f3ff7747453f16f11dc38b9feda"
+  },
+  "fixZipCommit": {
+    "sha": "fd8c0da8c4ee4b12caf50d1cf8d7f2675715f683",
+    "short": "fd8c0da",
+    "message": "Maygodblastyou",
+    "author": {
+      "name": "Ansuman sahu",
+      "email": "ansumansahu216@gmail.com"
+    },
+    "authoredAt": "2026-10-17T19:42:12+05:30",
+    "committedBy": {
+      "name": "GitHub",
+      "email": "noreply@github.com"
+    },
+    "committedAt": "2026-10-17T19:42:12+05:30",
+    "url": "https://github.com/Ansu216/Anisu/commit/fd8c0da8c4ee4b12caf50d1cf8d7f2675715f683"
+  },
+  "changes": {
+    "fileCount": 25,
+    "additions": 363,
+    "deletions": 182,
+    "files": [
+      {
+        "path": "app/src/main/assets/fonts/README.txt",
+        "status": "A",
+        "label": "added",
+        "additions": 8,
+        "deletions": 0
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/core/haptics/Haptics.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 22,
+        "deletions": 11
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/core/model/AnimeModels.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 2,
+        "deletions": 0
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/data/db/AppDatabase.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 12,
+        "deletions": 2
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/data/repository/CatalogRepository.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 1,
+        "deletions": 0
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/data/repository/ContinueWatchingRepository.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 6,
+        "deletions": 0
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/about/AboutScreen.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 4,
+        "deletions": 4
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/about/UpdatesScreen.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 9,
+        "deletions": 9
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/appearance/AppearanceScreen.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 18,
+        "deletions": 20
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/backup/BackupScreen.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 8,
+        "deletions": 8
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/components/Common.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 7,
+        "deletions": 5
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/components/ContinueWatchingActions.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 10,
+        "deletions": 8
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/components/GlassSettings.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 36,
+        "deletions": 17
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/components/PosterTransition.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 37,
+        "deletions": 9
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/details/DetailsScreen.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 1,
+        "deletions": 0
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/extensions/ExtensionsBottomBar.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 3,
+        "deletions": 3
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/extensions/ExtensionsScreen.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 18,
+        "deletions": 6
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/player/PlayerViewModel.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 11,
+        "deletions": 1
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/playersettings/PlayerStreamingScreen.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 30,
+        "deletions": 33
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/search/SearchScreen.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 2,
+        "deletions": 2
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/search/TitleMatcher.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 33,
+        "deletions": 2
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/settings/SettingsScreen.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 24,
+        "deletions": 25
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/system/SystemScreen.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 6,
+        "deletions": 6
+      },
+      {
+        "path": "app/src/main/java/com/ansu/anime/ui/theme/Theme.kt",
+        "status": "M",
+        "label": "modified",
+        "additions": 53,
+        "deletions": 9
+      },
+      {
+        "path": "version.txt",
+        "status": "M",
+        "label": "modified",
+        "additions": 2,
+        "deletions": 2
+      }
+    ]
+  },
+  "build": {
+    "runId": "39054757054",
+    "runUrl": "https://github.com/Ansu216/Anisu/actions/runs/39054757054",
+    "workflow": "apk-nightly.yml",
+    "versionName": "0.4.3-nightly",
+    "versionCode": "2026101706",
+    "variant": "debug",
+    "apk": [
+      "Ansu-nightly-debug.apk"
+    ],
+    "publishedAt": "2026-10-17T17:40:09Z"
+  }
+}
