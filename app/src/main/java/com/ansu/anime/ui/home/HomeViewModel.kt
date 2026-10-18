@@ -3,9 +3,9 @@ package com.ansu.anime.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ansu.anime.anilist.AniListFeed
+import com.ansu.anime.anilist.AniListNewRelease
 import com.ansu.anime.anilist.AniListRepository
 import com.ansu.anime.core.model.SAnime
-import com.ansu.anime.core.model.Shelf
 import com.ansu.anime.data.db.ContinueWatchingEntity
 import com.ansu.anime.data.prefs.TitleLanguage
 import com.ansu.anime.data.repository.CatalogRepository
@@ -58,7 +58,10 @@ data class HomeUiState(
     val topPicks: List<SAnime> = emptyList(),
     /** Recommendations built from what the user watches; empty until there is something to base them on. */
     val picks: List<WatchPick> = emptyList(),
-    val shelves: List<Shelf> = emptyList(),
+    /** Series that premiered recently, today's first, at most seven; the caption says when ("Released today"). */
+    val newAnime: List<WatchPick> = emptyList(),
+    /** Movies that premiered recently, ordered the same way. */
+    val newMovies: List<WatchPick> = emptyList(),
     val error: String? = null,
 ) {
     fun feed(feed: AniListFeed): FeedState = feeds.first { it.feed == feed }
@@ -173,19 +176,20 @@ class HomeViewModel(
                 it.copy(isLoading = true, error = null, feeds = AniListFeed.entries.map { f -> FeedState(f) })
             }
 
-            // The catalogue feed, the first Trending page and the season picks are
-            // independent network calls, so they are fetched in parallel. The other
-            // rows load lazily, when they first scroll into view.
-            val shelves = async { runCatching { catalogRepository.buildHomeShelves() } }
+            // The first Trending page and the two "new releases" rows are independent network calls, so
+            // they are fetched in parallel. The other rows load lazily, when they first scroll into view.
+            val newAnime = async { aniListRepository.getNewReleases(listOf("TV", "TV_SHORT", "ONA")) }
+            val newMovies = async { aniListRepository.getNewReleases(listOf("MOVIE")) }
             val trending = loadMore(AniListFeed.TRENDING_NOW)
 
-            val shelfResult = shelves.await()
+            val anime = newAnime.await()
+            val movies = newMovies.await()
             trending?.join()
             _uiState.update {
                 it.copy(
                     isLoading = false,
-                    shelves = shelfResult.getOrDefault(emptyList()),
-                    error = shelfResult.exceptionOrNull()?.message,
+                    newAnime = anime.map { r -> r.toPick() },
+                    newMovies = movies.map { r -> r.toPick() },
                 )
             }
         }
@@ -232,6 +236,17 @@ class HomeViewModel(
             }
         }
     }
+}
+
+/** A recent premiere as a banner card; the caption says how long ago it came out. */
+private fun AniListNewRelease.toPick(): WatchPick {
+    val days = java.time.temporal.ChronoUnit.DAYS.between(releasedOn, LocalDate.now()).coerceAtLeast(0)
+    val caption = when (days) {
+        0L -> "Released today"
+        1L -> "Released yesterday"
+        else -> "Released $days days ago"
+    }
+    return WatchPick(media.toSAnime(), caption)
 }
 
 /** The AniList season enum value + year for "right now", in the device's local time zone. */

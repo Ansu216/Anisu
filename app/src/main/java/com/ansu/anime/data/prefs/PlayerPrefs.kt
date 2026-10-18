@@ -22,6 +22,16 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putBoolean(KEY_DOUBLE_TAP, value).apply()
     }
 
+    private val _swipeSeek = MutableStateFlow(prefs.getBoolean(KEY_SWIPE_SEEK, false))
+
+    /** Swipe left/right across the video to scrub back/forward. Off by default. */
+    val swipeSeek: StateFlow<Boolean> = _swipeSeek
+
+    fun setSwipeSeek(value: Boolean) {
+        _swipeSeek.value = value
+        prefs.edit().putBoolean(KEY_SWIPE_SEEK, value).apply()
+    }
+
     private val _brightnessGesture = MutableStateFlow(prefs.getBoolean(KEY_BRIGHTNESS, true))
 
     /** Swipe up/down on the left half of the video to change brightness. */
@@ -262,6 +272,7 @@ class PlayerPrefs(context: Context) {
         const val DEFAULT_SKIP_SECONDS = 15 // the buttons were fixed at 15s before this was a setting
 
         private const val KEY_DOUBLE_TAP = "double_tap_seek"
+        private const val KEY_SWIPE_SEEK = "swipe_seek"
         private const val KEY_BRIGHTNESS = "brightness_gesture"
         private const val KEY_VOLUME = "volume_gesture"
         private const val KEY_PIP = "pip_enabled"

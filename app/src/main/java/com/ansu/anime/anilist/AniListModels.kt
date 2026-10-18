@@ -27,6 +27,9 @@ data class AniListMedia(
     val airedEpisodes: Int? = null,
 )
 
+/** A title that premiered recently, with the day it did (AniList's start date). */
+data class AniListNewRelease(val media: AniListMedia, val releasedOn: java.time.LocalDate)
+
 /**
  * The filters of the Search screen's filter sheet. Every value is an AniList enum name or a
  * genre/tag name taken from a fixed list in the UI, never free user text.

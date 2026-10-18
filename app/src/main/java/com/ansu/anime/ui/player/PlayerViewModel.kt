@@ -59,6 +59,9 @@ private const val RESOLVE_TIMEOUT_MS = 30_000L
 /** How long the first pick waits for a higher-priority source before playing what it already has. */
 private const val PRIORITY_GRACE_MS = 3_000L
 
+/** How long the first pick waits for a stream in the preferred language (a dub often answers later than a sub). */
+private const val LANGUAGE_GRACE_MS = 15_000L
+
 /** How long the first pick waits for the source this show last played from, before falling back to the ranking. */
 private const val REMEMBERED_GRACE_MS = 8_000L
 
@@ -72,7 +75,12 @@ private fun PlayableSource.heightOrNull(): Int? = when (val chip = qualityChip()
 
 /** 0 when the stream is in the language asked for, 1 when it is not. A stream that does not say is taken as a sub. */
 private fun PlayableSource.languageMiss(preferredLanguage: String): Int {
-    val isDub = kindChip() == "Dub"
+    // The label is not the only place a dub is announced: some extensions put it in the server name or the
+    // extension's own name ("HD-2 (Dub)"), and a stream whose audio list offers an English track is a dub too.
+    val isDub = kindChip() == "Dub" ||
+        serverName?.contains("dub", ignoreCase = true) == true ||
+        extensionName?.contains("dub", ignoreCase = true) == true ||
+        audioTracks.any { it.lang.contains("dub", ignoreCase = true) }
     return if (isDub == (preferredLanguage == com.ansu.anime.data.prefs.PlayerPrefs.LANGUAGE_DUB)) 0 else 1
 }
 
@@ -396,7 +404,19 @@ class PlayerViewModel(
                         selectSource(fresh.first())
                     }
                     val rememberedId = remembered?.sourceId
-                    if (first && anyQuality && manualPick == null && collected.any { it.languageMiss(wantedLanguage) == 0 }) {
+                    // Nothing in the preferred language has answered yet (a dub usually arrives after the sub): do not start
+                    // on the other language, wait for it. It plays as soon as one appears, once every source has answered,
+                    // or after LANGUAGE_GRACE_MS, so a show with no dub still starts.
+                    val languageReady = manualPick != null || collected.any { it.languageMiss(wantedLanguage) == 0 }
+                    if (first && !languageReady) {
+                        if (graceJob?.isActive != true) {
+                            diagnostics?.log(LogCategory.PLAYBACK, "Waiting for a $wantedLanguage stream before starting")
+                            graceJob = viewModelScope.launch {
+                                delay(LANGUAGE_GRACE_MS)
+                                if (first && collected.isNotEmpty()) startNow()
+                            }
+                        }
+                    } else if (first && anyQuality && manualPick == null && collected.any { it.languageMiss(wantedLanguage) == 0 }) {
                         diagnostics?.log(LogCategory.PLAYBACK, "Quality is Any: starting on the first stream in the preferred language")
                         startNow()
                     } else if (first && rememberedId != null && collected.any { it.sourceId == rememberedId }) {
@@ -429,6 +449,8 @@ class PlayerViewModel(
             }
             try {
                 resolveSources(anime, episode, onBatch)
+                // Every source has answered: if the first pick was waiting (for a dub that never came), start now.
+                if (first && collected.isNotEmpty()) startNow()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Throwable) {

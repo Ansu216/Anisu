@@ -22,7 +22,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **"New Anime" and "New Movies" banners on Home.** Two horizontal banners in the "Your Next Watch" style, one right above
+  Upcoming Anime and one above Upcoming Movies. They show titles that premiered in the last 30 days, at most seven,
+  with what came out today first, then yesterday, and so on (the most popular first within a day). Each card says
+  "Released today", "Released yesterday" or "Released N days ago". A banner is hidden when nothing came out.
+- **Optional "Swipe To Seek" gesture.** Swiping right across the video goes ahead and swiping left goes back (a swipe
+  across the whole width is about two minutes), with a live "+23s" label and the seek applied on release. It is a
+  toggle in Settings > Player and streaming, off by default, and is ignored while the controls are locked.
+- **YouTube-style double-tap skip feedback.** Double tapping the left or right side now shows a soft half-disc on that
+  side with three running chevrons and "N seconds". Further single taps on the same side within 0.7 s keep skipping and
+  the seconds add up (10, 20, 30...), as on YouTube. Tapping the other side ends the run.
+
+### Removed
+
+- **The source catalogue rows are gone from Home.** The rows built from the installed sources (and the hero's fall-back
+  to the first of them) no longer appear, and Home no longer fetches them.
+
 ### Fixed
+
+- **Tapping left then right quickly no longer skips the video.** The player paired any two quick taps as a double tap,
+  whatever side they landed on. A double tap now needs both taps on the same side; a tap on the other side just starts a
+  new first tap.
+- **"360p" in Settings > Playback no longer breaks into "3 / 6 / 0p".** The five quality chips shared one row and the
+  last was squeezed into a sliver. They now sit in a wrapping row with labels that never break, so 360p drops to a
+  new line when it does not fit.
+- **Preferred Language "Dub" now starts a dub.** Playback began on the best-ranked source the moment it answered,
+  and a dub usually answers later, so the sub started and the dub was never considered (the same happened when
+  resuming from the remembered source). The first pick now waits for a stream in the chosen language: it starts as
+  soon as one appears, when every source has answered, or after 15 seconds, so a show without a dub still plays.
+  A dub is also recognised from the server or extension name and the audio list, not only the stream label.
+  **Constraint:** a stream picked by hand for the show still wins over the language preference.
 
 - **Bottom sheets (characters, trailers, comments, menus) no longer show the page sharp behind them, and no thin
   white box lines appear.** The window blur was requested while the sheet was still composing, before its window

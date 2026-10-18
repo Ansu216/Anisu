@@ -64,6 +64,9 @@ fun NextWatchBanner(
     picks: List<WatchPick>,
     onClick: (SAnime) -> Unit,
     modifier: Modifier = Modifier,
+    header: String = "Your Next Watch",
+    /** Shown before [WatchPick.becauseOf] on the bottom line; empty when that text already says it all. */
+    captionPrefix: String = "Because you watched ",
 ) {
     if (picks.isEmpty()) return
     val loops = picks.size > 1
@@ -94,7 +97,7 @@ fun NextWatchBanner(
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        ShelfHeader("Your Next Watch")
+        ShelfHeader(header)
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxWidth(),
@@ -106,6 +109,7 @@ fun NextWatchBanner(
             val offset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
             NextWatchCard(
                 pick = pick,
+                captionPrefix = captionPrefix,
                 offset = { offset },
                 onClick = { onClick(pick.anime) },
             )
@@ -116,6 +120,7 @@ fun NextWatchBanner(
 @Composable
 private fun NextWatchCard(
     pick: WatchPick,
+    captionPrefix: String,
     offset: () -> Float,
     onClick: () -> Unit,
 ) {
@@ -174,7 +179,9 @@ private fun NextWatchCard(
         )
         Text(
             text = buildAnnotatedString {
-                withStyle(SpanStyle(color = Color.White.copy(alpha = 0.72f))) { append("Because you watched ") }
+                if (captionPrefix.isNotEmpty()) {
+                    withStyle(SpanStyle(color = Color.White.copy(alpha = 0.72f))) { append(captionPrefix) }
+                }
                 withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.SemiBold)) { append(pick.becauseOf) }
             },
             fontSize = 12.sp,

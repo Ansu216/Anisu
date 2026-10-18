@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -54,7 +53,6 @@ import com.ansu.anime.ui.components.backdropSource
 import com.ansu.anime.ui.components.ContinueWatchingRow
 import com.ansu.anime.ui.components.HeroCarousel
 import com.ansu.anime.ui.components.PagedPosterRow
-import com.ansu.anime.ui.components.PosterRow
 import com.ansu.anime.ui.components.posterTransitionOrigin
 import com.ansu.anime.ui.components.ShelfHeader
 import com.ansu.anime.ui.navigation.Dest
@@ -113,7 +111,7 @@ fun HomeScreen(
             containerColor = AnsuColors.Background,
             bottomBar = { AppBottomBarReserve() },
         ) { padding ->
-            if (state.isLoading && trending.isEmpty() && state.shelves.isEmpty()) {
+            if (state.isLoading && trending.isEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -135,9 +133,8 @@ fun HomeScreen(
                 // Content runs behind the floating bar; the padding lets the last row scroll clear of it.
                 contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 24.dp),
             ) {
-                // The hero mirrors what's airing/trending right now; if AniList is
-                // unreachable it falls back to the first catalogue shelf.
-                val heroSource = trending.ifEmpty { state.shelves.firstOrNull()?.items.orEmpty() }
+                // The hero mirrors what's airing/trending right now.
+                val heroSource = trending
                 if (heroSource.isNotEmpty()) {
                     item {
                         HeroCarousel(
@@ -216,24 +213,33 @@ fun HomeScreen(
                     )
                 }
 
-                // Every other endless row loads its first page when it scrolls into view.
+                // Every other endless row loads its first page when it scrolls into view. The two "new releases"
+                // banners sit right above the matching Upcoming row.
                 items(
                     items = state.feeds.filter { it.feed != AniListFeed.TRENDING_NOW },
                     key = { "feed:${it.feed.name}" },
                 ) { row ->
+                    if (row.feed == AniListFeed.UPCOMING_ANIME && state.newAnime.isNotEmpty()) {
+                        NextWatchBanner(
+                            picks = state.newAnime,
+                            onClick = selectAnime,
+                            header = "New Anime",
+                            captionPrefix = "",
+                        )
+                    }
+                    if (row.feed == AniListFeed.UPCOMING_MOVIES && state.newMovies.isNotEmpty()) {
+                        NextWatchBanner(
+                            picks = state.newMovies,
+                            onClick = selectAnime,
+                            header = "New Movies",
+                            captionPrefix = "",
+                        )
+                    }
                     FeedShelf(
                         row = row,
                         onLoadMore = { viewModel.loadMore(row.feed) },
                         onClick = selectAnime,
                     )
-                }
-
-                // Two shelves can share a title (two sources with the same name), so the key is the title plus its position.
-                itemsIndexed(state.shelves, key = { index, shelf -> "${shelf.title}#$index" }) { _, shelf ->
-                    Column {
-                        ShelfHeader(shelf.title)
-                        PosterRow(items = shelf.items, onClick = selectAnime)
-                    }
                 }
 
                 state.error?.let { error ->

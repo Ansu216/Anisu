@@ -314,6 +314,48 @@ class AniListApi(
         )
     }
 
+    /**
+     * Titles of the given [formats] that premiered between [from] and [to] (both inclusive), newest day first and
+     * the most popular first within a day, so what came out today leads. Adult titles are excluded in the query and
+     * again by [toMedia]. Empty on a failure or when nothing premiered in the window.
+     */
+    suspend fun getNewReleases(formats: List<String>, from: java.time.LocalDate, to: java.time.LocalDate, perPage: Int): List<AniListNewRelease>? {
+        fun fuzzy(d: java.time.LocalDate) = d.year * 10000 + d.monthValue * 100 + d.dayOfMonth
+        // startDate_greater / startDate_lesser are exclusive, so the window is widened by a day on each side.
+        val args = listOf(
+            "type: ANIME",
+            "sort: [START_DATE_DESC, POPULARITY_DESC]",
+            "status_in: [RELEASING, FINISHED]",
+            "format_in: [${formats.joinToString()}]",
+            "startDate_greater: ${fuzzy(from.minusDays(1))}",
+            "startDate_lesser: ${fuzzy(to.plusDays(1))}",
+            "popularity_greater: 300",
+            "isAdult: false",
+            "genre_not_in: [\"Hentai\"]",
+        ).joinToString(", ")
+        val gql = """
+            query (${'$'}perPage: Int) {
+              Page(page: 1, perPage: ${'$'}perPage) {
+                media($args) { ...mediaFields startDate { year month day } }
+              }
+            }
+            $MEDIA_FIELDS
+        """.trimIndent()
+        val data = execute(gql, mapOf("perPage" to perPage), cacheTtlMs = FEED_TTL_MS) ?: return null
+        val nodes = data["Page"]?.jsonObject?.get("media")?.jsonArray ?: return null
+        return nodes.mapNotNull { node ->
+            val obj = node.jsonObject
+            val media = obj.toMedia() ?: return@mapNotNull null
+            val date = obj["startDate"]?.jsonObject
+            val y = date?.get("year")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+            val m = date?.get("month")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+            val d = date?.get("day")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+            if (y == null || m == null || d == null) return@mapNotNull null
+            val day = runCatching { java.time.LocalDate.of(y, m, d) }.getOrNull() ?: return@mapNotNull null
+            AniListNewRelease(media, day)
+        }
+    }
+
     /** Pushes watched-episode progress back to the user's AniList list; called (debounced) as the player advances. */
     suspend fun updateProgress(mediaId: Int, progress: Int): Boolean {
         val mutation = """

@@ -1,4 +1,4 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.ansu.anime.ui.playersettings
 
@@ -14,6 +14,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -84,6 +85,7 @@ import com.ansu.anime.extension.BUILT_IN_SOURCE_ID
 fun PlayerStreamingScreen(container: AppContainer, navController: NavHostController) {
     val prefs = container.playerPrefs
     val doubleTap by prefs.doubleTapSeek.collectAsStateWithLifecycle()
+    val swipeSeek by prefs.swipeSeek.collectAsStateWithLifecycle()
     val brightness by prefs.brightnessGesture.collectAsStateWithLifecycle()
     val volume by prefs.volumeGesture.collectAsStateWithLifecycle()
     val skipSeconds by prefs.skipSeconds.collectAsStateWithLifecycle()
@@ -150,6 +152,12 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                     onCheckedChange = prefs::setDoubleTapSeek,
                 )
                 GlassToggleRow(
+                    title = "Swipe To Seek",
+                    description = "Swipe right across the video to go ahead, left to go back",
+                    checked = swipeSeek,
+                    onCheckedChange = prefs::setSwipeSeek,
+                )
+                GlassToggleRow(
                     title = "Swipe Controls",
                     description = "Swipe left half for brightness, right half for volume",
                     checked = brightness && volume,
@@ -166,12 +174,18 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                     title = "Preferred Quality",
                     description = "Playback starts on the closest stream to this resolution. Any starts the first stream that answers, in your language, so it begins sooner",
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    // FlowRow, and labels that never wrap: five chips in one Row squeezed "360p" into a narrow
+                    // column that broke it into "3 / 6 / 0p". When they do not all fit, the last one drops to a new line.
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
                         PlayerPrefs.QUALITY_OPTIONS.forEach { height ->
                             FilterChip(
                                 selected = preferredQuality == height,
                                 onClick = { prefs.setPreferredQuality(height) },
-                                label = { Text(if (height == PlayerPrefs.QUALITY_ANY) "Any" else "${height}p") },
+                                label = { Text(if (height == PlayerPrefs.QUALITY_ANY) "Any" else "${height}p", maxLines = 1, softWrap = false) },
                             )
                         }
                     }
@@ -186,7 +200,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                             FilterChip(
                                 selected = preferredLanguage == value,
                                 onClick = { prefs.setPreferredLanguage(value) },
-                                label = { Text(label) },
+                                label = { Text(label, maxLines = 1, softWrap = false) },
                             )
                         }
                     }

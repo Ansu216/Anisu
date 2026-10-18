@@ -151,6 +151,19 @@ class AniListRepository(
     suspend fun getFeedPage(feed: AniListFeed, page: Int, perPage: Int): AniListMediaPage? =
         guarded<AniListMediaPage?>("Loading ${feed.title}", null) { api.getMediaPage(page, perPage, feed.sort, feed.status, feed.formats) }
 
+    /**
+     * What premiered in the last [days] days in the given [formats]: today's titles first, then yesterday's and so
+     * on, at most [limit]. Empty when nothing did or the request failed.
+     */
+    suspend fun getNewReleases(formats: List<String>, days: Long = 30, limit: Int = 7): List<AniListNewRelease> {
+        val today = java.time.LocalDate.now()
+        val found = guarded<List<AniListNewRelease>?>("Loading new releases", null, quiet = true) {
+            api.getNewReleases(formats, today.minusDays(days), today, perPage = 25)
+        }.orEmpty()
+        // Already ordered by the query; sorting again keeps today first even if AniList's tie-breaking changes.
+        return found.sortedByDescending { it.releasedOn }.distinctBy { it.media.id }.take(limit)
+    }
+
     suspend fun getAllTitles(mediaId: Int): List<String> = guarded("Loading alternate titles", emptyList<String>(), quiet = true) { api.getAllTitles(mediaId) }
 
     suspend fun getStreamingEpisodes(mediaId: Int) = guarded("Loading episode titles", emptyList(), quiet = true) { api.getStreamingEpisodes(mediaId) }

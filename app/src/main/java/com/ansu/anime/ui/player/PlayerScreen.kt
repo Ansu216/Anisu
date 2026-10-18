@@ -158,10 +158,11 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     var locked by remember { mutableStateOf(false) }
     var fitIndex by remember { mutableIntStateOf(0) }
     val doubleTapSeek by container.playerPrefs.doubleTapSeek.collectAsStateWithLifecycle()
+    val swipeSeek by container.playerPrefs.swipeSeek.collectAsStateWithLifecycle()
     val brightnessGesture by container.playerPrefs.brightnessGesture.collectAsStateWithLifecycle()
     val volumeGesture by container.playerPrefs.volumeGesture.collectAsStateWithLifecycle()
     val skipSeconds by container.playerPrefs.skipSeconds.collectAsStateWithLifecycle()
-    val gestureConfig = PlayerGestureConfig(doubleTapSeek, brightnessGesture, volumeGesture, skipSeconds, enabled = !locked)
+    val gestureConfig = PlayerGestureConfig(doubleTapSeek, brightnessGesture, volumeGesture, skipSeconds, enabled = !locked, swipeSeek = swipeSeek)
 
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
