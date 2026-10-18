@@ -22,6 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Bottom sheets (characters, trailers, comments, menus) no longer show the page sharp behind them, and no thin
+  white box lines appear.** The window blur was requested while the sheet was still composing, before its window
+  existed, so it silently never applied; it is now requested once the window is attached. On phones that switch
+  window blur off (battery saver, low-end devices) the popups now use a nearly solid glass fill instead of a 66%
+  see-through one, so text behind never overlaps. The sheet's hairline edge was a full `border`, which also stroked
+  the straight sides and bottom of the sheet; it is now drawn along the top edge and corners only.
+  **Constraint:** real blur still needs Android 12+ and the phone's window blur enabled.
+
 ## [0.4.5] - 2026-10-18
 
 ### Added
