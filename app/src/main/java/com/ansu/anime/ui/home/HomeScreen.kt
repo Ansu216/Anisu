@@ -75,6 +75,7 @@ fun HomeScreen(
                     container.aniListRepository,
                     container.appearancePrefs.titleLanguage,
                     container.localListRepository,
+                    container.episodeMetadataRepository,
                 )
             }
         },
@@ -171,8 +172,9 @@ fun HomeScreen(
                         ContinueWatchingRow(
                             entries = state.continueWatching,
                             hiddenId = actionTarget?.entry?.anilistId,
-                            onLongPress = { entry, bounds -> actionTarget = ContinueWatchingActionTarget(entry, bounds) },
-                            onClick = { entry ->
+                            nextInfo = state.nextInfo,
+                            onLongPress = { entry, bounds, info -> actionTarget = ContinueWatchingActionTarget(entry, bounds, info) },
+                            onClick = resume@{ entry, info ->
                                 val origin = com.ansu.anime.core.model.MediaOrigin.Extension(
                                     sourceId = entry.originExtensionSourceId ?: 1L,
                                     urlPath = entry.anilistId.toString(),
@@ -185,11 +187,27 @@ fun HomeScreen(
                                     anilistId = entry.anilistId,
                                     origin = origin,
                                 )
-                                val episode = com.ansu.anime.core.model.SEpisode(
-                                    id = entry.episodeId,
-                                    name = entry.episodeName,
-                                    episodeNumber = entry.episodeNumber,
-                                )
+                                // Next episode not out yet: nothing to play, so open the show instead.
+                                if (info is com.ansu.anime.ui.components.ResumeCardInfo.Countdown) {
+                                    selectAnime(anime)
+                                    return@resume
+                                }
+                                // Episode finished and the next one is out: start that one from the top.
+                                val episode = if (info is com.ansu.anime.ui.components.ResumeCardInfo.NextUp) {
+                                    val number = info.episodeNumber.toInt()
+                                    com.ansu.anime.core.model.SEpisode(
+                                        id = "${entry.anilistId}-al-$number",
+                                        name = info.title ?: "Episode $number",
+                                        episodeNumber = info.episodeNumber,
+                                        thumbnailUrl = info.thumbnailUrl,
+                                    )
+                                } else {
+                                    com.ansu.anime.core.model.SEpisode(
+                                        id = entry.episodeId,
+                                        name = entry.episodeName,
+                                        episodeNumber = entry.episodeNumber,
+                                    )
+                                }
                                 container.selectionHolder.selectAnime(anime)
                                 container.selectionHolder.selectEpisode(episode)
                                 navController.navigate(Dest.PLAYER)

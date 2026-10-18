@@ -43,7 +43,7 @@ class AniListApi(
 
     suspend fun getViewer(): AniListViewer? {
         val query = """
-            query { Viewer { id name avatar { medium } } }
+            query { Viewer { id name avatar { medium } bannerImage } }
         """.trimIndent()
         val data = execute(query, emptyMap()) ?: return null
         val viewer = data["Viewer"]?.jsonObject ?: return null
@@ -55,6 +55,7 @@ class AniListApi(
             id = id,
             name = name,
             avatarUrl = viewer["avatar"]?.jsonObject?.get("medium")?.jsonPrimitive?.content,
+            bannerUrl = viewer["bannerImage"]?.jsonPrimitive?.contentOrNull,
         )
     }
 
@@ -517,6 +518,27 @@ class AniListApi(
             malId = (media["idMal"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull(),
             titles = (names + synonyms).map { it.trim() }.filter { it.length >= 2 }.distinct(),
             episodes = episodes,
+        )
+    }
+
+    /** Status, episode count and the next airing time in one tiny request; short cache so a countdown stays honest. */
+    suspend fun getAiringInfo(mediaId: Int): AniListAiringInfo? {
+        val gql = """
+            query (${'$'}id: Int) {
+              Media(id: ${'$'}id, type: ANIME) {
+                status
+                episodes
+                nextAiringEpisode { episode airingAt }
+              }
+            }
+        """.trimIndent()
+        val media = execute(gql, mapOf("id" to mediaId), cacheTtlMs = AIRING_TTL_MS)?.get("Media") as? JsonObject ?: return null
+        val next = media["nextAiringEpisode"] as? JsonObject
+        return AniListAiringInfo(
+            status = (media["status"] as? JsonPrimitive)?.contentOrNull,
+            episodes = (media["episodes"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull(),
+            nextEpisode = (next?.get("episode") as? JsonPrimitive)?.contentOrNull?.toIntOrNull(),
+            nextAiringAt = (next?.get("airingAt") as? JsonPrimitive)?.contentOrNull?.toLongOrNull(),
         )
     }
 
@@ -1033,6 +1055,8 @@ class AniListApi(
             averageScore = this["averageScore"]?.jsonPrimitive?.content?.toIntOrNull(),
             episodes = this["episodes"]?.jsonPrimitive?.content?.toIntOrNull(),
             year = this["startDate"]?.jsonObject?.get("year")?.jsonPrimitive?.content?.toIntOrNull(),
+            startMonth = this["startDate"]?.jsonObject?.get("month")?.jsonPrimitive?.content?.toIntOrNull(),
+            startDay = this["startDate"]?.jsonObject?.get("day")?.jsonPrimitive?.content?.toIntOrNull(),
             format = this["format"]?.jsonPrimitive?.contentOrNull,
             isAdult = this["isAdult"]?.jsonPrimitive?.content == "true",
             altTitles = allTitles(),
@@ -1163,6 +1187,7 @@ class AniListApi(
         private const val SEARCH_TTL_MS = 5 * 60_000L
         private const val DETAILS_TTL_MS = 10 * 60_000L
         private const val CORE_TTL_MS = 30 * 60_000L
+        private const val AIRING_TTL_MS = 5 * 60_000L
         private const val LIST_TTL_MS = 2 * 60_000L
         private const val SCHEDULE_TTL_MS = 15 * 60_000L
         private const val MAX_CACHED_RESPONSES = 120
@@ -1224,7 +1249,7 @@ class AniListApi(
               genres
               averageScore
               episodes
-              startDate { year }
+              startDate { year month day }
               format
               isAdult
               nextAiringEpisode { episode }

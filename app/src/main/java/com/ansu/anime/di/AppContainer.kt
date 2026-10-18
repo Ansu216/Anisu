@@ -137,6 +137,16 @@ class AppContainer(context: Context) {
         diagnostics,
     )
 
+    /** Episode downloads for offline viewing (video plus every subtitle file the source offers). */
+    val downloads: com.ansu.anime.data.download.DownloadsRepository = com.ansu.anime.data.download.DownloadsRepository(
+        appContext,
+        extensionManager,
+        aniListRepository,
+        playerPrefs,
+        okHttpClient,
+        diagnostics,
+    )
+
     init {
         // Aniyomi/Keiyoushi extensions need the Injekt container filled in before they are instantiated.
         // Do not swallow a failure silently: without this, every extension fails with "No registered instance".

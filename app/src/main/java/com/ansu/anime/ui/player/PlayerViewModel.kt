@@ -102,7 +102,7 @@ private fun PlayableSource.qualityMiss(preferredHeight: Int): Int {
  * this show last played from (its remembered server first), and after that by the list order, which is the
  * person's source priority.
  */
-private fun pickStart(
+internal fun pickStart(
     list: List<PlayableSource>,
     remembered: com.ansu.anime.data.repository.LastPlayedSource?,
     preferredQuality: Int,
@@ -198,6 +198,7 @@ class PlayerViewModel(
     private val playerPrefs: com.ansu.anime.data.prefs.PlayerPrefs? = null,
     private val mediaCache: com.ansu.anime.data.player.MediaCache? = null,
     private val episodeMetadataRepository: com.ansu.anime.data.repository.EpisodeMetadataRepository? = null,
+    private val downloads: com.ansu.anime.data.download.DownloadsRepository? = null,
 ) : ViewModel() {
 
     // Large buffers + a small start threshold: playback starts after a few seconds of data and the
@@ -355,8 +356,15 @@ class PlayerViewModel(
             return
         }
 
-        diagnostics?.log(LogCategory.PLAYBACK, "Resolving sources for ${anime.title} E${episode.episodeNumber} (ep id='${episode.id}')")
         loadSkipTimes(anime, episode)
+        // A downloaded episode plays from the device, with no source lookup at all.
+        val offlineId = selectionHolder.offlineDownloadId
+        if (offlineId != null && downloads != null) {
+            playOffline(anime, episode, offlineId, downloads)
+            return
+        }
+
+        diagnostics?.log(LogCategory.PLAYBACK, "Resolving sources for ${anime.title} E${episode.episodeNumber} (ep id='${episode.id}')")
         loadJob?.cancel()
         graceJob?.cancel()
         expectedSourceIds = emptyList()
@@ -470,6 +478,36 @@ class PlayerViewModel(
             } else {
                 diagnostics?.log(LogCategory.PLAYBACK, "${collected.size} source(s) found for ${anime.title}")
             }
+        }
+    }
+
+    /** Plays the download stored under [downloadId]: its saved video tracks and every saved subtitle file. */
+    @androidx.annotation.OptIn(UnstableApi::class)
+    private fun playOffline(
+        anime: SAnime,
+        episode: SEpisode,
+        downloadId: String,
+        repository: com.ansu.anime.data.download.DownloadsRepository,
+    ) {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            val item = repository.offlineMediaItem(downloadId)
+            if (item == null) {
+                _uiState.value = _uiState.value.copy(isLoadingSources = false, error = "This download could not be found")
+                return@launch
+            }
+            diagnostics?.log(LogCategory.PLAYBACK, "Playing download for ${anime.title} E${episode.episodeNumber}")
+            subtitleChoiceApplied = false
+            startPositionMs = savedPositionMs(anime, episode)
+            val startMs = if (startPositionMs > 0L) startPositionMs else C.TIME_UNSET
+            startPositionMs = 0L
+            val label = repository.entryFor(downloadId)?.sourceLabel.orEmpty().ifBlank { "Downloaded" }
+            val offline = PlayableSource(label = "Downloaded · $label", url = item.localConfiguration?.uri?.toString().orEmpty())
+            _uiState.value = _uiState.value.copy(isLoadingSources = false, sources = listOf(offline), selectedSource = offline, error = null)
+            val factory = DefaultMediaSourceFactory(repository.dataSourceFactory)
+            player.setMediaSource(factory.createMediaSource(item), startMs)
+            player.prepare()
+            player.playWhenReady = true
         }
     }
 

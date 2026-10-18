@@ -184,6 +184,10 @@ class AniListRepository(
 
     suspend fun getAllTitles(mediaId: Int): List<String> = guarded("Loading alternate titles", emptyList<String>(), quiet = true) { api.getAllTitles(mediaId) }
 
+    /** Null when the request failed, so callers can tell "no data" from "nothing airing". */
+    suspend fun getAiringInfo(mediaId: Int): AniListAiringInfo? =
+        guarded<AniListAiringInfo?>("Loading airing info", null, quiet = true) { api.getAiringInfo(mediaId) }
+
     suspend fun getStreamingEpisodes(mediaId: Int) = guarded("Loading episode titles", emptyList(), quiet = true) { api.getStreamingEpisodes(mediaId) }
 
     suspend fun search(query: String, page: Int = 1) = guarded("Searching", emptyList()) { api.searchMedia(query, page) }

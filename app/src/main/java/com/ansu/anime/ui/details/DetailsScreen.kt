@@ -32,6 +32,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
@@ -134,6 +136,8 @@ fun DetailsScreen(
     val heldState = remember { HeldState() }
     val state = if (settled || heldState.value == null) liveState.also { heldState.value = it } else heldState.value!!
     val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
+    val downloadItems by container.downloads.items.collectAsStateWithLifecycle()
+    val downloadStatuses = remember(downloadItems) { downloadItems.associate { it.entry.id to it.status } }
     var expandSynopsis by remember { mutableStateOf(false) }
     var selectedPerson by remember { mutableStateOf<PersonDetail?>(null) }
     var playingTrailer by remember { mutableStateOf<com.ansu.anime.data.repository.Trailer?>(null) }
@@ -337,9 +341,30 @@ fun DetailsScreen(
                         if (episode.id in upcomingIds) {
                             UpcomingEpisodeRow(episode)
                         } else {
+                            val downloadId = anime?.anilistId?.let { com.ansu.anime.data.download.downloadKey(it, episode.episodeNumber) }
                             EpisodeRow(
                                 episode = episode,
                                 synopsis = episode.description,
+                                download = downloadId?.let { downloadStatuses[it] },
+                                onDownload = {
+                                    val show = anime
+                                    if (show != null) {
+                                        val id = downloadId
+                                        val existing = id?.let { downloadStatuses[it] }
+                                        when (existing?.phase) {
+                                            com.ansu.anime.data.download.DownloadPhase.Completed ->
+                                                android.widget.Toast.makeText(appContext, "Already downloaded", android.widget.Toast.LENGTH_SHORT).show()
+                                            com.ansu.anime.data.download.DownloadPhase.Preparing,
+                                            com.ansu.anime.data.download.DownloadPhase.Queued,
+                                            com.ansu.anime.data.download.DownloadPhase.Downloading ->
+                                                android.widget.Toast.makeText(appContext, "Already downloading", android.widget.Toast.LENGTH_SHORT).show()
+                                            else -> {
+                                                container.downloads.enqueue(show, episode)
+                                                android.widget.Toast.makeText(appContext, "Download started", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                },
                                 onClick = {
                                     container.diagnostics.log(LogCategory.CLICK, "Episode selected: ${anime?.title} E${episode.episodeNumber}")
                                     onEpisodeSelected(episode)
@@ -762,7 +787,13 @@ private fun EpisodeGroupChips(groups: List<List<SEpisode>>, selected: Int, onSel
 }
 
 @Composable
-private fun EpisodeRow(episode: SEpisode, synopsis: String?, onClick: () -> Unit) {
+private fun EpisodeRow(
+    episode: SEpisode,
+    synopsis: String?,
+    download: com.ansu.anime.data.download.DownloadStatus?,
+    onDownload: () -> Unit,
+    onClick: () -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth().softClickable(onClick = onClick).padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -809,6 +840,37 @@ private fun EpisodeRow(episode: SEpisode, synopsis: String?, onClick: () -> Unit
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
+        }
+        DownloadButton(status = download, onClick = onDownload)
+    }
+}
+
+/** The download icon at the end of an episode row: arrow to start, a ring while it downloads, a tick when saved. */
+@Composable
+private fun DownloadButton(status: com.ansu.anime.data.download.DownloadStatus?, onClick: () -> Unit) {
+    val phase = status?.phase
+    androidx.compose.material3.IconButton(onClick = onClick, modifier = Modifier.size(40.dp)) {
+        when (phase) {
+            com.ansu.anime.data.download.DownloadPhase.Completed ->
+                Icon(Icons.Filled.DownloadDone, contentDescription = "Downloaded", tint = AnsuColors.Accent, modifier = Modifier.size(22.dp))
+            com.ansu.anime.data.download.DownloadPhase.Preparing,
+            com.ansu.anime.data.download.DownloadPhase.Queued ->
+                androidx.compose.material3.CircularProgressIndicator(color = AnsuColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+            com.ansu.anime.data.download.DownloadPhase.Downloading -> {
+                val percent = status?.percent ?: -1f
+                if (percent >= 0f) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        progress = { (percent / 100f).coerceIn(0f, 1f) },
+                        color = AnsuColors.Accent,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(20.dp),
+                    )
+                } else {
+                    androidx.compose.material3.CircularProgressIndicator(color = AnsuColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                }
+            }
+            else ->
+                Icon(Icons.Filled.Download, contentDescription = "Download episode", tint = AnsuColors.TextSecondary, modifier = Modifier.size(22.dp))
         }
     }
 }

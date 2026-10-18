@@ -3,6 +3,13 @@ package com.ansu.anime.ui.myspace
 import com.ansu.anime.core.haptics.softClickable
 import com.ansu.anime.core.haptics.tickClickable
 import android.widget.Toast
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -13,6 +20,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,6 +29,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
@@ -43,6 +54,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -55,8 +69,8 @@ import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import com.ansu.anime.anilist.AniListMedia
+import com.ansu.anime.R
 import com.ansu.anime.core.model.SAnime
-import com.ansu.anime.core.util.formatLabel
 import com.ansu.anime.data.repository.ListStatus
 import com.ansu.anime.data.repository.toSAnime
 import com.ansu.anime.di.AppContainer
@@ -71,12 +85,12 @@ import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
 
 private enum class ListTab(val label: String) {
-    Liked("Liked"),
+    Liked("Favourites"),
     Watching("Watching"),
     Planning("Planning"),
+    Dropped("Dropped"),
     Completed("Completed"),
     Paused("Paused"),
-    Dropped("Dropped"),
     Repeating("Repeating"),
 }
 
@@ -156,32 +170,38 @@ fun MySpaceScreen(
         // The background sits inside the recorded layer: without it the layer is transparent wherever no card is
         // drawn, so the nav bar had nothing opaque to blur on this screen.
         Column(modifier = Modifier.fillMaxSize().backdropSource(backdrop).background(AnsuColors.Background).padding(top = padding.calculateTopPadding())) {
-            // Top row: settings gear pinned to the right, as in the sketch.
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
-                FrostedGlassCard(modifier = Modifier.size(44.dp), shape = CircleShape, tintAlpha = 0.5f) {
-                    IconButton(onClick = { navController.navigate(Dest.SETTINGS) }, modifier = Modifier.fillMaxSize()) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = AnsuColors.TextPrimary)
-                    }
-                }
-            }
-
-            ProfileHeader(
+            ProfileBanner(
                 name = viewer?.name,
                 avatarUrl = viewer?.avatarUrl,
+                bannerUrl = viewer?.bannerUrl,
                 isLoggedIn = isLoggedIn,
                 onConnect = { navController.navigate(Dest.ANILIST_LOGIN) },
             )
+
+            // The two shortcuts from the sketch: the settings (unchanged) and the downloaded episodes.
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                ShortcutBox(icon = Icons.Filled.Settings, label = "Settings", onClick = { navController.navigate(Dest.SETTINGS) })
+                ShortcutBox(icon = Icons.Filled.Download, label = "Your downloads", onClick = { navController.navigate(Dest.DOWNLOADS) })
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "My List",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = AnsuColors.TextPrimary,
-                )
+                // "My [AniList logo] List", as in the sketch.
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "My", style = MaterialTheme.typography.titleMedium, color = AnsuColors.TextPrimary)
+                    Image(
+                        painter = painterResource(R.drawable.ic_anilist),
+                        contentDescription = "AniList",
+                        modifier = Modifier.size(22.dp).clip(RoundedCornerShape(5.dp)),
+                    )
+                    Text(text = "List", style = MaterialTheme.typography.titleMedium, color = AnsuColors.TextPrimary)
+                }
                 // Only meaningful with an account: uploads what is saved on this device to AniList.
                 if (isLoggedIn) {
                     SyncButton(
@@ -247,43 +267,103 @@ fun MySpaceScreen(
     }
 }
 
+/**
+ * The profile strip at the top: the AniList banner of the account behind the picture and the name. An account
+ * with no banner (or no account) gets a slowly colour-changing gradient instead, so the strip is never empty.
+ */
 @Composable
-private fun ProfileHeader(name: String?, avatarUrl: String?, isLoggedIn: Boolean, onConnect: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+private fun ProfileBanner(name: String?, avatarUrl: String?, bannerUrl: String?, isLoggedIn: Boolean, onConnect: () -> Unit) {
+    Box(modifier = Modifier.fillMaxWidth().height(150.dp)) {
+        if (bannerUrl != null) {
+            AsyncImage(model = bannerUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        } else {
+            ShiftingGradient(modifier = Modifier.fillMaxSize())
+        }
+        // Darkens the lower part so the name stays readable on any banner, and melts into the page below.
         Box(
-            modifier = Modifier.size(76.dp).clip(CircleShape).background(AnsuColors.SurfaceGlassBase),
-            contentAlignment = Alignment.Center,
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(listOf(Color.Transparent, AnsuColors.Background.copy(alpha = 0.55f), AnsuColors.Background)),
+            ),
+        )
+        Row(
+            modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (avatarUrl != null) {
-                AsyncImage(model = avatarUrl, contentDescription = "Profile picture", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            } else {
-                Icon(Icons.Filled.Person, contentDescription = "Profile", tint = AnsuColors.TextTertiary, modifier = Modifier.size(44.dp))
+            Box(
+                modifier = Modifier.size(76.dp).clip(CircleShape).background(AnsuColors.SurfaceGlassBase),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (avatarUrl != null) {
+                    AsyncImage(model = avatarUrl, contentDescription = "Profile picture", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                } else {
+                    Icon(Icons.Filled.Person, contentDescription = "Profile", tint = AnsuColors.TextTertiary, modifier = Modifier.size(44.dp))
+                }
+            }
+            Column(modifier = Modifier.padding(start = 16.dp).weight(1f)) {
+                Text(
+                    text = name ?: "Guest",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = AnsuColors.TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                // AniList's public API does not expose the account email, so show connection state instead.
+                Text(
+                    text = if (isLoggedIn) "AniList connected" else "Saved on this device",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AnsuColors.TextSecondary,
+                )
+            }
+            if (!isLoggedIn) {
+                Button(
+                    onClick = onConnect,
+                    colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
+                    shape = RoundedCornerShape(20.dp),
+                ) { Text("Connect", fontWeight = FontWeight.Bold) }
             }
         }
-        Column(modifier = Modifier.padding(start = 16.dp).weight(1f)) {
-            Text(
-                text = name ?: "Guest",
-                style = MaterialTheme.typography.titleMedium,
-                color = AnsuColors.TextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            // AniList's public API does not expose the account email, so show connection state instead.
-            Text(
-                text = if (isLoggedIn) "AniList connected" else "Saved on this device",
-                style = MaterialTheme.typography.bodyMedium,
-                color = AnsuColors.TextSecondary,
-            )
-        }
-        if (!isLoggedIn) {
-            Button(
-                onClick = onConnect,
-                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
-                shape = RoundedCornerShape(20.dp),
-            ) { Text("Connect", fontWeight = FontWeight.Bold) }
+    }
+}
+
+/** A soft two-colour gradient whose hue drifts all the way round the colour wheel every half minute. */
+@Composable
+private fun ShiftingGradient(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "bannerGradient")
+    val hue by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 30_000, easing = LinearEasing), RepeatMode.Restart),
+        label = "bannerHue",
+    )
+    Box(
+        modifier = modifier.background(
+            Brush.linearGradient(
+                listOf(
+                    Color.hsv(hue % 360f, 0.55f, 0.65f),
+                    Color.hsv((hue + 70f) % 360f, 0.60f, 0.55f),
+                    Color.hsv((hue + 140f) % 360f, 0.55f, 0.50f),
+                ),
+            ),
+        ),
+    )
+}
+
+/** A full-width frosted box with an icon, a label and an arrow; a tap opens [label]'s screen. */
+@Composable
+private fun ShortcutBox(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    FrostedGlassCard(
+        modifier = Modifier.fillMaxWidth().softClickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        tintAlpha = 0.4f,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Icon(icon, contentDescription = null, tint = AnsuColors.TextPrimary, modifier = Modifier.size(22.dp))
+            Text(label, color = AnsuColors.TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = AnsuColors.TextTertiary)
         }
     }
 }
@@ -346,14 +426,14 @@ private fun ListItemRow(media: AniListMedia, onDetails: () -> Unit) {
                 contentDescription = media.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .width(64.dp)
-                    .height(92.dp)
+                    .width(70.dp)
+                    .height(104.dp)
                     .posterTransitionAnchor(originHandle)
                     .clip(RoundedCornerShape(10.dp))
                     .background(AnsuColors.BackgroundElevated),
             )
             Column(
-                modifier = Modifier.padding(start = 14.dp).weight(1f).height(92.dp),
+                modifier = Modifier.padding(start = 14.dp).weight(1f).heightIn(min = 104.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
               Column {
@@ -362,17 +442,13 @@ private fun ListItemRow(media: AniListMedia, onDetails: () -> Unit) {
                     color = AnsuColors.TextPrimary,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                // Year, episode count and format; whatever AniList did not report is simply left out.
-                val meta = listOfNotNull(
-                    media.year?.toString(),
-                    media.episodes?.let { "$it EP" },
-                    formatLabel(media.format),
-                ).joinToString(" · ")
-                if (meta.isNotEmpty()) {
-                    Text(meta, color = AnsuColors.TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 6.dp))
+                // The release date as AniList reports it (a month and day when known, else just the year).
+                val released = releaseDateLabel(media)
+                if (released != null) {
+                    Text(released, color = AnsuColors.TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 6.dp))
                 }
               }
                 WatchProgress(watched = media.progress, total = media.episodes, airedSoFar = media.airedEpisodes)
@@ -381,32 +457,57 @@ private fun ListItemRow(media: AniListMedia, onDetails: () -> Unit) {
     }
 }
 
+private val monthNames = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+/** "Oct 3, 2025" when AniList knows the day, "Oct 2025" with only a month, "2025" with only a year, else null. */
+private fun releaseDateLabel(media: AniListMedia): String? {
+    val year = media.year ?: return null
+    val month = media.startMonth?.takeIf { it in 1..12 } ?: return year.toString()
+    val day = media.startDay?.takeIf { it in 1..31 }
+    return if (day != null) "${monthNames[month - 1]} $day, $year" else "${monthNames[month - 1]} $year"
+}
+
 /**
- * "11/12" with a thin bar under it: how far through the show the user is.
+ * How far through the show the user is, as in the sketch: a play marker and a thin bar, "26/52" above the end of
+ * the bar and the percentage under it.
  *
- * A show still airing with no announced total (One Piece) has no "12": its bar is measured against the
- * episodes aired so far ([airedSoFar]) and the label stays "Ep N". When even that is unknown the bar is still
- * drawn, as a dimmed full track, so every started title has one and the card keeps its shape.
+ * A show still airing with no announced total (One Piece) has no "52": its bar is measured against the episodes
+ * aired so far ([airedSoFar]), the label stays "Ep N" and no percentage is shown. When even that is unknown the
+ * bar is still drawn, as a dimmed full track, so every started title has one and the card keeps its shape.
  */
 @Composable
 private fun WatchProgress(watched: Int, total: Int?, airedSoFar: Int?) {
     val known = total?.takeIf { it > 0 }
     if (known == null && watched <= 0) return
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+    val denominator = known ?: airedSoFar?.takeIf { it > 0 }
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(
             text = if (known != null) "$watched/$known" else "Ep $watched",
             color = AnsuColors.TextSecondary,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.End,
+            modifier = Modifier.fillMaxWidth(),
         )
-        val denominator = known ?: airedSoFar?.takeIf { it > 0 }
-        Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(AnsuColors.AccentSoft)) {
-            if (denominator != null) {
-                val fraction = (watched.toFloat() / denominator).coerceIn(0f, 1f)
-                Box(modifier = Modifier.fillMaxWidth(fraction).height(4.dp).clip(CircleShape).background(AnsuColors.Accent))
-            } else {
-                Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(AnsuColors.Accent.copy(alpha = 0.35f)))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = AnsuColors.Accent, modifier = Modifier.size(14.dp))
+            Box(modifier = Modifier.weight(1f).height(4.dp).clip(CircleShape).background(AnsuColors.AccentSoft)) {
+                if (denominator != null) {
+                    val fraction = (watched.toFloat() / denominator).coerceIn(0f, 1f)
+                    Box(modifier = Modifier.fillMaxWidth(fraction).height(4.dp).clip(CircleShape).background(AnsuColors.Accent))
+                } else {
+                    Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(AnsuColors.Accent.copy(alpha = 0.35f)))
+                }
             }
+        }
+        if (known != null) {
+            Text(
+                text = "${(watched.toFloat() / known * 100f).toInt().coerceIn(0, 100)}%",
+                color = AnsuColors.TextTertiary,
+                fontSize = 11.sp,
+                textAlign = TextAlign.End,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

@@ -10,6 +10,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Needed to discover installed source extensions and to sideload their APKs,
          the same way Aniyomi / Keiyoushi extensions are installed. -->
+    <!-- Episode downloads keep running in the background as a data-sync foreground service. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Needed for ACTION_DELETE: without it Android silently ignores the uninstall request. -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
@@ -46,6 +49,11 @@
                 <data android:scheme="ansu" android:host="anilist-auth" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".data.download.AnisuDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

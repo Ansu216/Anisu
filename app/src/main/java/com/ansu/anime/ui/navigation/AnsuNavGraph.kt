@@ -61,6 +61,7 @@ object Dest {
     const val SYSTEM = "system"
     const val BACKUP = "backup"
     const val MY_SPACE = "my_space"
+    const val DOWNLOADS = "downloads"
     const val DETAILS = "details"
     const val PLAYER = "player"
     const val EXTENSIONS = "extensions"
@@ -251,6 +252,9 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         }
         composable(Dest.ABOUT) {
             AboutScreen(container = container, navController = navController)
+        }
+        composable(Dest.DOWNLOADS) {
+            com.ansu.anime.ui.downloads.DownloadsScreen(container = container, navController = navController)
         }
         composable(Dest.LICENSES) {
             com.ansu.anime.ui.about.LicensesScreen(container = container, navController = navController)

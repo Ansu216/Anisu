@@ -84,7 +84,7 @@ import kotlin.math.sqrt
 import kotlin.random.Random
 
 /** The entry that was held, plus where its card sat on screen (window coordinates) when it was held. */
-data class ContinueWatchingActionTarget(val entry: ContinueWatchingEntity, val bounds: Rect)
+data class ContinueWatchingActionTarget(val entry: ContinueWatchingEntity, val bounds: Rect, val info: ResumeCardInfo? = null)
 
 private enum class ActionPhase { Menu, Removing, Closing }
 
@@ -378,6 +378,7 @@ fun ContinueWatchingActionOverlay(
                 // The whole card, until the cuts land.
                 ContinueWatchingThumbnail(
                     entry = entry,
+                    info = target.info,
                     scale = cardUnit,
                     modifier = Modifier
                         .fillMaxSize()
@@ -390,6 +391,7 @@ fun ContinueWatchingActionOverlay(
                 shards.forEach { shard ->
                     ContinueWatchingThumbnail(
                         entry = entry,
+                        info = target.info,
                         scale = cardUnit,
                         modifier = Modifier
                             .fillMaxSize()

@@ -289,40 +289,109 @@ fun PosterGlassLabel(text: String, modifier: Modifier = Modifier) {
  * The caller supplies the clip shape and size.
  */
 @Composable
-fun ContinueWatchingThumbnail(entry: ContinueWatchingEntity, modifier: Modifier = Modifier, scale: Float = 1f) {
+fun ContinueWatchingThumbnail(
+    entry: ContinueWatchingEntity,
+    modifier: Modifier = Modifier,
+    scale: Float = 1f,
+    info: ResumeCardInfo? = null,
+) {
     // One fixed decode size for every copy of this thumbnail, so the card and its enlarged twin share
     // a memory-cache entry and the twin appears on its first frame instead of loading in.
     val context = LocalContext.current
-    val url = entry.bannerUrl ?: entry.posterUrl
+    // A finished episode with a next one out shows that episode's own thumbnail, like a "Next Up" tile.
+    val banner = entry.bannerUrl ?: entry.posterUrl
+    val episodeThumb = (info as? ResumeCardInfo.NextUp)?.thumbnailUrl?.takeIf { it.isNotBlank() }
+    // If the episode thumbnail is missing or fails to load, the show's horizontal banner is used instead.
+    var thumbFailed by remember(episodeThumb) { mutableStateOf(false) }
+    val url = if (episodeThumb != null && !thumbFailed) episodeThumb else banner
     val request = remember(url) {
         ImageRequest.Builder(context).data(url).size(coil.size.Size(720, 405)).build()
     }
+    val overlayCard = info is ResumeCardInfo.NextUp || info is ResumeCardInfo.Countdown
     Box(modifier = modifier.background(AnsuColors.BackgroundElevated)) {
         AsyncImage(
             model = request,
             contentDescription = entry.title,
             contentScale = ContentScale.Crop,
+            onError = { if (episodeThumb != null) thumbFailed = true },
             modifier = Modifier.fillMaxSize(),
         )
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)))),
+                .background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = if (overlayCard) 0.85f else 0.75f)))),
         )
-        Icon(
-            imageVector = Icons.Filled.PlayArrow,
-            contentDescription = "Resume",
-            tint = AnsuColors.TextPrimary,
-            modifier = Modifier.align(Alignment.Center).size(36.dp * scale),
-        )
-        Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp * scale).background(AnsuColors.TextPrimary.copy(alpha = 0.2f)))
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth(progressFraction(entry.positionSeconds, entry.durationSeconds))
-                .height(3.dp * scale)
-                .background(AnsuColors.Accent),
-        )
+        if (!overlayCard) {
+            Icon(
+                imageVector = Icons.Filled.PlayArrow,
+                contentDescription = "Resume",
+                tint = AnsuColors.TextPrimary,
+                modifier = Modifier.align(Alignment.Center).size(36.dp * scale),
+            )
+        }
+
+        // Badge, top right: only for the "next episode" and "coming soon" cards.
+        val badge = when (info) {
+            is ResumeCardInfo.NextUp -> "Next Up"
+            is ResumeCardInfo.Countdown -> "Coming Soon"
+            else -> null
+        }
+        if (badge != null) {
+            Text(
+                text = badge,
+                color = AnsuColors.TextPrimary,
+                fontSize = 11.sp * scale,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp * scale)
+                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(10.dp * scale))
+                    .padding(horizontal = 10.dp * scale, vertical = 5.dp * scale),
+            )
+        }
+
+        // Text over the picture: small line, show name, then the episode name / time left / air countdown.
+        val numberText = when (info) {
+            is ResumeCardInfo.NextUp -> "E${info.episodeNumber.formatEpisodeNumber()}"
+            is ResumeCardInfo.Countdown -> "E${info.episodeNumber.formatEpisodeNumber()}"
+            is ResumeCardInfo.Remaining -> if (entry.isMovie) null else "E${entry.episodeNumber.formatEpisodeNumber()}"
+            else -> null
+        }
+        val detailText: String? = when (info) {
+            is ResumeCardInfo.NextUp -> info.title?.takeIf { it.isNotBlank() } ?: "Episode ${info.episodeNumber.formatEpisodeNumber()}"
+            is ResumeCardInfo.Countdown -> rememberAirText(info.airAtMs)
+            is ResumeCardInfo.Remaining -> formatTimeLeft(info.secondsLeft)
+            ResumeCardInfo.CaughtUp -> "Caught up"
+            null -> null
+        }
+        if (info != null) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 12.dp * scale, end = 12.dp * scale, bottom = 10.dp * scale),
+            ) {
+                if (numberText != null) {
+                    Text(numberText, color = AnsuColors.TextPrimary.copy(alpha = 0.9f), fontSize = 11.sp * scale, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
+                Text(entry.title, color = AnsuColors.TextPrimary, fontSize = 15.sp * scale, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (detailText != null) {
+                    Text(detailText, color = AnsuColors.TextPrimary.copy(alpha = 0.7f), fontSize = 12.sp * scale, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+
+        // The burned-in progress bar only makes sense while the episode is still going.
+        if (info == null || info is ResumeCardInfo.Remaining) {
+            Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp * scale).background(AnsuColors.TextPrimary.copy(alpha = 0.2f)))
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth(progressFraction(entry.positionSeconds, entry.durationSeconds))
+                    .height(3.dp * scale)
+                    .background(AnsuColors.Accent),
+            )
+        }
     }
 }
 
@@ -341,6 +410,7 @@ fun ContinueWatchingCard(
     modifier: Modifier = Modifier,
     hidden: Boolean = false,
     onLongPress: ((Rect) -> Unit)? = null,
+    info: ResumeCardInfo? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -375,26 +445,30 @@ fun ContinueWatchingCard(
     ) {
         ContinueWatchingThumbnail(
             entry = entry,
+            info = info,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
                 .clip(RoundedCornerShape(14.dp))
                 .onGloballyPositioned { coords.value = it },
         )
-        Text(
-            text = entry.title,
-            style = MaterialTheme.typography.bodyMedium,
-            color = AnsuColors.TextPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp),
-        )
-        if (!entry.isMovie) {
+        // With info, the names are written over the picture; the plain card keeps them underneath.
+        if (info == null) {
             Text(
-                text = "Episode ${entry.episodeNumber.formatEpisodeNumber()}",
-                style = MaterialTheme.typography.labelSmall,
-                color = AnsuColors.TextTertiary,
+                text = entry.title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = AnsuColors.TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 6.dp),
             )
+            if (!entry.isMovie) {
+                Text(
+                    text = "Episode ${entry.episodeNumber.formatEpisodeNumber()}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = AnsuColors.TextTertiary,
+                )
+            }
         }
     }
 }
@@ -402,11 +476,13 @@ fun ContinueWatchingCard(
 @Composable
 fun ContinueWatchingRow(
     entries: List<ContinueWatchingEntity>,
-    onClick: (ContinueWatchingEntity) -> Unit,
+    onClick: (ContinueWatchingEntity, ResumeCardInfo?) -> Unit,
     modifier: Modifier = Modifier,
     /** The entry whose card is currently floating in the action menu; its slot stays but draws nothing. */
     hiddenId: Int? = null,
-    onLongPress: (ContinueWatchingEntity, Rect) -> Unit = { _, _ -> },
+    onLongPress: (ContinueWatchingEntity, Rect, ResumeCardInfo?) -> Unit = { _, _, _ -> },
+    /** What is next for entries whose episode is finished (from the home screen); the row adds the "time left" state itself. */
+    nextInfo: Map<Int, ResumeCardInfo> = emptyMap(),
 ) {
     LazyRow(
         modifier = modifier,
@@ -414,13 +490,15 @@ fun ContinueWatchingRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(entries, key = { it.anilistId }) { entry ->
+            val info = resumeInfoFor(entry, nextInfo[entry.anilistId])
             ContinueWatchingCard(
                 entry = entry,
-                onClick = { onClick(entry) },
+                onClick = { onClick(entry, info) },
                 // Neighbours glide together when a card is removed, instead of jumping.
                 modifier = Modifier.animateItem(),
                 hidden = entry.anilistId == hiddenId,
-                onLongPress = { bounds -> onLongPress(entry, bounds) },
+                onLongPress = { bounds -> onLongPress(entry, bounds, info) },
+                info = info,
             )
         }
     }

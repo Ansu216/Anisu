@@ -32,7 +32,21 @@ class SelectionHolder {
         _episodes.value = list
     }
 
+    /** Id of the downloaded episode to play from the device, or null when the episode should be streamed. */
+    @Volatile
+    var offlineDownloadId: String? = null
+        private set
+
     fun selectEpisode(episode: SEpisode) {
         _currentEpisode.value = episode
+        // Any normal episode choice (details page, next episode) streams; only [selectOffline] plays a download.
+        offlineDownloadId = null
+    }
+
+    /** Plays [episode] of [anime] from the download stored under [downloadId]. */
+    fun selectOffline(anime: SAnime, episode: SEpisode, downloadId: String) {
+        selectAnime(anime)
+        _currentEpisode.value = episode
+        offlineDownloadId = downloadId
     }
 }

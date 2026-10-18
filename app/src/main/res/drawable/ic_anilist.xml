@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A simple AniList-style mark (blue tile, white A) for the "My [logo] List" heading. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#02A9FF"
+        android:pathData="M5,0h14a5,5 0 0 1 5,5v14a5,5 0 0 1 -5,5h-14a5,5 0 0 1 -5,-5v-14a5,5 0 0 1 5,-5z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M6.2,18.5L10.4,5.5h3.2l4.2,13h-2.9l-0.8,-2.7h-4.6l-0.8,2.7zM10.7,13.4h2.6L12,8.9z" />
+</vector>

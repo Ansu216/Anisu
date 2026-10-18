@@ -4,6 +4,8 @@ data class AniListViewer(
     val id: Int,
     val name: String,
     val avatarUrl: String?,
+    /** The banner picture of the AniList profile; null when the account has none. */
+    val bannerUrl: String? = null,
 )
 
 data class AniListMedia(
@@ -16,6 +18,9 @@ data class AniListMedia(
     val averageScore: Int?,
     val episodes: Int?,
     val year: Int?,
+    /** Month and day of the release date when AniList knows them (1-12 / 1-31); the list cards show the full date. */
+    val startMonth: Int? = null,
+    val startDay: Int? = null,
     /** AniList's raw format enum (TV, MOVIE, OVA, ...); null when a query did not ask for it. */
     val format: String? = null,
     val isAdult: Boolean = false,
@@ -165,6 +170,18 @@ data class AniListMediaCore(
     val malId: Int?,
     val titles: List<String>,
     val episodes: List<AniListStreamingEpisode>,
+)
+
+/** What the Continue Watching card needs to know about a show's episodes: how many exist and when the next one airs. */
+data class AniListAiringInfo(
+    /** AniList release status: FINISHED, RELEASING, NOT_YET_RELEASED, CANCELLED or HIATUS. */
+    val status: String?,
+    /** Total episode count when AniList knows it. */
+    val episodes: Int?,
+    /** Number of the next episode that has not aired yet, or null. */
+    val nextEpisode: Int?,
+    /** When that episode airs, unix epoch seconds, or null. */
+    val nextAiringAt: Long?,
 )
 
 /** A forum thread about a show on AniList (the place its comments live). */

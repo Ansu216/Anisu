@@ -132,6 +132,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     container.playerPrefs,
                     container.mediaCache,
                     container.episodeMetadataRepository,
+                    container.downloads,
                 )
             }
         },

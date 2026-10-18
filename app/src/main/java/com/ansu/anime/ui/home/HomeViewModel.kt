@@ -7,6 +7,7 @@ import com.ansu.anime.anilist.AniListNewRelease
 import com.ansu.anime.anilist.AniListRepository
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.data.db.ContinueWatchingEntity
+import com.ansu.anime.ui.components.isFinished
 import com.ansu.anime.data.prefs.TitleLanguage
 import com.ansu.anime.data.repository.CatalogRepository
 import com.ansu.anime.data.repository.ContinueWatchingRepository
@@ -55,6 +56,8 @@ private data class PickSeed(val id: Int, val title: String)
 data class HomeUiState(
     val isLoading: Boolean = true,
     val continueWatching: List<ContinueWatchingEntity> = emptyList(),
+    /** For Continue Watching entries whose episode is (almost) over: the next episode, or when it airs. Keyed by AniList id. */
+    val nextInfo: Map<Int, com.ansu.anime.ui.components.ResumeCardInfo> = emptyMap(),
     val feeds: List<FeedState> = AniListFeed.entries.map { FeedState(it) },
     val topPicks: List<SAnime> = emptyList(),
     /** Recommendations built from what the user watches; empty until there is something to base them on. */
@@ -77,6 +80,7 @@ class HomeViewModel(
     private val aniListRepository: AniListRepository,
     titleLanguage: StateFlow<TitleLanguage>,
     private val localListRepository: LocalListRepository,
+    private val episodeMetadataRepository: com.ansu.anime.data.repository.EpisodeMetadataRepository? = null,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -89,7 +93,10 @@ class HomeViewModel(
 
     init {
         continueWatchingRepository.entries
-            .onEach { list -> _uiState.update { it.copy(continueWatching = list) } }
+            .onEach { list ->
+                _uiState.update { it.copy(continueWatching = list) }
+                refreshNextInfo(list)
+            }
             .launchIn(viewModelScope)
         viewModelScope.launch {
             // Re-read whenever the account changes or a heart is toggled on the device.
@@ -165,6 +172,65 @@ class HomeViewModel(
                 localListRepository.toggleFavourite(anime)
             }
         }
+    }
+
+    /** Episode number each running/finished lookup was made for, so a card is resolved once per episode. */
+    private val nextInfoJobs = HashMap<Int, Pair<Float, kotlinx.coroutines.Job>>()
+
+    /**
+     * Works out, for every show whose last episode has ~30 seconds or less left, what its card should show:
+     * the next episode (name + thumbnail), the countdown to it, or nothing when the show is over.
+     */
+    private fun refreshNextInfo(list: List<ContinueWatchingEntity>) {
+        val finished = list.filter { !it.isMovie && it.isFinished() }
+        val ids = finished.map { it.anilistId }.toSet()
+        _uiState.update { state ->
+            val kept = state.nextInfo.filterKeys { it in ids }
+            if (kept.size == state.nextInfo.size) state else state.copy(nextInfo = kept)
+        }
+        nextInfoJobs.keys.filter { it !in ids }.forEach { nextInfoJobs.remove(it)?.second?.cancel() }
+        finished.forEach { entry ->
+            val running = nextInfoJobs[entry.anilistId]
+            if (running != null && running.first == entry.episodeNumber) return@forEach
+            running?.second?.cancel()
+            // Started only after it is registered, so a lookup that fails at once cannot unregister itself too early.
+            val job = viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) { resolveNextInfo(entry) }
+            nextInfoJobs[entry.anilistId] = entry.episodeNumber to job
+            job.start()
+        }
+    }
+
+    private suspend fun resolveNextInfo(entry: ContinueWatchingEntity) {
+        val nextNumber = kotlin.math.floor(entry.episodeNumber.toDouble()).toInt() + 1
+        val airing = aniListRepository.getAiringInfo(entry.anilistId)
+        if (airing == null) {
+            // Offline or rate limited: leave the plain card and look again on the next change.
+            nextInfoJobs.remove(entry.anilistId)
+            return
+        }
+        val nextAiring = airing.nextEpisode
+        val airAt = airing.nextAiringAt
+        val info: com.ansu.anime.ui.components.ResumeCardInfo = when {
+            // The episode after the one just watched has not aired: count down to it.
+            nextAiring != null && airAt != null && nextNumber >= nextAiring ->
+                com.ansu.anime.ui.components.ResumeCardInfo.Countdown(nextAiring.toFloat(), airAt * 1000)
+            // The watched episode was the last one that will ever exist.
+            airing.episodes != null && nextNumber > airing.episodes ->
+                com.ansu.anime.ui.components.ResumeCardInfo.CaughtUp
+            // Still airing but nothing scheduled (break / hiatus): nothing to show yet.
+            nextAiring == null && (airing.status == "RELEASING" || airing.status == "HIATUS" || airing.status == "NOT_YET_RELEASED") ->
+                com.ansu.anime.ui.components.ResumeCardInfo.CaughtUp
+            else -> {
+                val meta = runCatching { episodeMetadataRepository?.getEpisodeMeta(entry.anilistId) }.getOrNull()?.get(nextNumber)
+                if (airing.episodes == null && meta == null) {
+                    // No count and no metadata for the next number: do not invent an episode.
+                    com.ansu.anime.ui.components.ResumeCardInfo.CaughtUp
+                } else {
+                    com.ansu.anime.ui.components.ResumeCardInfo.NextUp(nextNumber.toFloat(), meta?.title, meta?.thumbnailUrl)
+                }
+            }
+        }
+        _uiState.update { it.copy(nextInfo = it.nextInfo + (entry.anilistId to info)) }
     }
 
     fun removeContinueWatching(anilistId: Int) {
