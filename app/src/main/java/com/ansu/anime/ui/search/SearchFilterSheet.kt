@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.search
 
+import com.ansu.anime.ui.components.GlassModalBottomSheet
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -162,10 +163,9 @@ fun SearchFilterSheet(
     var draft by remember { mutableStateOf(filters) }
     val currentYear = remember { java.time.Year.now().value }
 
-    ModalBottomSheet(
+    GlassModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = AnsuColors.BackgroundElevated,
         contentColor = AnsuColors.TextPrimary,
     ) {
         Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {

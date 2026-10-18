@@ -2,6 +2,10 @@
 
 package com.ansu.anime.ui.appearance
 
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +26,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -83,6 +99,23 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
     val previewBackdrop = rememberBackdropState()
     val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
     val accent by container.appearancePrefs.accent.collectAsStateWithLifecycle()
+    val appFontName by container.appearancePrefs.appFontName.collectAsStateWithLifecycle()
+    val subtitleFontName by container.appearancePrefs.subtitleFontName.collectAsStateWithLifecycle()
+    val subtitleFontSeparate by container.appearancePrefs.subtitleFontSeparate.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    fun importFont(uri: Uri?, forSubtitles: Boolean) {
+        if (uri == null) return
+        scope.launch {
+            val name = withContext(Dispatchers.IO) { container.appearancePrefs.importFont(uri, forSubtitles) }
+            if (name == null) {
+                Toast.makeText(context, "That file is not a font. Pick a .ttf or .otf file.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    // Font files have no reliable MIME type across file managers, so every file is offered and checked after.
+    val appFontPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { importFont(it, false) }
+    val subtitleFontPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { importFont(it, true) }
 
     Scaffold(
         topBar = {
@@ -155,6 +188,38 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                         Box(
                             modifier = Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(AnsuColors.AccentSoft),
                         ) { Box(modifier = Modifier.fillMaxWidth(0.6f).fillMaxHeight().background(AnsuColors.Accent)) }
+                    }
+                }
+            }
+
+            GlassGroupLabel("Font")
+            GlassGroup {
+                GlassContentRow(
+                    title = "App Font",
+                    description = "Use your own font for all text in the app",
+                    showDivider = false,
+                ) {
+                    val name = appFontName
+                    if (name == null) {
+                        FontDropBox(label = "Add your font", hint = ".ttf or .otf", onClick = { appFontPicker.launch(arrayOf("*/*")) })
+                    } else {
+                        FontCard(name = name, onDelete = { container.appearancePrefs.clearFont(forSubtitles = false) })
+                    }
+                }
+                GlassToggleRow(
+                    title = "Use Different Font For Subtitle",
+                    description = "Subtitles get their own font instead of following the app font",
+                    checked = subtitleFontSeparate,
+                    onCheckedChange = { container.appearancePrefs.setSubtitleFontSeparate(it) },
+                )
+                if (subtitleFontSeparate) {
+                    GlassContentRow(title = "Subtitle Font", description = "Used for subtitles only") {
+                        val name = subtitleFontName
+                        if (name == null) {
+                            FontDropBox(label = "Add your subtitle font", hint = ".ttf or .otf", onClick = { subtitleFontPicker.launch(arrayOf("*/*")) })
+                        } else {
+                            FontCard(name = name, onDelete = { container.appearancePrefs.clearFont(forSubtitles = true) })
+                        }
                     }
                 }
             }
@@ -252,6 +317,64 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                     },
                 )
             }
+        }
+    }
+}
+
+/** The empty state: a dashed box to tap, with a plus and what to add. */
+@Composable
+private fun FontDropBox(label: String, hint: String, onClick: () -> Unit) {
+    val stroke = AnsuColors.TextTertiary
+    val corner = 16.dp
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(92.dp)
+            .clip(RoundedCornerShape(corner))
+            .clickable(onClick = onClick)
+            .drawBehind {
+                drawRoundRect(
+                    color = stroke,
+                    cornerRadius = CornerRadius(corner.toPx()),
+                    style = Stroke(
+                        width = 1.5.dp.toPx(),
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(10.dp.toPx(), 8.dp.toPx())),
+                    ),
+                )
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(Icons.Filled.Add, contentDescription = null, tint = AnsuColors.TextSecondary)
+        Text(label, style = MaterialTheme.typography.titleSmall, color = AnsuColors.TextPrimary)
+        Text(hint, style = MaterialTheme.typography.labelMedium, color = AnsuColors.TextSecondary)
+    }
+}
+
+/** A font that was added: its name, and a bin to remove it (which brings the box above back). */
+@Composable
+private fun FontCard(name: String, onDelete: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(AnsuColors.SurfaceGlassBase.copy(alpha = 0.5f))
+            .border(1.dp, AnsuColors.StrokeGlass, shape)
+            .padding(start = 16.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Shown in the font itself, once it has been applied.
+        Text(
+            text = name,
+            style = MaterialTheme.typography.titleSmall,
+            color = AnsuColors.TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onDelete) {
+            Icon(Icons.Filled.Delete, contentDescription = "Remove font", tint = AnsuColors.Error)
         }
     }
 }

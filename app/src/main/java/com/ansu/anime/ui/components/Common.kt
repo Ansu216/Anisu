@@ -95,6 +95,7 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import com.ansu.anime.core.model.SAnime
@@ -466,8 +467,15 @@ fun HeroCarousel(
     
     // Auto-rotate: the timer restarts after every settled page (so a manual swipe gets a full pause)
     // and never fires while a finger is on the pager.
+    // It also waits for the screen to be in front: a slide that started while a details page was opening over
+    // the home screen competed with that animation for frames.
+    val resumed = rememberIsResumed()
     LaunchedEffect(shown, pagerState.settledPage) {
         kotlinx.coroutines.delay(4000)
+        if (!resumed.value) {
+            androidx.compose.runtime.snapshotFlow { resumed.value }.first { it }
+            kotlinx.coroutines.delay(1500)
+        }
         if (!pagerState.isScrollInProgress && shown.size > 1) {
             val nextPage = pagerState.currentPage + 1
             pagerState.animateScrollToPage(nextPage, animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing))

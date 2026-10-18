@@ -145,6 +145,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     val subtitleHeight by container.playerPrefs.subtitleHeight.collectAsStateWithLifecycle()
     val episodeGrid by container.playerPrefs.episodeGrid.collectAsStateWithLifecycle()
     val pipEnabled by container.playerPrefs.pipEnabled.collectAsStateWithLifecycle()
+    val ambientMode by container.playerPrefs.ambientMode.collectAsStateWithLifecycle()
     val subtitleColor by container.playerPrefs.subtitleColor.collectAsStateWithLifecycle()
     val subtitleBgColor by container.playerPrefs.subtitleBgColor.collectAsStateWithLifecycle()
     val subtitleBgOpacity by container.playerPrefs.subtitleBgOpacity.collectAsStateWithLifecycle()
@@ -343,6 +344,11 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         seekSeconds = skipSeconds,
     )
 
+    // The video view of the portrait layout, read by the ambient glow for the colours under the video.
+    var portraitPlayerView by remember { mutableStateOf<PlayerView?>(null) }
+    val ambientOn = ambientMode && !isLandscape && !inPip
+    val ambientColors = rememberAmbientColors(portraitPlayerView, ambientOn, state.isPlaying, state.episode?.id)
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         if (isLandscape) {
             PlayerSurface(
@@ -387,6 +393,12 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 }
             }
         } else {
+            if (ambientOn) {
+                AmbientGlowBackdrop(
+                    colors = ambientColors,
+                    topInset = androidx.compose.foundation.layout.WindowInsets.statusBars.getTop(androidx.compose.ui.platform.LocalDensity.current),
+                )
+            }
             Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
                 Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
                 PlayerSurface(
@@ -408,6 +420,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     subtitleBgColor = subtitleBgColor,
                     subtitleBgOpacity = subtitleBgOpacity,
                     subtitleRoundedBg = subtitleRoundedBg,
+                    onPlayerView = { portraitPlayerView = it },
                 ) {
                     if (inPip) {
                         Unit
@@ -583,6 +596,8 @@ private fun PlayerSurface(
     panelWidth: Dp = 0.dp,
     /** 0 = panel closed, 1 = open. Read inside layout/graphics blocks only, so animating it never recomposes. */
     panelProgress: () -> Float = { 0f },
+    /** Called with the video view once it exists (the portrait layout reads colours from it for the ambient glow). */
+    onPlayerView: (PlayerView) -> Unit = {},
     overlay: @Composable BoxScope.() -> Unit,
 ) {
     Box(modifier = modifier.background(Color.Black)) {
@@ -620,6 +635,7 @@ private fun PlayerSurface(
                         this.resizeMode = resizeMode
                         // Subtitles are drawn by the SubtitleView below, so they can be delayed, resized and raised.
                         subtitleView?.visibility = View.GONE
+                        onPlayerView(this)
                     }
                 },
                 update = { it.resizeMode = resizeMode },
@@ -640,6 +656,7 @@ private fun PlayerSurface(
                     subtitleRoundedBg,
                 )
             }
+            val subtitleTypeface = com.ansu.anime.ui.theme.AnsuFont.subtitleTypeface
             AndroidView(
                 factory = { ctx -> SubtitleView(ctx) },
                 update = { view ->
@@ -656,7 +673,8 @@ private fun PlayerSurface(
                             0,
                             CaptionStyleCompat.EDGE_TYPE_OUTLINE,
                             0xFF000000.toInt(),
-                            null,
+                            // The font added in Appearance (null keeps the default subtitle font).
+                            subtitleTypeface,
                         ),
                     )
                     view.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSize.toFloat())

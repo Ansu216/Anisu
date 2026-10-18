@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.player
 
+import com.ansu.anime.ui.components.GlassModalBottomSheet
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -195,7 +196,7 @@ fun EpisodeListSheet(
     onDismiss: () -> Unit,
 ) {
     val episodes = remember(state.episodes) { state.episodes.sortedBy { it.episodeNumber } }
-    ModalBottomSheet(
+    GlassModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
@@ -244,7 +245,7 @@ fun TrackSheet(
     onOff: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
+    GlassModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
@@ -279,7 +280,7 @@ fun SettingsMenuSheet(
     actions: PlayerActions,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
+    GlassModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {

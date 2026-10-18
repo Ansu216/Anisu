@@ -111,8 +111,126 @@ class AppearancePrefs(context: Context) {
         prefs.edit().putString(KEY_MY_SPACE_TAB, name).apply()
     }
 
+    // ---- Fonts the person added (Appearance > Font) ----
+
+    private val appContext = context.applicationContext
+    private val fontDir get() = java.io.File(appContext.filesDir, "fonts").also { it.mkdirs() }
+
+    private val _appFontName = MutableStateFlow(storedFontName(KEY_APP_FONT_FILE, KEY_APP_FONT_NAME))
+
+    /** Display name of the font added for the whole app, or null when none was added. */
+    val appFontName: StateFlow<String?> = _appFontName
+
+    private val _subtitleFontName = MutableStateFlow(storedFontName(KEY_SUB_FONT_FILE, KEY_SUB_FONT_NAME))
+
+    /** Display name of the font added for subtitles only, or null when none was added. */
+    val subtitleFontName: StateFlow<String?> = _subtitleFontName
+
+    private val _subtitleFontSeparate = MutableStateFlow(prefs.getBoolean(KEY_SUB_FONT_SEPARATE, false))
+
+    /** True: subtitles use their own font. False: they follow the app font. */
+    val subtitleFontSeparate: StateFlow<Boolean> = _subtitleFontSeparate
+
+    fun setSubtitleFontSeparate(value: Boolean) {
+        _subtitleFontSeparate.value = value
+        prefs.edit().putBoolean(KEY_SUB_FONT_SEPARATE, value).apply()
+        applyFonts()
+    }
+
+    init {
+        applyFonts()
+    }
+
+    private fun storedFontName(fileKey: String, nameKey: String): String? {
+        val file = prefs.getString(fileKey, null)?.let { java.io.File(fontDir, it) }
+        return if (file != null && file.isFile) prefs.getString(nameKey, null) else null
+    }
+
+    private fun storedFontFile(fileKey: String): java.io.File? =
+        prefs.getString(fileKey, null)?.let { java.io.File(fontDir, it) }?.takeIf { it.isFile }
+
+    /** Hands the current font files to the theme (app text) and the player (subtitles). */
+    private fun applyFonts() {
+        val appFile = storedFontFile(KEY_APP_FONT_FILE)
+        val subtitleFile = if (_subtitleFontSeparate.value) storedFontFile(KEY_SUB_FONT_FILE) else appFile
+        com.ansu.anime.ui.theme.AnsuFont.apply(appFile, subtitleFile)
+    }
+
+    /**
+     * Copies the font the person picked into the app's private storage (the picked file may disappear, and the
+     * app needs a plain file path), then uses it. Returns the display name, or null when the file is not a font.
+     * Call off the main thread.
+     */
+    fun importFont(uri: android.net.Uri, forSubtitles: Boolean): String? {
+        val resolver = appContext.contentResolver
+        val displayName = runCatching {
+            resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) it.getString(0) else null
+            }
+        }.getOrNull()
+        val name = (displayName ?: "Custom font").substringBeforeLast('.').ifBlank { "Custom font" }
+        val fileKey = if (forSubtitles) KEY_SUB_FONT_FILE else KEY_APP_FONT_FILE
+        val fileName = "${if (forSubtitles) "subtitle" else "app"}_${System.currentTimeMillis()}.font"
+        val target = java.io.File(fontDir, fileName)
+        val copied = runCatching {
+            resolver.openInputStream(uri)?.use { input ->
+                target.outputStream().use { out ->
+                    // Fonts are a few hundred KB; anything near this size is not one.
+                    var total = 0L
+                    val buffer = ByteArray(16 * 1024)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        total += read
+                        if (total > MAX_FONT_BYTES) return@runCatching false
+                        out.write(buffer, 0, read)
+                    }
+                }
+                true
+            } ?: false
+        }.getOrDefault(false)
+        if (!copied || !looksLikeFont(target) || runCatching { android.graphics.Typeface.createFromFile(target) }.isFailure) {
+            target.delete()
+            return null
+        }
+        // The new file has a new name, so nothing keeps showing the old font from a cache.
+        storedFontFile(fileKey)?.delete()
+        prefs.edit()
+            .putString(fileKey, fileName)
+            .putString(if (forSubtitles) KEY_SUB_FONT_NAME else KEY_APP_FONT_NAME, name)
+            .apply()
+        if (forSubtitles) _subtitleFontName.value = name else _appFontName.value = name
+        applyFonts()
+        return name
+    }
+
+    /** Removes the added font; text goes back to the default font (or, for subtitles, the app font or default). */
+    fun clearFont(forSubtitles: Boolean) {
+        val fileKey = if (forSubtitles) KEY_SUB_FONT_FILE else KEY_APP_FONT_FILE
+        storedFontFile(fileKey)?.delete()
+        prefs.edit().remove(fileKey).remove(if (forSubtitles) KEY_SUB_FONT_NAME else KEY_APP_FONT_NAME).apply()
+        if (forSubtitles) _subtitleFontName.value = null else _appFontName.value = null
+        applyFonts()
+    }
+
+    /** TrueType, OpenType, TrueType collection or the old Apple 'true' signature: the first four bytes say. */
+    private fun looksLikeFont(file: java.io.File): Boolean {
+        val head = ByteArray(4)
+        val read = runCatching { file.inputStream().use { it.read(head) } }.getOrDefault(-1)
+        if (read < 4) return false
+        val tag = String(head, Charsets.ISO_8859_1)
+        return tag == "OTTO" || tag == "true" || tag == "ttcf" ||
+            (head[0] == 0.toByte() && head[1] == 1.toByte() && head[2] == 0.toByte() && head[3] == 0.toByte())
+    }
+
     companion object {
         private const val KEY_ACCENT = "accent_palette"
+        private const val KEY_APP_FONT_FILE = "app_font_file"
+        private const val KEY_APP_FONT_NAME = "app_font_name"
+        private const val KEY_SUB_FONT_FILE = "subtitle_font_file"
+        private const val KEY_SUB_FONT_NAME = "subtitle_font_name"
+        private const val KEY_SUB_FONT_SEPARATE = "subtitle_font_separate"
+        private const val MAX_FONT_BYTES = 25L * 1024 * 1024
         private const val KEY_SEARCH_GRID = "search_grid_layout"
         private const val KEY_MY_SPACE_TAB = "my_space_tab"
         private const val KEY_TITLE_LANGUAGE = "title_language"

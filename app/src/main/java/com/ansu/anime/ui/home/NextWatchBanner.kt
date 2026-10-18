@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,8 +37,11 @@ import coil.compose.AsyncImage
 import com.ansu.anime.core.haptics.softClickable
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.ui.components.ShelfHeader
+import com.ansu.anime.ui.components.posterTransitionOrigin
+import com.ansu.anime.ui.components.rememberIsResumed
 import com.ansu.anime.ui.theme.AnsuColors
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlin.math.abs
 
 /** How long a card rests before the banner slides on to the next one on its own. */
@@ -72,9 +76,15 @@ fun NextWatchBanner(
 
     // The timer restarts after every settled page, so a manual swipe gets a full rest, and it never fires
     // while a finger is on the banner.
+    // It also waits for the home screen to be in front, so a slide never starts while a details page opens over it.
+    val resumed = rememberIsResumed()
     LaunchedEffect(picks, pagerState.settledPage) {
         if (!loops) return@LaunchedEffect
         delay(AUTO_ADVANCE_MS)
+        if (!resumed.value) {
+            snapshotFlow { resumed.value }.first { it }
+            delay(1500)
+        }
         if (!pagerState.isScrollInProgress) {
             pagerState.animateScrollToPage(
                 pagerState.currentPage + 1,
@@ -121,6 +131,9 @@ private fun NextWatchCard(
                 scaleY = scale
                 alpha = 1f - 0.45f * distance
             }
+            // Tapping a card opens its details with black bars growing out of the card's top and bottom edges
+            // until the screen is covered (not the poster-window morph the other cards use).
+            .posterTransitionOrigin(posterUrl = pick.anime.bannerUrl ?: pick.anime.posterUrl, cornerRadius = 20.dp, bars = true)
             .clip(shape)
             .background(AnsuColors.BackgroundElevated)
             .softClickable(onClick = onClick),

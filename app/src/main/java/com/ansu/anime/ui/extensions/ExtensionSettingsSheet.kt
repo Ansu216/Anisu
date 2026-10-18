@@ -2,6 +2,8 @@
 
 package com.ansu.anime.ui.extensions
 
+import com.ansu.anime.ui.components.GlassAlertDialog
+import com.ansu.anime.ui.components.GlassModalBottomSheet
 import com.ansu.anime.core.haptics.Haptics
 import android.content.Context
 import androidx.compose.foundation.clickable
@@ -84,7 +86,7 @@ fun ExtensionSettingsSheet(source: AniyomiSourceAdapter, onDismiss: () -> Unit) 
     var tick by remember { mutableIntStateOf(0) }
     var editing by remember { mutableStateOf<Preference?>(null) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    GlassModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Text(
                 "${source.name} settings",
@@ -214,7 +216,7 @@ private fun PreferenceEditor(preference: Preference, onDismiss: () -> Unit, onCh
     when (preference) {
         is EditTextPreference -> {
             var text by remember { mutableStateOf(preference.text.orEmpty()) }
-            AlertDialog(
+            GlassAlertDialog(
                 onDismissRequest = onDismiss,
                 title = { Text(title) },
                 text = { OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth()) },
@@ -230,7 +232,7 @@ private fun PreferenceEditor(preference: Preference, onDismiss: () -> Unit, onCh
         is ListPreference -> {
             val entries = preference.entries?.map { it.toString() }.orEmpty()
             val values = preference.entryValues?.map { it.toString() }.orEmpty()
-            AlertDialog(
+            GlassAlertDialog(
                 onDismissRequest = onDismiss,
                 title = { Text(title) },
                 text = {
@@ -257,7 +259,7 @@ private fun PreferenceEditor(preference: Preference, onDismiss: () -> Unit, onCh
             val entries = preference.entries?.map { it.toString() }.orEmpty()
             val values = preference.entryValues?.map { it.toString() }.orEmpty()
             var selected by remember { mutableStateOf(preference.values.toSet()) }
-            AlertDialog(
+            GlassAlertDialog(
                 onDismissRequest = onDismiss,
                 title = { Text(title) },
                 text = {

@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.player
 
+import com.ansu.anime.ui.components.GlassModalBottomSheet
 import com.ansu.anime.core.haptics.Haptics
 import com.ansu.anime.core.haptics.softClickable
 import androidx.compose.foundation.background
@@ -556,7 +557,7 @@ fun SourceSelectSheet(
     onSelect: (PlayableSource) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    GlassModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
             // Header
             Row(

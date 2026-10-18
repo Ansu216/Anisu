@@ -63,6 +63,16 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putBoolean(KEY_PIP, value).apply()
     }
 
+    private val _ambientMode = MutableStateFlow(prefs.getBoolean(KEY_AMBIENT_MODE, true))
+
+    /** The portrait player glows under the video in the colours of what is playing. */
+    val ambientMode: StateFlow<Boolean> = _ambientMode
+
+    fun setAmbientMode(value: Boolean) {
+        _ambientMode.value = value
+        prefs.edit().putBoolean(KEY_AMBIENT_MODE, value).apply()
+    }
+
     private val _preferredQuality = MutableStateFlow(prefs.getInt(KEY_PREFERRED_QUALITY, DEFAULT_QUALITY).let { if (it in QUALITY_OPTIONS) it else DEFAULT_QUALITY })
 
     /** The resolution (1080, 720, 480 or 360) a stream is picked at when the show starts playing. */
@@ -233,8 +243,11 @@ class PlayerPrefs(context: Context) {
     }
 
     companion object {
+        private const val KEY_AMBIENT_MODE = "ambient_mode"
         val SKIP_OPTIONS = listOf(5, 10, 15)
-        val QUALITY_OPTIONS = listOf(1080, 720, 480, 360)
+        /** "Any": no resolution is aimed for; playback starts on the first stream in the chosen language that answers. */
+        const val QUALITY_ANY = 0
+        val QUALITY_OPTIONS = listOf(QUALITY_ANY, 1080, 720, 480, 360)
         const val DEFAULT_QUALITY = 1080
         const val LANGUAGE_SUB = "sub"
         const val LANGUAGE_DUB = "dub"

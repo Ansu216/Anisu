@@ -22,8 +22,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-10-18
+
 ### Added
 
+- **Your own font (Settings > Appearance > Font).** Tap "Add your font" and pick a .ttf or .otf file: all text in the
+  app switches to it, and the box turns into a card with the font's name and a bin to remove it again. Below it,
+  **Use Different Font For Subtitle** reveals a second box for a font used by subtitles only; with it off, subtitles
+  follow the app font. **Constraint:** the font is copied into the app's own storage, so deleting the original file
+  does not affect it; a file that is not a font is refused with a message. A font with a single weight shows
+  headings in the platform's synthetic bold.
+- **Ambient mode in the portrait player.** The area under the video glows in the colours of what is playing, like
+  YouTube's ambient mode, and the colours drift as the picture changes. It is read from the video a few times a
+  second (once while paused) and can be switched off under Settings > Playback > Portrait player > Ambient Mode.
+  **Constraint:** portrait only; if the phone refuses to hand the frames over (a protected stream) the glow stays off.
+- **Frosted glass menus and sheets.** The dropdown menu, every bottom sheet (episodes, sources, subtitles, audio,
+  player settings, search filters, comments, trailers, characters, extension settings) and the extension setting
+  dialogs now use the same translucent glass as the Continue Watching "Remove" card, with the screen behind blurred
+  on Android 12+ phones that allow blurring between windows. **Constraint:** on older phones, or with that
+  blur turned off in the system, they keep the translucent glass without the blur. The landscape side panels are unchanged.
+- **"Any" for Preferred Quality (Settings > Playback).** Asking for a particular resolution can mean waiting for the
+  source that has it. With **Any**, playback starts on the first stream in your chosen language (Sub or Dub) that
+  answers, with no wait for a better-ranked source or a higher resolution. A stream picked by hand for a show still
+  wins. **Constraint:** the language preference is kept; only the resolution is given up.
+- **"Your Next Watch" cards open their details with black bars.** Tapping a card now grows a black bar up out of its
+  top edge and another down out of its bottom edge; each also grows across the card, so the two meet in the middle and
+  the whole screen is black, and then the details page shows up out of the black. Going back plays it in reverse:
+  the page goes, the bars start from the full screen and pull in to the card's edges. **Constraint:** only these cards
+  use the bars; posters, list rows and the hero banner keep their window-grows-out-of-the-poster animation.
 - **Preferred stream: quality and language, in Settings > Playback.** A new "Preferred stream" group has **Preferred
   Quality** (1080p, 720p, 480p, 360p) and **Preferred Language** (Sub or Dub). When a show starts playing, the app now
   picks its stream by them instead of just taking the first one: the language first (the other one only when the show
@@ -79,6 +105,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Poster open and close animation no longer stutters now and then.** The details page used to receive its data
+  (artwork, AniList details, episode list; usually straight from the cache) in the middle of the animation, and each
+  arrival rebuilt the hero and the whole episode list in a frame that also had to move the window, so some opens were
+  smooth and some were not, depending on how fast the cache answered. The page now holds that data back until the
+  motion has finished and applies it in one go. Two smaller causes are fixed as well: the window's outline built a
+  new native path on every frame (it is reused now), and the home banners kept sliding on by themselves while a
+  details page was opening over them (they now wait until the home screen is in front again).
 - **The "Add extension" / "Update sources" card no longer flashes twice when it closes.** On the frame where the close
   started, the frosted scrim and the card were removed for a moment (the screen was checking whether the close
   animation was running, and it had not started yet) and then came back at full strength to animate out, which showed

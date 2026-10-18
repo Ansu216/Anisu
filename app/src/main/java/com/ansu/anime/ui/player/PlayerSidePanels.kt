@@ -1,5 +1,6 @@
 package com.ansu.anime.ui.player
 
+import com.ansu.anime.ui.components.GlassModalBottomSheet
 import com.ansu.anime.core.haptics.tickClickable
 import com.ansu.anime.core.haptics.Haptics
 import androidx.compose.animation.AnimatedVisibility
@@ -93,10 +94,9 @@ internal fun PlayerSidePanelFrame(
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     if (sheet) {
-        ModalBottomSheet(
+        GlassModalBottomSheet(
             onDismissRequest = onClose,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = PanelBackground,
             contentColor = Color.White,
         ) {
             Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.62f)) {

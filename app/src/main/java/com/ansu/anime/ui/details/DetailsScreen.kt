@@ -92,10 +92,17 @@ import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.components.GenreChip
 import com.ansu.anime.ui.components.PersonCard
 import com.ansu.anime.ui.components.PosterGlassLabel
+import com.ansu.anime.ui.components.GlassDropdownMenu
+import com.ansu.anime.ui.components.LocalPosterSettled
 import com.ansu.anime.ui.components.posterTransitionOrigin
 import com.ansu.anime.ui.components.StatItem
 import com.ansu.anime.ui.components.TitleLogo
 import com.ansu.anime.ui.theme.AnsuColors
+
+/** The last state the page showed, kept outside composition state so reading it never subscribes the page. */
+private class HeldState {
+    var value: DetailsUiState? = null
+}
 
 /**
  * Details page — a JJK-reference-style layout: banner hero with back button,
@@ -118,7 +125,14 @@ fun DetailsScreen(
         },
     )
     val anime by viewModel.anime.collectAsStateWithLifecycle()
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val liveState by viewModel.uiState.collectAsStateWithLifecycle()
+    // While the page is opening or closing, data arriving from the cache or the network is held back and applied
+    // in one go once the motion has finished: every arrival rebuilds the hero and the episode list, which inside a
+    // frame that is also moving the window is what made the animation stutter now and then. While held back this
+    // does not even read the live state, so the page is not recomposed at all.
+    val settled = LocalPosterSettled.current
+    val heldState = remember { HeldState() }
+    val state = if (settled || heldState.value == null) liveState.also { heldState.value = it } else heldState.value!!
     val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
     var expandSynopsis by remember { mutableStateOf(false) }
     var selectedPerson by remember { mutableStateOf<PersonDetail?>(null) }
@@ -627,7 +641,7 @@ private fun PlayLikeRow(
                         )
                     }
                 }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                GlassDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     ListStatus.ALL.forEach { status ->
                         DropdownMenuItem(
                             text = {

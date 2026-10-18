@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.details
 
+import com.ansu.anime.ui.components.GlassModalBottomSheet
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
@@ -148,7 +149,7 @@ fun TrailerSheet(trailer: Trailer, trailerRepository: TrailerRepository, onDismi
         if (found.isNotEmpty()) streams = found else useEmbedded = true
     }
     val stream = streams.getOrNull(streamIndex)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    GlassModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {

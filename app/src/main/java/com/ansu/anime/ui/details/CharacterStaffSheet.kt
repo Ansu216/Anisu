@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.details
 
+import com.ansu.anime.ui.components.GlassModalBottomSheet
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -59,7 +60,7 @@ fun CharacterStaffSheet(person: PersonDetail, onDismiss: () -> Unit) {
     val facts = blocks.filterIsInstance<BioBlock.Fact>()
     val paragraphs = blocks.filterIsInstance<BioBlock.Paragraph>()
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    GlassModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp).verticalScroll(rememberScrollState())) {
             Row {
                 AsyncImage(

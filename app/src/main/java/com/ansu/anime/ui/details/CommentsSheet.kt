@@ -1,5 +1,6 @@
 package com.ansu.anime.ui.details
 
+import com.ansu.anime.ui.components.GlassModalBottomSheet
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -76,7 +77,7 @@ fun CommentsSheet(container: AppContainer, mediaId: Int, mediaTitle: String, onD
     val signedIn by container.aniListRepository.isLoggedIn.collectAsStateWithLifecycle()
     var draft by rememberSaveable { mutableStateOf("") }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    GlassModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f).imePadding()) {
             val thread = state.thread
             Row(

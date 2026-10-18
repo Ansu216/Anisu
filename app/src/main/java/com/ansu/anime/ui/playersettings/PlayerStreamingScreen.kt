@@ -88,6 +88,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val volume by prefs.volumeGesture.collectAsStateWithLifecycle()
     val skipSeconds by prefs.skipSeconds.collectAsStateWithLifecycle()
     val pip by prefs.pipEnabled.collectAsStateWithLifecycle()
+    val ambient by prefs.ambientMode.collectAsStateWithLifecycle()
     val pauseScreen by prefs.pauseScreen.collectAsStateWithLifecycle()
     val preferredQuality by prefs.preferredQuality.collectAsStateWithLifecycle()
     val preferredLanguage by prefs.preferredLanguage.collectAsStateWithLifecycle()
@@ -163,14 +164,14 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
             GlassGroup {
                 GlassContentRow(
                     title = "Preferred Quality",
-                    description = "Playback starts on the closest stream to this resolution",
+                    description = "Playback starts on the closest stream to this resolution. Any starts the first stream that answers, in your language, so it begins sooner",
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                         PlayerPrefs.QUALITY_OPTIONS.forEach { height ->
                             FilterChip(
                                 selected = preferredQuality == height,
                                 onClick = { prefs.setPreferredQuality(height) },
-                                label = { Text("${height}p") },
+                                label = { Text(if (height == PlayerPrefs.QUALITY_ANY) "Any" else "${height}p") },
                             )
                         }
                     }
@@ -199,6 +200,17 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                     description = "Dim the video and show what you're watching when paused",
                     checked = pauseScreen,
                     onCheckedChange = prefs::setPauseScreen,
+                    showDivider = false,
+                )
+            }
+
+            GlassGroupLabel("Portrait player")
+            GlassGroup {
+                GlassToggleRow(
+                    title = "Ambient Mode",
+                    description = "The area under the video glows in the colours of what is playing",
+                    checked = ambient,
+                    onCheckedChange = prefs::setAmbientMode,
                     showDivider = false,
                 )
             }

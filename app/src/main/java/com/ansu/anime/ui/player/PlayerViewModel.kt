@@ -82,6 +82,8 @@ private fun PlayableSource.languageMiss(preferredLanguage: String): Int {
  * stream that names no resolution comes last.
  */
 private fun PlayableSource.qualityMiss(preferredHeight: Int): Int {
+    // "Any": every resolution is as good as another, so only language and the source order decide.
+    if (preferredHeight == com.ansu.anime.data.prefs.PlayerPrefs.QUALITY_ANY) return 0
     val height = heightOrNull() ?: return Int.MAX_VALUE
     return if (height <= preferredHeight) preferredHeight - height else 10_000 + (height - preferredHeight)
 }
@@ -377,6 +379,10 @@ class PlayerViewModel(
                     )
                 }
             }
+            // With quality on "Any", speed is the point: the first stream in the preferred language that answers
+            // starts playing, without waiting for a better-ranked source or a better resolution.
+            val anyQuality = playerPrefs?.preferredQuality?.value == com.ansu.anime.data.prefs.PlayerPrefs.QUALITY_ANY
+            val wantedLanguage = playerPrefs?.preferredLanguage?.value ?: com.ansu.anime.data.prefs.PlayerPrefs.LANGUAGE_SUB
             val onBatch: (List<PlayableSource>) -> Unit = { batch ->
                 val fresh = batch.filter { b -> b.url.isBlank() || collected.none { it.url == b.url } }
                 if (fresh.isNotEmpty()) {
@@ -390,7 +396,10 @@ class PlayerViewModel(
                         selectSource(fresh.first())
                     }
                     val rememberedId = remembered?.sourceId
-                    if (first && rememberedId != null && collected.any { it.sourceId == rememberedId }) {
+                    if (first && anyQuality && manualPick == null && collected.any { it.languageMiss(wantedLanguage) == 0 }) {
+                        diagnostics?.log(LogCategory.PLAYBACK, "Quality is Any: starting on the first stream in the preferred language")
+                        startNow()
+                    } else if (first && rememberedId != null && collected.any { it.sourceId == rememberedId }) {
                         diagnostics?.log(LogCategory.PLAYBACK, "Resuming with the source this show last played from")
                         startNow()
                     } else if (first && rememberedId != null && rememberedId in expectedSourceIds) {

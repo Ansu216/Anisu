@@ -127,7 +127,8 @@ val AnsuShapes = Shapes(
 @Composable
 fun AnsuTheme(content: @Composable () -> Unit) {
     val accent = AnsuColors.Accent
-    val family = rememberAnsuFontFamily()
+    // The font the person added in Appearance wins over the one shipped in assets.
+    val family = AnsuFont.appFamily ?: rememberAnsuFontFamily()
     MaterialTheme(
         colorScheme = remember(accent) { ansuColorScheme(accent) },
         typography = remember(family) { ansuTypography(family) },
