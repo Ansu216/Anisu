@@ -147,6 +147,24 @@ class AniListRepository(
     suspend fun getTopThisSeason(season: String, seasonYear: Int) =
         guarded("Loading this season's top picks", emptyList()) { api.getTopThisSeason(season, seasonYear) }
 
+    /** First page of several home rows in one request. Rows missing from the map failed to load. */
+    suspend fun getFeedFirstPages(feeds: List<AniListFeed>, perPage: Int): Map<AniListFeed, AniListMediaPage> =
+        guarded("Loading catalogues", emptyMap<AniListFeed, AniListMediaPage>()) { api.getFeedPages(feeds, perPage) }
+
+    /** Recent series and movie premieres in one request, each ordered and trimmed like [getNewReleases]. */
+    suspend fun getNewReleasesBoth(days: Long = 30, limit: Int = 7): Pair<List<AniListNewRelease>, List<AniListNewRelease>> {
+        val today = java.time.LocalDate.now()
+        val (a, m) = guarded("Loading new releases", emptyList<AniListNewRelease>() to emptyList<AniListNewRelease>(), quiet = true) {
+            api.getNewReleasesBatch(listOf("TV", "TV_SHORT", "ONA"), listOf("MOVIE"), today.minusDays(days), today, perPage = 25)
+        }
+        fun tidy(l: List<AniListNewRelease>) = l.sortedByDescending { it.releasedOn }.distinctBy { it.media.id }.take(limit)
+        return tidy(a) to tidy(m)
+    }
+
+    /** Recommendations for several shows in one request. */
+    suspend fun getRecommendationsFor(mediaIds: List<Int>): Map<Int, List<AniListMedia>> =
+        guarded("Loading recommendations", emptyMap<Int, List<AniListMedia>>(), quiet = true) { api.getRecommendationsBatch(mediaIds) }
+
     /** One page of a home-screen feed; null means the request failed (as opposed to an empty page). */
     suspend fun getFeedPage(feed: AniListFeed, page: Int, perPage: Int): AniListMediaPage? =
         guarded<AniListMediaPage?>("Loading ${feed.title}", null) { api.getMediaPage(page, perPage, feed.sort, feed.status, feed.formats) }

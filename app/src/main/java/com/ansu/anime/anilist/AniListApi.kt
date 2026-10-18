@@ -18,6 +18,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -275,6 +277,116 @@ class AniListApi(
         """.trimIndent()
         val data = execute(gql, mapOf("page" to page, "season" to season, "seasonYear" to seasonYear), cacheTtlMs = FEED_TTL_MS) ?: return emptyList()
         return data["Page"]?.jsonObject?.get("media")?.jsonArray.orEmpty().mapNotNull { it.jsonObject.toMedia() }
+    }
+
+    private fun feedArgs(feed: AniListFeed): String = buildList {
+        add("type: ANIME")
+        add("sort: ${feed.sort}")
+        feed.status?.let { add("status: $it") }
+        if (feed.formats.isNotEmpty()) add("format_in: [${feed.formats.joinToString()}]")
+        add("isAdult: false")
+        add("genre_not_in: [\"Hentai\"]")
+    }.joinToString(", ")
+
+    private fun newReleaseArgs(formats: List<String>, from: java.time.LocalDate, to: java.time.LocalDate): String {
+        fun fuzzy(d: java.time.LocalDate) = d.year * 10000 + d.monthValue * 100 + d.dayOfMonth
+        return listOf(
+            "type: ANIME",
+            "sort: [START_DATE_DESC, POPULARITY_DESC]",
+            "status_in: [RELEASING, FINISHED]",
+            "format_in: [${formats.joinToString()}]",
+            "startDate_greater: ${fuzzy(from.minusDays(1))}",
+            "startDate_lesser: ${fuzzy(to.plusDays(1))}",
+            "popularity_greater: 300",
+            "isAdult: false",
+            "genre_not_in: [\"Hentai\"]",
+        ).joinToString(", ")
+    }
+
+    private fun JsonObject.toMediaPage() = AniListMediaPage(
+        media = this["media"]?.jsonArray.orEmpty().mapNotNull { it.jsonObject.toMedia() },
+        hasNextPage = this["pageInfo"]?.jsonObject?.get("hasNextPage")?.jsonPrimitive?.content == "true",
+    )
+
+    private fun JsonObject.toNewReleases(): List<AniListNewRelease> =
+        this["media"]?.jsonArray.orEmpty().mapNotNull { node ->
+            val obj = node.jsonObject
+            val media = obj.toMedia() ?: return@mapNotNull null
+            val date = obj["startDate"]?.jsonObject
+            val y = date?.get("year")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+            val m = date?.get("month")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+            val d = date?.get("day")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+            if (y == null || m == null || d == null) return@mapNotNull null
+            val day = runCatching { java.time.LocalDate.of(y, m, d) }.getOrNull() ?: return@mapNotNull null
+            AniListNewRelease(media, day)
+        }
+
+    /**
+     * The first page of several home rows in ONE request (GraphQL aliases), instead of one request per row.
+     * Rows whose alias is missing from the answer are left out of the result. If AniList rejects the combined
+     * query (e.g. as too complex) the rows are fetched one by one, so a batch can never make Home worse.
+     */
+    suspend fun getFeedPages(feeds: List<AniListFeed>, perPage: Int): Map<AniListFeed, AniListMediaPage> {
+        if (feeds.isEmpty()) return emptyMap()
+        if (feeds.size == 1) return getMediaPage(1, perPage, feeds[0].sort, feeds[0].status, feeds[0].formats)
+            ?.let { mapOf(feeds[0] to it) }.orEmpty()
+        val fields = feeds.mapIndexed { i, feed ->
+            "f$i: Page(page: 1, perPage: ${'$'}perPage) { pageInfo { hasNextPage } media(${feedArgs(feed)}) { ...mediaFields } }"
+        }.joinToString("\n")
+        val gql = "query (${'$'}perPage: Int) {\n$fields\n}\n$MEDIA_FIELDS"
+        val data: JsonObject? = try {
+            execute(gql, mapOf("perPage" to perPage), cacheTtlMs = FEED_TTL_MS)
+        } catch (e: ApiException) {
+            if (e.kind != ApiErrorKind.BAD_REQUEST) throw e
+            return feeds.mapNotNull { f -> getMediaPage(1, perPage, f.sort, f.status, f.formats)?.let { f to it } }.toMap()
+        }
+        if (data == null) return emptyMap()
+        return feeds.mapIndexedNotNull { i, feed ->
+            (data["f$i"] as? JsonObject)?.let { feed to it.toMediaPage() }
+        }.toMap()
+    }
+
+    /** Series and movie premieres in ONE request; see [getNewReleases] for what each list holds. */
+    suspend fun getNewReleasesBatch(
+        seriesFormats: List<String>,
+        movieFormats: List<String>,
+        from: java.time.LocalDate,
+        to: java.time.LocalDate,
+        perPage: Int,
+    ): Pair<List<AniListNewRelease>, List<AniListNewRelease>> {
+        val gql = """
+            query (${'$'}perPage: Int) {
+              series: Page(page: 1, perPage: ${'$'}perPage) { media(${newReleaseArgs(seriesFormats, from, to)}) { ...mediaFields startDate { year month day } } }
+              movies: Page(page: 1, perPage: ${'$'}perPage) { media(${newReleaseArgs(movieFormats, from, to)}) { ...mediaFields startDate { year month day } } }
+            }
+            $MEDIA_FIELDS
+        """.trimIndent()
+        val data = execute(gql, mapOf("perPage" to perPage), cacheTtlMs = FEED_TTL_MS) ?: return emptyList<AniListNewRelease>() to emptyList()
+        return ((data["series"] as? JsonObject)?.toNewReleases().orEmpty()) to ((data["movies"] as? JsonObject)?.toNewReleases().orEmpty())
+    }
+
+    /** Recommendations for several shows in ONE request (an aliased `Media` per id). Missing ids map to an empty list. */
+    suspend fun getRecommendationsBatch(mediaIds: List<Int>, perPage: Int = 6): Map<Int, List<AniListMedia>> {
+        if (mediaIds.isEmpty()) return emptyMap()
+        val fields = mediaIds.mapIndexed { i, id ->
+            "r$i: Media(id: $id, type: ANIME) { recommendations(perPage: ${'$'}perPage, sort: RATING_DESC) { nodes { rating mediaRecommendation { ...mediaFields } } } }"
+        }.joinToString("\n")
+        val gql = "query (${'$'}perPage: Int) {\n$fields\n}\n$MEDIA_FIELDS"
+        val data: JsonObject? = try {
+            execute(gql, mapOf("perPage" to perPage), cacheTtlMs = DETAILS_TTL_MS)
+        } catch (e: ApiException) {
+            if (e.kind != ApiErrorKind.BAD_REQUEST) throw e
+            return mediaIds.associateWith { getRecommendations(it, perPage) }
+        }
+        if (data == null) return emptyMap()
+        return mediaIds.mapIndexed { i, id ->
+            id to (data["r$i"] as? JsonObject)?.get("recommendations")?.jsonObject?.get("nodes")?.jsonArray.orEmpty()
+                .mapNotNull { node ->
+                    val obj = node.jsonObject
+                    val rating = obj["rating"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
+                    if (rating < 0) null else obj["mediaRecommendation"]?.jsonObject?.toMedia()
+                }
+        }.toMap()
     }
 
     /**
@@ -796,22 +908,64 @@ class AniListApi(
         executeWithRetry(payload, idempotent)
     }
 
+    /**
+     * AniList allows roughly 90 requests a minute (and sometimes only 30 while it is degraded). The home
+     * screen fires many catalogue requests at once, so every request goes through this gate: at most
+     * [MAX_CONCURRENT_REQUESTS] in flight, started at least [MIN_REQUEST_GAP_MS] apart, and all of them
+     * pause together while AniList has asked us to back off. That keeps us under the limit instead of
+     * hitting HTTP 429 and showing an "overloaded" message.
+     */
+    private val requestPermits = Semaphore(MAX_CONCURRENT_REQUESTS)
+    private val gateLock = Mutex()
+    private var nextSlotAt = 0L
+
+    @Volatile
+    private var blockedUntil = 0L
+
+    /** Waits for this request's turn: out of any rate-limit cooldown, and spaced from the previous start. */
+    private suspend fun awaitSlot() {
+        while (true) {
+            val cooldown = blockedUntil - System.currentTimeMillis()
+            if (cooldown <= 0L) break
+            delay(cooldown)
+        }
+        val wait = gateLock.withLock {
+            val now = System.currentTimeMillis()
+            val start = maxOf(now, nextSlotAt)
+            nextSlotAt = start + MIN_REQUEST_GAP_MS
+            start - now
+        }
+        if (wait > 0L) delay(wait)
+    }
+
+    private fun startCooldown(seconds: Long) {
+        val until = System.currentTimeMillis() + seconds * 1000L
+        if (until > blockedUntil) blockedUntil = until
+    }
+
     private suspend fun executeWithRetry(payload: String, idempotent: Boolean): JsonObject {
-        for (attempt in 1..MAX_ATTEMPTS) {
+        for (attempt in 1..MAX_RATE_LIMIT_ATTEMPTS) {
             try {
-                return executeOnce(payload)
+                return requestPermits.withPermit {
+                    awaitSlot()
+                    executeOnce(payload)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 val error = e.toApiException()
-                val mayRepeat = idempotent || error.kind == ApiErrorKind.RATE_LIMITED
-                if (attempt == MAX_ATTEMPTS || !mayRepeat || !error.isRetryable()) throw error
-                val waitMs = if (error.kind == ApiErrorKind.RATE_LIMITED) {
-                    (error.retryAfterSeconds ?: ApiException.DEFAULT_RETRY_AFTER_SECONDS) * 1000L
+                val rateLimited = error.kind == ApiErrorKind.RATE_LIMITED
+                val mayRepeat = idempotent || rateLimited
+                val lastAttempt = attempt >= (if (rateLimited) MAX_RATE_LIMIT_ATTEMPTS else MAX_ATTEMPTS)
+                if (lastAttempt || !mayRepeat || !error.isRetryable()) throw error
+                if (rateLimited) {
+                    // Every other request waits too, so the retries do not pile onto the same limit.
+                    val seconds = (error.retryAfterSeconds ?: ApiException.DEFAULT_RETRY_AFTER_SECONDS)
+                        .coerceAtLeast(1L) + 1L
+                    startCooldown(seconds)
                 } else {
-                    RETRY_BACKOFF_MS * attempt
+                    delay(RETRY_BACKOFF_MS * attempt)
                 }
-                delay(waitMs)
             }
         }
         throw ApiException(ApiErrorKind.UNKNOWN)
@@ -1054,6 +1208,9 @@ class AniListApi(
             return if (kind != null && relation != "Recap") "$relation \u00b7 $kind" else relation
         }
         private const val MAX_ATTEMPTS = 3
+        private const val MAX_RATE_LIMIT_ATTEMPTS = 5
+        private const val MAX_CONCURRENT_REQUESTS = 2
+        private const val MIN_REQUEST_GAP_MS = 350L
         private const val RETRY_BACKOFF_MS = 400L
 
         private const val MEDIA_FIELDS = """

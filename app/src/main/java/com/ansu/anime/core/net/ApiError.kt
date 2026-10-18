@@ -72,7 +72,7 @@ class ApiException(
 
     companion object {
         const val DEFAULT_RETRY_AFTER_SECONDS = 2L
-        const val MAX_AUTO_WAIT_SECONDS = 10L
+        const val MAX_AUTO_WAIT_SECONDS = 30L
     }
 }
 

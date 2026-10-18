@@ -43,7 +43,8 @@ class ApiErrorHandler(private val diagnostics: Diagnostics? = null) {
     @Synchronized
     private fun shouldPublish(kind: ApiErrorKind): Boolean {
         val now = SystemClock.elapsedRealtime()
-        if (kind == lastKind && now - lastAt < REPEAT_WINDOW_MS) return false
+        val window = if (kind == ApiErrorKind.RATE_LIMITED) RATE_LIMIT_REPEAT_WINDOW_MS else REPEAT_WINDOW_MS
+        if (kind == lastKind && now - lastAt < window) return false
         lastKind = kind
         lastAt = now
         return true
@@ -52,5 +53,6 @@ class ApiErrorHandler(private val diagnostics: Diagnostics? = null) {
     private companion object {
         const val TAG = "ApiErrorHandler"
         const val REPEAT_WINDOW_MS = 10_000L
+        const val RATE_LIMIT_REPEAT_WINDOW_MS = 60_000L
     }
 }

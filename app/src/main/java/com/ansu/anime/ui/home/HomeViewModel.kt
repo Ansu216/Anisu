@@ -14,8 +14,6 @@ import com.ansu.anime.data.repository.LocalListRepository
 import com.ansu.anime.data.repository.toSAnime
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +29,9 @@ import java.time.LocalDate
 
 /** How many titles each endless row fetches per page. */
 private const val FEED_PAGE_SIZE = 10
+
+/** How many rows the first prefetch request carries; the rest follow in a second one. */
+private const val PREFETCH_CHUNK = 4
 
 /** Paging state of one endless catalogue row. */
 data class FeedState(
@@ -135,9 +136,9 @@ class HomeViewModel(
 
     private suspend fun buildPicks(seeds: List<PickSeed>): List<WatchPick> {
         if (seeds.isEmpty()) return emptyList()
-        val perSeed = coroutineScope {
-            seeds.map { seed -> async { seed to aniListRepository.getRecommendations(seed.id) } }.awaitAll()
-        }
+        // One request for every seed's recommendations, not one per seed.
+        val byId = aniListRepository.getRecommendationsFor(seeds.map { it.id })
+        val perSeed = seeds.map { seed -> seed to byId[seed.id].orEmpty() }
         val seen = seeds.map { it.id }.toMutableSet()
         val picks = mutableListOf<WatchPick>()
         // One suggestion from each show in turn, so a single favourite cannot fill the whole banner.
@@ -176,21 +177,54 @@ class HomeViewModel(
                 it.copy(isLoading = true, error = null, feeds = AniListFeed.entries.map { f -> FeedState(f) })
             }
 
-            // The first Trending page and the two "new releases" rows are independent network calls, so
-            // they are fetched in parallel. The other rows load lazily, when they first scroll into view.
-            val newAnime = async { aniListRepository.getNewReleases(listOf("TV", "TV_SHORT", "ONA")) }
-            val newMovies = async { aniListRepository.getNewReleases(listOf("MOVIE")) }
-            val trending = loadMore(AniListFeed.TRENDING_NOW)
-
-            val anime = newAnime.await()
-            val movies = newMovies.await()
-            trending?.join()
+            // Trending's first page and both "new releases" rows are one request each (not one per row);
+            // every other row is then prefetched in a few combined requests instead of one per row.
+            val releases = async { aniListRepository.getNewReleasesBoth() }
+            val first = firstPages(listOf(AniListFeed.TRENDING_NOW))
+            val (anime, movies) = releases.await()
+            first.join()
             _uiState.update {
                 it.copy(
                     isLoading = false,
                     newAnime = anime.map { r -> r.toPick() },
                     newMovies = movies.map { r -> r.toPick() },
                 )
+            }
+            firstPages(AniListFeed.entries.filter { it != AniListFeed.TRENDING_NOW }.take(PREFETCH_CHUNK))
+                .join()
+            firstPages(AniListFeed.entries.filter { it != AniListFeed.TRENDING_NOW }.drop(PREFETCH_CHUNK))
+        }
+    }
+
+    /**
+     * Loads the first page of [feeds] with one combined request and fills their rows. The rows read as loading
+     * meanwhile, so a shelf scrolling into view does not start its own request; a row the batch did not return is
+     * marked failed, which lets the shelf load it alone.
+     */
+    private fun firstPages(feeds: List<AniListFeed>): Job {
+        val targets = feeds.filter { f -> _uiState.value.feed(f).let { !it.isLoading && !it.hasLoaded } }
+        if (targets.isEmpty()) return viewModelScope.launch { }
+        _uiState.update { state -> targets.fold(state) { acc, f -> acc.withFeed(f) { it.copy(isLoading = true, loadFailed = false) } } }
+        return viewModelScope.launch {
+            val pages = aniListRepository.getFeedFirstPages(targets, FEED_PAGE_SIZE)
+            _uiState.update { state ->
+                targets.fold(state) { acc, f ->
+                    val result = pages[f]
+                    acc.withFeed(f) { row ->
+                        if (result == null) {
+                            row.copy(isLoading = false, loadFailed = true)
+                        } else {
+                            row.copy(
+                                items = result.media.map { it.toSAnime() }.distinctBy { it.id },
+                                nextPage = 2,
+                                hasNextPage = result.hasNextPage,
+                                isLoading = false,
+                                hasLoaded = true,
+                                loadFailed = false,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
