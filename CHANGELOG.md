@@ -24,15 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **"Next Up" Continue Watching cards.** The cards now follow the reference tile: the show name and episode are written over the
-  picture. While an episode is still going the card shows how much of it is left (for example "12m left") with the
-  usual progress bar. Once an episode has 30 seconds or less to go, the card switches to **Next Up**: it shows the next
-  episode's number, name and thumbnail with a "Next Up" badge, and a tap starts that episode from the beginning. When the
-  next episode has not aired yet, the card shows "Airs in N days", and for the last 24 hours a live HH:MM:SS countdown;
-  a tap opens the show's page, since there is nothing to play yet. A show that is over with nothing scheduled reads
-  "Caught up". The air time comes from AniList's next-airing data (cached for five minutes) and the episode name and
-  thumbnail from the existing episode-details lookup; if there is no episode thumbnail (or it fails to load) the show's horizontal banner is used. **Constraint:** movies only show the time left, and a card keeps its
-  old look until the lookup answers, so it never flickers or shows a wrong episode when offline.
+- **"Next Up" Continue Watching cards.** The card keeps its layout (title and episode under the picture) and gains a glass
+  chip in the picture's top-right corner. While an episode is still going the chip shows the time left (for example
+  "12m left") and the progress bar stays. Once an episode has 30 seconds or less to go, the card switches to **Next Up**:
+  the chip reads "Next Up", the picture is the next episode's thumbnail (the show's horizontal banner when there is none
+  or it fails to load), the line under the title names the next episode, and a tap starts it from the beginning. When the
+  next episode has not aired yet, the chip shows "Airs in N days", and for the last 24 hours a live HH:MM:SS countdown;
+  a tap opens the show's page. The air time comes from AniList's next-airing data (cached for five minutes), the episode
+  thumbnail from the existing episode-details lookup. **Constraint:** movies show only the time left, and a card keeps
+  its old look until the lookup answers, so it never flickers or shows a wrong episode when offline.
 - **Episode downloads, with every subtitle.** Each episode row on a show's page has a download icon (an arrow, a
   progress ring while it downloads, a tick when saved). The stream is picked the way the player picks it (Preferred
   quality and language, source priority). An HLS or DASH stream keeps one video quality plus every audio and subtitle

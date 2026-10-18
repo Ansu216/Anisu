@@ -319,7 +319,7 @@ fun ContinueWatchingThumbnail(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = if (overlayCard) 0.85f else 0.75f)))),
+                .background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)))),
         )
         if (!overlayCard) {
             Icon(
@@ -330,15 +330,16 @@ fun ContinueWatchingThumbnail(
             )
         }
 
-        // Badge, top right: only for the "next episode" and "coming soon" cards.
-        val badge = when (info) {
+        // Glass chip, top right: "Next Up", the air countdown, or the time left in the episode.
+        val chipText: String? = when (info) {
             is ResumeCardInfo.NextUp -> "Next Up"
-            is ResumeCardInfo.Countdown -> "Coming Soon"
+            is ResumeCardInfo.Countdown -> rememberAirText(info.airAtMs)
+            is ResumeCardInfo.Remaining -> formatTimeLeft(info.secondsLeft)
             else -> null
         }
-        if (badge != null) {
+        if (chipText != null) {
             Text(
-                text = badge,
+                text = chipText,
                 color = AnsuColors.TextPrimary,
                 fontSize = 11.sp * scale,
                 fontWeight = FontWeight.Bold,
@@ -346,39 +347,10 @@ fun ContinueWatchingThumbnail(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(8.dp * scale)
-                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(10.dp * scale))
+                    .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(10.dp * scale))
+                    .border(1.dp * scale, Color.White.copy(alpha = 0.22f), RoundedCornerShape(10.dp * scale))
                     .padding(horizontal = 10.dp * scale, vertical = 5.dp * scale),
             )
-        }
-
-        // Text over the picture: small line, show name, then the episode name / time left / air countdown.
-        val numberText = when (info) {
-            is ResumeCardInfo.NextUp -> "E${info.episodeNumber.formatEpisodeNumber()}"
-            is ResumeCardInfo.Countdown -> "E${info.episodeNumber.formatEpisodeNumber()}"
-            is ResumeCardInfo.Remaining -> if (entry.isMovie) null else "E${entry.episodeNumber.formatEpisodeNumber()}"
-            else -> null
-        }
-        val detailText: String? = when (info) {
-            is ResumeCardInfo.NextUp -> info.title?.takeIf { it.isNotBlank() } ?: "Episode ${info.episodeNumber.formatEpisodeNumber()}"
-            is ResumeCardInfo.Countdown -> rememberAirText(info.airAtMs)
-            is ResumeCardInfo.Remaining -> formatTimeLeft(info.secondsLeft)
-            ResumeCardInfo.CaughtUp -> "Caught up"
-            null -> null
-        }
-        if (info != null) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 12.dp * scale, end = 12.dp * scale, bottom = 10.dp * scale),
-            ) {
-                if (numberText != null) {
-                    Text(numberText, color = AnsuColors.TextPrimary.copy(alpha = 0.9f), fontSize = 11.sp * scale, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                }
-                Text(entry.title, color = AnsuColors.TextPrimary, fontSize = 15.sp * scale, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (detailText != null) {
-                    Text(detailText, color = AnsuColors.TextPrimary.copy(alpha = 0.7f), fontSize = 12.sp * scale, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
         }
 
         // The burned-in progress bar only makes sense while the episode is still going.
@@ -452,23 +424,26 @@ fun ContinueWatchingCard(
                 .clip(RoundedCornerShape(14.dp))
                 .onGloballyPositioned { coords.value = it },
         )
-        // With info, the names are written over the picture; the plain card keeps them underneath.
-        if (info == null) {
-            Text(
-                text = entry.title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = AnsuColors.TextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 6.dp),
-            )
-            if (!entry.isMovie) {
-                Text(
-                    text = "Episode ${entry.episodeNumber.formatEpisodeNumber()}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = AnsuColors.TextTertiary,
-                )
+        Text(
+            text = entry.title,
+            style = MaterialTheme.typography.bodyMedium,
+            color = AnsuColors.TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        if (!entry.isMovie) {
+            // A Next Up / countdown card names the episode it is about; the others the one being watched.
+            val shownEpisode = when (info) {
+                is ResumeCardInfo.NextUp -> info.episodeNumber
+                is ResumeCardInfo.Countdown -> info.episodeNumber
+                else -> entry.episodeNumber
             }
+            Text(
+                text = "Episode ${shownEpisode.formatEpisodeNumber()}",
+                style = MaterialTheme.typography.labelSmall,
+                color = AnsuColors.TextTertiary,
+            )
         }
     }
 }
