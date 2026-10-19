@@ -60,7 +60,13 @@ fun DownloadsScreen(container: AppContainer, navController: NavHostController) {
         containerColor = AnsuColors.Background,
         topBar = {
             TopAppBar(
-                title = {},
+                title = {
+                    Text(
+                        text = "Your downloads",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = AnsuColors.TextPrimary,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -71,16 +77,10 @@ fun DownloadsScreen(container: AppContainer, navController: NavHostController) {
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             Text(
-                text = "Your downloads",
-                style = MaterialTheme.typography.displayLarge,
-                color = AnsuColors.TextPrimary,
-                modifier = Modifier.padding(start = 20.dp, top = 8.dp),
-            )
-            Text(
                 text = "Saved on this device with every subtitle the source offers. They play without a connection.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = AnsuColors.TextSecondary,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp),
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
             )
             if (items.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 48.dp), contentAlignment = Alignment.TopCenter) {

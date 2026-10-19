@@ -170,21 +170,34 @@ fun SearchScreen(
     val gridState = session.gridState
     val listState = session.listState
     // With no text and no filters the screen shows trending anime instead of an empty prompt.
-    val isTrending = query.trim().length < 2 && !filters.isActive
+    // The sources a search can be limited to: every installed, switched-on source. A chosen source that has been
+    // switched off or removed since falls back to "All".
+    val installedExtensions by container.extensionManager.extensions.collectAsStateWithLifecycle()
+    val disabledSources by container.extensionManager.disabledSourceIds.collectAsStateWithLifecycle()
+    val searchableSources = remember(installedExtensions, disabledSources) {
+        container.extensionManager.allSources().filter { it.id != com.ansu.anime.extension.BUILT_IN_SOURCE_ID }
+    }
+    val savedSource by container.appearancePrefs.searchSource.collectAsStateWithLifecycle()
+    val sourceId = savedSource?.takeIf { id -> searchableSources.any { it.id == id } }
+    val isTrending = query.trim().length < 2 && !filters.isActive && sourceId == null
 
     // Restarts on every keystroke or filter change, which cancels the previous search: no stale
     // results. Text shorter than two characters counts as no text; with no text and no filters
     // the query resolves to AniList's trending list (30 titles per page).
-    LaunchedEffect(query, filters, retryTick, titleLanguage) {
+    LaunchedEffect(query, filters, retryTick, titleLanguage, sourceId) {
         val text = query.trim().takeIf { it.length >= 2 }.orEmpty()
-        val key = Triple(text, filters, titleLanguage)
+        val key = listOf(text, filters, titleLanguage, sourceId)
         // Coming back to the same search (after a details page, say): keep the results and the scroll position.
         if (retryTick == 0 && session.loadedKey == key) return@LaunchedEffect
         if (text.isNotEmpty()) delay(400) // debounce
         isLoading = true
         failed = false
         moreFailed = false
-        val result = container.catalogRepository.search(text, filters, 1)
+        val result = if (sourceId != null) {
+            container.catalogRepository.searchInSource(sourceId, text, 1)
+        } else {
+            container.catalogRepository.search(text, filters, 1)
+        }
         results = result?.items.orEmpty().distinctBy { it.resultKey() }
         session.remember(results)
         hasNext = result?.hasNextPage == true
@@ -192,6 +205,7 @@ fun SearchScreen(
         session.loadedKey = if (result == null) null else key
         activeQuery = text
         activeFilters = filters
+        session.activeSourceId = sourceId
         page = 1
         isLoading = false
         gridState.scrollToItem(0)
@@ -216,7 +230,12 @@ fun SearchScreen(
         if (!nearEnd || !hasNext || isLoading || moreFailed) return@LaunchedEffect
         isLoadingMore = true
         try {
-            val next = container.catalogRepository.search(activeQuery, activeFilters, page + 1)
+            val pagedSource = session.activeSourceId
+            val next = if (pagedSource != null) {
+                container.catalogRepository.searchInSource(pagedSource, activeQuery, page + 1)
+            } else {
+                container.catalogRepository.search(activeQuery, activeFilters, page + 1)
+            }
             if (next == null) {
                 moreFailed = true
             } else {
@@ -298,7 +317,22 @@ fun SearchScreen(
         ) {
           // Filter chips and results sit under the bar row, which is drawn last so the panel can slide beneath it.
           Column(modifier = Modifier.fillMaxSize().padding(top = SearchBarRowHeight)) {
-            val chips = activeFilterChips(filters)
+            // The filter sheet's options are AniList's, so they are not offered while a single source is searched.
+            val chips = if (sourceId == null) activeFilterChips(filters) else emptyList()
+            if (sourceId != null) {
+                // The chosen source stays visible under the bar; its cross switches the search back to everything.
+                LazyRow(
+                    modifier = Modifier.padding(bottom = 6.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    item {
+                        val name = searchableSources.firstOrNull { it.id == sourceId }?.name.orEmpty()
+                        RemovableChip(label = "Source: $name", onRemove = { container.appearancePrefs.setSearchSource(null) })
+                    }
+                }
+            }
             if (chips.isNotEmpty()) {
                 LazyRow(
                     modifier = Modifier.padding(bottom = 6.dp),
@@ -457,8 +491,16 @@ fun SearchScreen(
     if (showFilters) {
         SearchFilterSheet(
             filters = filters,
-            onApply = {
-                filters = it
+            sources = searchableSources.let { all ->
+                val sameName = all.groupingBy { it.name }.eachCount()
+                all.map { source ->
+                    source.id to if ((sameName[source.name] ?: 0) > 1 && source.lang.isNotBlank()) "${source.name} (${source.lang})" else source.name
+                }
+            },
+            sourceId = sourceId,
+            onApply = { newFilters, newSource ->
+                filters = newFilters
+                container.appearancePrefs.setSearchSource(newSource)
                 showFilters = false
             },
             onDismiss = { showFilters = false },

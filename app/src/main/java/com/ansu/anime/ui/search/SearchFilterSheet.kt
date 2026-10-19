@@ -155,12 +155,16 @@ private fun <T> Set<T>.toggled(value: T): Set<T> = if (value in this) this - val
 @Composable
 fun SearchFilterSheet(
     filters: AniListSearchFilters,
-    onApply: (AniListSearchFilters) -> Unit,
+    /** Installed, switched-on sources (id to name) the search can be limited to; empty hides that section. */
+    sources: List<Pair<Long, String>>,
+    sourceId: Long?,
+    onApply: (AniListSearchFilters, Long?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     var draft by remember { mutableStateOf(filters) }
+    var draftSource by remember { mutableStateOf(sourceId) }
     val currentYear = remember { java.time.Year.now().value }
 
     GlassModalBottomSheet(
@@ -180,8 +184,8 @@ fun SearchFilterSheet(
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(
-                    onClick = { draft = AniListSearchFilters() },
-                    enabled = draft.isActive,
+                    onClick = { draft = AniListSearchFilters(); draftSource = null },
+                    enabled = draft.isActive || draftSource != null,
                     colors = ButtonDefaults.textButtonColors(contentColor = AnsuColors.Accent),
                 ) {
                     Text("Reset")
@@ -194,6 +198,19 @@ fun SearchFilterSheet(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp),
             ) {
+                if (sources.isNotEmpty()) {
+                    // Off by default: searching one source also matches each of its titles to AniList, which the
+                    // normal search never does. The choice is remembered once it has been made.
+                    FilterSection(title = "Search in source") {
+                        ChipFlow {
+                            OptionChip("All", selected = draftSource == null) { draftSource = null }
+                            sources.forEach { (id, name) ->
+                                OptionChip(name, selected = draftSource == id) { draftSource = id }
+                            }
+                        }
+                    }
+                }
+
                 FilterSection(title = "Sort by") {
                     ChipFlow {
                         SearchFilterOptions.sorts.forEach { (label, value) ->
@@ -267,7 +284,7 @@ fun SearchFilterSheet(
 
             Box(modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
                 Button(
-                    onClick = { scope.launch { sheetState.hide(); onApply(draft) } },
+                    onClick = { scope.launch { sheetState.hide(); onApply(draft, draftSource) } },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
                     shape = RoundedCornerShape(25.dp),
@@ -316,7 +333,7 @@ private fun ChipFlow(content: @Composable () -> Unit) {
 
 /** Selected chips are white with dark text and the rest are dark, like the episode-group chips. */
 @Composable
-private fun OptionChip(label: String, selected: Boolean, onClick: () -> Unit) {
+internal fun OptionChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(20.dp)
     Box(
         modifier = Modifier

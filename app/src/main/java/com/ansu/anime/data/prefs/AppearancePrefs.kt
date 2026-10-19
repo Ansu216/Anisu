@@ -101,6 +101,16 @@ class AppearancePrefs(context: Context) {
         prefs.edit().putBoolean(KEY_SEARCH_GRID, value).apply()
     }
 
+    private val _searchSource = MutableStateFlow(prefs.getLong(KEY_SEARCH_SOURCE, NO_SOURCE).takeIf { it != NO_SOURCE })
+
+    /** The source Search is limited to (chosen in the filter sheet); null = off, the normal search. Kept across restarts. */
+    val searchSource: StateFlow<Long?> = _searchSource
+
+    fun setSearchSource(id: Long?) {
+        _searchSource.value = id
+        prefs.edit().putLong(KEY_SEARCH_SOURCE, id ?: NO_SOURCE).apply()
+    }
+
     private val _mySpaceTab = MutableStateFlow(prefs.getString(KEY_MY_SPACE_TAB, null) ?: "Watching")
 
     /** Name of the My Space list chip that was last open. */
@@ -232,6 +242,8 @@ class AppearancePrefs(context: Context) {
         private const val KEY_SUB_FONT_SEPARATE = "subtitle_font_separate"
         private const val MAX_FONT_BYTES = 25L * 1024 * 1024
         private const val KEY_SEARCH_GRID = "search_grid_layout"
+        private const val KEY_SEARCH_SOURCE = "search_source_id"
+        private const val NO_SOURCE = Long.MIN_VALUE
         private const val KEY_MY_SPACE_TAB = "my_space_tab"
         private const val KEY_TITLE_LANGUAGE = "title_language"
 

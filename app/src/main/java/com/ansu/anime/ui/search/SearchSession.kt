@@ -24,6 +24,7 @@ class SearchSession {
     /** The query and filters that produced [results]; "load more" pages through those. */
     var activeQuery by mutableStateOf("")
     var activeFilters by mutableStateOf(AniListSearchFilters())
+    var activeSourceId by mutableStateOf<Long?>(null)
     var page by mutableIntStateOf(1)
     var hasNext by mutableStateOf(false)
 

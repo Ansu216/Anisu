@@ -318,7 +318,12 @@ class DownloadsRepository(
         // Every subtitle file the source lists, saved before the video so they are there when it finishes.
         // A slow subtitle host must not hold the video back: whatever could not be fetched in time is skipped.
         onStage("Saving subtitles…")
-        val subtitles = withTimeoutOrNull(SUBTITLE_TIMEOUT_MS) { downloadSubtitles(stub.id, video) } ?: emptyList()
+        val savedSubtitles = java.util.Collections.synchronizedList(mutableListOf<DownloadedSubtitle>())
+        withTimeoutOrNull(SUBTITLE_TIMEOUT_MS) { downloadSubtitles(stub.id, video, savedSubtitles) }
+        // Kept in the order the source listed them, whichever finished first.
+        val order = video.subtitleTracks.distinctBy { it.url }.mapIndexed { i, t -> "${i}_${safeName(t.lang.ifBlank { "sub" })}." to i }
+        val subtitles = synchronized(savedSubtitles) { savedSubtitles.toList() }
+            .sortedBy { sub -> order.firstOrNull { (prefix, _) -> File(sub.path).name.startsWith(prefix) }?.second ?: Int.MAX_VALUE }
         diagnostics?.log(LogCategory.PLAYBACK, "Download: ${anime.title} E${episode.episodeNumber} from $label, ${subtitles.size} subtitle file(s)")
 
         onStage("Reading the stream…")
@@ -696,27 +701,46 @@ class DownloadsRepository(
         }
     }
 
-    /** Saves every external subtitle file the stream lists; one that cannot be fetched is skipped. */
-    private suspend fun downloadSubtitles(id: String, video: Video): List<DownloadedSubtitle> = withContext(Dispatchers.IO) {
+    /**
+     * Saves every external subtitle file the stream lists, all at once. A subtitle host often refuses the video
+     * host's Referer, so each file is tried with the stream's headers and then without them. Files that finish are
+     * added to [sink] as they arrive, so a slow one never costs the others: whatever is in [sink] when the time
+     * limit hits is kept.
+     */
+    private suspend fun downloadSubtitles(id: String, video: Video, sink: MutableList<DownloadedSubtitle>) = withContext(Dispatchers.IO) {
         val dir = File(appContext.filesDir, "downloads/subs/${safeName(id)}").apply { mkdirs() }
-        val saved = mutableListOf<DownloadedSubtitle>()
-        video.subtitleTracks.distinctBy { it.url }.forEachIndexed { index, track ->
-            runCatching {
-                val request = Request.Builder().url(track.url)
-                    .apply { video.headers.forEach { (k, v) -> header(k, v) } }
-                    .build()
-                quickClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return@use
-                    val bytes = response.body?.bytes() ?: return@use
-                    if (bytes.isEmpty()) return@use
-                    val ext = subtitleExtension(track.url)
-                    val file = File(dir, "${index}_${safeName(track.lang.ifBlank { "sub" })}.$ext")
-                    file.writeBytes(bytes)
-                    saved += DownloadedSubtitle(track.lang.ifBlank { "Subtitles" }, file.absolutePath)
+        val gate = kotlinx.coroutines.sync.Semaphore(4)
+        coroutineScope {
+            video.subtitleTracks.distinctBy { it.url }.mapIndexed { index, track ->
+                async {
+                    gate.acquire()
+                    try {
+                        val bytes = fetchSubtitle(track.url, video.headers) ?: fetchSubtitle(track.url, emptyMap())
+                        if (bytes == null) {
+                            diagnostics?.log(LogCategory.PLAYBACK, "Download: subtitle '${track.lang}' could not be fetched (${track.url.substringBefore('?')})")
+                        } else {
+                            val file = File(dir, "${index}_${safeName(track.lang.ifBlank { "sub" })}.${subtitleExtension(track.url)}")
+                            file.writeBytes(bytes)
+                            sink += DownloadedSubtitle(track.lang.ifBlank { "Subtitles" }, file.absolutePath)
+                        }
+                    } finally {
+                        gate.release()
+                    }
                 }
-            }
+            }.awaitAll()
         }
-        saved
+    }
+
+    /** The bytes of one subtitle file, or null when it cannot be had (error status, empty body, network failure). */
+    private fun fetchSubtitle(url: String, headers: Map<String, String>): ByteArray? = try {
+        val request = Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()
+        quickClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) null else response.body?.bytes()?.takeIf { it.isNotEmpty() }
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
     }
 
     private fun subtitleExtension(url: String): String {
@@ -775,7 +799,7 @@ class DownloadsRepository(
         const val FIND_TIMEOUT_MS = 25_000L
         const val RESOLVE_TIMEOUT_MS = 30_000L
         const val MIME_TIMEOUT_MS = 20_000L
-        const val SUBTITLE_TIMEOUT_MS = 20_000L
+        const val SUBTITLE_TIMEOUT_MS = 30_000L
         const val HELPER_TIMEOUT_MS = 20_000L
         const val REQUEST_TIMEOUT_MS = 60_000L
         const val MAX_RESOLVE_ATTEMPTS = 5

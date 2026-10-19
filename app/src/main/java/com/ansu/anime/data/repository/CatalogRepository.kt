@@ -12,8 +12,11 @@ import com.ansu.anime.core.util.ageRatingFor
 import com.ansu.anime.core.util.formatLabel
 import com.ansu.anime.extension.ExtensionManager
 import com.ansu.anime.extension.api.AnimeCatalogueSource
+import com.ansu.anime.ui.search.TitleMatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
 /**
@@ -69,11 +72,53 @@ class CatalogRepository(
         return if (aniListPage == null) null else SearchPage(items, aniListPage.hasNextPage)
     }
 
+    /**
+     * Searches one installed source (an empty [query] lists what the source has on its popular page) and turns what
+     * it finds into AniList titles, so every result opens the same details page as an ordinary search result. A
+     * title the source has that AniList cannot be matched to is left out. The results point at [sourceId], so that
+     * source is the one asked first for the streams. Returns null when the source could not be searched.
+     */
+    suspend fun searchInSource(sourceId: Long, query: String, page: Int = 1): SearchPage? {
+        val source = extensionManager.getSource(sourceId) ?: return null
+        val listed = try {
+            if (query.isBlank()) source.getPopularAnime(page) else source.getSearchAnime(page, query, source.getFilterList())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            return null
+        }
+        val matched = coroutineScope {
+            listed.animes.take(SOURCE_SEARCH_LIMIT).map { found ->
+                async {
+                    val candidates = aniList.searchPage(found.title, AniListSearchFilters(), 1)?.media.orEmpty()
+                    candidates
+                        .map { it to TitleMatcher.scoreAny(found.title, it.title, it.altTitles) }
+                        .filter { it.second >= SOURCE_MATCH_MIN }
+                        .maxByOrNull { it.second }
+                        ?.first
+                }
+            }.awaitAll()
+        }
+        val items = matched.filterNotNull()
+            .distinctBy { it.id }
+            .map { it.toSAnime(sourceId = source.id) }
+            .filterNot { ContentFilter.isAdultGenres(it.genres) }
+        return SearchPage(items, listed.hasNextPage)
+    }
+
     /** The default source to resolve an AniList-only entry against until real per-title source matching exists. */
     private fun defaultSource(): AnimeCatalogueSource? = extensionManager.getSource(1L)
 
     private fun AniListMediaListEntry.toSAnime(): SAnime =
         media.toSAnime(sourceId = defaultSource()?.id ?: 1L)
+
+    private companion object {
+        /** A source's page is matched to AniList title by title; this many per page keeps that to one quick burst. */
+        const val SOURCE_SEARCH_LIMIT = 20
+
+        /** How close a source's title must be to an AniList title (0..1) to count as the same show. */
+        const val SOURCE_MATCH_MIN = 0.85f
+    }
 }
 
 /**
