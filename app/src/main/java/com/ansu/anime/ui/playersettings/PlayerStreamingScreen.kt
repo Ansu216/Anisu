@@ -92,6 +92,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val pip by prefs.pipEnabled.collectAsStateWithLifecycle()
     val ambient by prefs.ambientMode.collectAsStateWithLifecycle()
     val pauseScreen by prefs.pauseScreen.collectAsStateWithLifecycle()
+    val autoSourcePick by prefs.autoSourcePick.collectAsStateWithLifecycle()
     val preferredQuality by prefs.preferredQuality.collectAsStateWithLifecycle()
     val preferredLanguage by prefs.preferredLanguage.collectAsStateWithLifecycle()
     val prefetch by prefs.prefetchEnabled.collectAsStateWithLifecycle()
@@ -170,6 +171,12 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
 
             GlassGroupLabel("Preferred stream")
             GlassGroup {
+                GlassToggleRow(
+                    title = "Auto Source",
+                    description = "Skip the source list when you tap an episode and start playing on its own, using the quality, language and source priority below",
+                    checked = autoSourcePick,
+                    onCheckedChange = { prefs.setAutoSourcePick(it) },
+                )
                 GlassContentRow(
                     title = "Preferred Quality",
                     description = "Playback starts on the closest stream to this resolution. Any starts the first stream that answers, in your language, so it begins sooner",

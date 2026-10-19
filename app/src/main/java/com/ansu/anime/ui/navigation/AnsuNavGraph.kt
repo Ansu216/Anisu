@@ -309,8 +309,13 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
                     navController = navController,
                     onEpisodeSelected = { episode ->
                         container.selectionHolder.selectEpisode(episode)
-                        // Every stream of every source is listed first; the person picks one (or holds one to download it).
-                        navController.navigate(Dest.SOURCES)
+                        // Auto Source: the player picks the stream itself. Otherwise every stream of every source is
+                        // listed first and the person picks one (or holds one to download it).
+                        if (container.playerPrefs.autoSourcePick.value) {
+                            navController.navigate(Dest.PLAYER)
+                        } else {
+                            navController.navigate(Dest.SOURCES)
+                        }
                     },
                 )
             }

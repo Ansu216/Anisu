@@ -17,8 +17,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +25,36 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 /** How long one extension may take to list its streams before the picker keeps what it already has. */
-private const val LIST_TIMEOUT_MS = 60_000L
+private const val LIST_TIMEOUT_MS = 25_000L
+
+/**
+ * Streams found for an episode, kept for a few minutes so coming back to the picker (or opening it again after
+ * a back-press) shows them at once. Short, because stream links expire. The refresh button skips it.
+ */
+private object PickerCache {
+    private const val TTL_MS = 3 * 60_000L
+    private const val MAX_ENTRIES = 20
+
+    private class Entry(val at: Long, val sources: List<PlayableSource>)
+
+    private val entries = java.util.concurrent.ConcurrentHashMap<String, Entry>()
+
+    fun get(key: String): List<PlayableSource>? {
+        val entry = entries[key] ?: return null
+        if (System.currentTimeMillis() - entry.at > TTL_MS) {
+            entries.remove(key)
+            return null
+        }
+        return entry.sources
+    }
+
+    fun put(key: String, sources: List<PlayableSource>) {
+        if (entries.size >= MAX_ENTRIES) {
+            entries.entries.minByOrNull { it.value.at }?.let { entries.remove(it.key) }
+        }
+        entries[key] = Entry(System.currentTimeMillis(), sources)
+    }
+}
 
 data class SourcePickerState(
     val anime: SAnime? = null,
@@ -58,13 +85,15 @@ class SourcePickerViewModel(
     private var job: Job? = null
 
     init {
-        load()
+        load(force = false)
     }
 
     /** The refresh button: forgets what was found and asks every extension again. */
-    fun refresh() = load()
+    fun refresh() = load(force = true)
 
-    private fun load() {
+    private fun cacheKey(anime: SAnime, episode: SEpisode) = "${anime.anilistId ?: anime.id}:${episode.episodeNumber}"
+
+    private fun load(force: Boolean) {
         val anime = _state.value.anime
         val episode = _state.value.episode
         if (anime == null || episode == null) {
@@ -72,6 +101,14 @@ class SourcePickerViewModel(
             return
         }
         job?.cancel()
+        val key = cacheKey(anime, episode)
+        if (!force) {
+            val cached = PickerCache.get(key)
+            if (cached != null) {
+                _state.value = _state.value.copy(isLoading = false, sources = cached, error = null)
+                return
+            }
+        }
         _state.value = _state.value.copy(isLoading = true, sources = emptyList(), error = null)
         job = viewModelScope.launch {
             val collected = mutableListOf<PlayableSource>()
@@ -94,6 +131,7 @@ class SourcePickerViewModel(
                     return@launch
                 }
             }
+            if (collected.isNotEmpty()) PickerCache.put(key, collected.toList())
             _state.value = _state.value.copy(
                 isLoading = false,
                 error = if (collected.isEmpty()) "No playable sources found" else null,
@@ -101,59 +139,76 @@ class SourcePickerViewModel(
         }
     }
 
+    /**
+     * Streams are requested from the episode's own source straight away. The title search that finds the same
+     * episode in the other sources runs alongside, and each source it finds starts listing its streams the moment
+     * it answers - nothing waits for the slowest source to finish searching.
+     */
     private suspend fun resolve(anime: SAnime, episode: SEpisode, onBatch: (List<PlayableSource>) -> Unit) {
         val origin = anime.origin as? MediaOrigin.Extension ?: return
-        // An episode that came without its alternates is matched in every installed source first.
-        val enriched = if (episode.alternates.isEmpty() && episode.id.isNotBlank()) {
-            try {
-                extensionManager.findEpisodesByTitle(
-                    anime,
-                    extraTitlesProvider = { anime.anilistId?.let { id -> aniListRepository.getAllTitles(id) }.orEmpty() },
-                ).firstOrNull { it.episodeNumber == episode.episodeNumber } ?: episode
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                episode
-            }
-        } else {
-            episode
-        }
-        val candidates = (listOf(enriched.copy(alternates = emptyList())) + enriched.alternates)
-            .distinctBy { it.sourceId ?: origin.sourceId }
         coroutineScope {
-            candidates.map { candidate ->
-                async {
-                    val source = extensionManager.getSource(candidate.sourceId ?: origin.sourceId) ?: return@async
+            val started = HashSet<Long>()
+            // One extension is asked once, whichever way (own episode, alternate, title search) it turns up first.
+            fun startSource(candidate: SEpisode) {
+                val sourceId = candidate.sourceId ?: origin.sourceId
+                if (!synchronized(started) { started.add(sourceId) }) return
+                launch { listStreams(sourceId, candidate, onBatch) }
+            }
+            startSource(episode.copy(alternates = emptyList()))
+            episode.alternates.forEach { startSource(it) }
+            // An episode that came without its alternates is matched in every installed source meanwhile.
+            if (episode.alternates.isEmpty() && episode.id.isNotBlank()) {
+                launch {
                     try {
-                        withTimeout(LIST_TIMEOUT_MS) {
-                            source.streamVideos(candidate, { line -> diagnostics.log(LogCategory.PLAYBACK, line) }) { videos ->
-                                val mapped = videos.map { video ->
-                                    PlayableSource(
-                                        label = if (video.sourceLabel.isBlank() || video.quality.contains(video.sourceLabel, true)) {
-                                            video.quality
-                                        } else {
-                                            "${video.sourceLabel} · ${video.quality}"
-                                        },
-                                        url = video.url,
-                                        headers = video.headers,
-                                        subtitles = video.subtitleTracks,
-                                        audioTracks = video.audioTracks,
-                                        resolve = video.resolve?.let { pending -> suspend { pending()?.toPlayableSource() } },
-                                        sourceId = source.id,
-                                        extensionName = source.name,
-                                        serverName = video.serverName,
-                                    )
+                        extensionManager.findEpisodesByTitle(
+                            anime,
+                            extraTitlesProvider = { anime.anilistId?.let { id -> aniListRepository.getAllTitles(id) }.orEmpty() },
+                            onPartial = { merged ->
+                                merged.firstOrNull { it.episodeNumber == episode.episodeNumber }?.let { match ->
+                                    startSource(match.copy(alternates = emptyList()))
+                                    match.alternates.forEach { startSource(it) }
                                 }
-                                if (mapped.isNotEmpty()) withContext(Dispatchers.Main) { onBatch(mapped) }
-                            }
-                        }
+                            },
+                        )
                     } catch (e: CancellationException) {
-                        if (e !is TimeoutCancellationException) throw e
-                    } catch (e: Throwable) {
-                        diagnostics.log(LogCategory.PLAYBACK, "  ${source.name}: ${e::class.simpleName}: ${e.message}", e)
+                        throw e
+                    } catch (e: Exception) {
+                        diagnostics.log(LogCategory.PLAYBACK, "Source picker: title search failed: ${e.message}")
                     }
                 }
-            }.awaitAll()
+            }
+        }
+    }
+
+    private suspend fun listStreams(sourceId: Long, candidate: SEpisode, onBatch: (List<PlayableSource>) -> Unit) {
+        val source = extensionManager.getSource(sourceId) ?: return
+        try {
+            withTimeout(LIST_TIMEOUT_MS) {
+                source.streamVideos(candidate, { line -> diagnostics.log(LogCategory.PLAYBACK, line) }) { videos ->
+                    val mapped = videos.map { video ->
+                        PlayableSource(
+                            label = if (video.sourceLabel.isBlank() || video.quality.contains(video.sourceLabel, true)) {
+                                video.quality
+                            } else {
+                                "${video.sourceLabel} \u00b7 ${video.quality}"
+                            },
+                            url = video.url,
+                            headers = video.headers,
+                            subtitles = video.subtitleTracks,
+                            audioTracks = video.audioTracks,
+                            resolve = video.resolve?.let { pending -> suspend { pending()?.toPlayableSource() } },
+                            sourceId = source.id,
+                            extensionName = source.name,
+                            serverName = video.serverName,
+                        )
+                    }
+                    if (mapped.isNotEmpty()) withContext(Dispatchers.Main) { onBatch(mapped) }
+                }
+            }
+        } catch (e: CancellationException) {
+            if (e !is TimeoutCancellationException) throw e
+        } catch (e: Throwable) {
+            diagnostics.log(LogCategory.PLAYBACK, "  ${source.name}: ${e::class.simpleName}: ${e.message}", e)
         }
     }
 

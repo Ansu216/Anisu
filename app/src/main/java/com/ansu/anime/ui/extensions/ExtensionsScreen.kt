@@ -162,11 +162,23 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     }
     val updatePkgs = updates.map { it.packageName }.toSet()
 
+    // Two installed packages can expose a source with the same id (the same name and language from two repos), and a
+    // package can even list one twice. A LazyColumn throws "Key was already used" the moment both rows are composed,
+    // which is when the list is scrolled far enough, so every row key is made unique here. The first row keeps the
+    // plain key; later ones get a "#2", "#3"... suffix. The order is stable, so a row keeps its key between redraws.
+    val usedRowKeys = HashSet<String>()
+    fun uniqueRowKey(base: String): String {
+        var candidate = base
+        var n = 2
+        while (!usedRowKeys.add(candidate)) candidate = "$base#${n++}"
+        return candidate
+    }
+
     val installedRows = buildList {
         builtInSources.forEach { s ->
             add(
                 InstalledSource(
-                    key = "src:${s.id}", title = s.name, lang = s.lang, versionName = null, icon = null, source = s,
+                    key = uniqueRowKey("src:${s.id}"), title = s.name, lang = s.lang, versionName = null, icon = null, source = s,
                     packageName = null, sourcesInPackage = 1, enabled = s.id !in disabledIds, hasUpdate = false,
                     error = null, settings = null,
                 ),
@@ -177,7 +189,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
             if (ext.sources.isEmpty()) {
                 add(
                     InstalledSource(
-                        key = "ext:${ext.packageName}", title = ext.displayName, lang = "", versionName = ext.versionName,
+                        key = uniqueRowKey("ext:${ext.packageName}"), title = ext.displayName, lang = "", versionName = ext.versionName,
                         icon = icon, source = null, packageName = ext.packageName, sourcesInPackage = 0, enabled = true,
                         hasUpdate = ext.packageName in updatePkgs, error = ext.loadError ?: "No sources found", settings = null,
                     ),
@@ -186,7 +198,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                 ext.sources.forEach { s ->
                     add(
                         InstalledSource(
-                            key = "src:${s.id}", title = s.name, lang = s.lang, versionName = ext.versionName, icon = icon,
+                            key = uniqueRowKey("src:${ext.packageName}:${s.id}"), title = s.name, lang = s.lang, versionName = ext.versionName, icon = icon,
                             source = s, packageName = ext.packageName, sourcesInPackage = ext.sources.size,
                             enabled = s.id !in disabledIds, hasUpdate = ext.packageName in updatePkgs, error = null,
                             settings = (s as? AniyomiSourceAdapter)?.takeIf { it.hasSettings },

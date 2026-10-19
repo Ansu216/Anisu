@@ -83,6 +83,19 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putBoolean(KEY_AMBIENT_MODE, value).apply()
     }
 
+    private val _autoSourcePick = MutableStateFlow(prefs.getBoolean(KEY_AUTO_SOURCE_PICK, false))
+
+    /**
+     * On: tapping an episode skips the source list and starts playing on its own, using the stream the player
+     * picks from the preferred quality, language and source priority. Off: the source list opens first.
+     */
+    val autoSourcePick: StateFlow<Boolean> = _autoSourcePick
+
+    fun setAutoSourcePick(value: Boolean) {
+        _autoSourcePick.value = value
+        prefs.edit().putBoolean(KEY_AUTO_SOURCE_PICK, value).apply()
+    }
+
     private val _preferredQuality = MutableStateFlow(prefs.getInt(KEY_PREFERRED_QUALITY, DEFAULT_QUALITY).let { if (it in QUALITY_OPTIONS) it else DEFAULT_QUALITY })
 
     /** The resolution (1080, 720, 480 or 360) a stream is picked at when the show starts playing. */
@@ -280,6 +293,7 @@ class PlayerPrefs(context: Context) {
 
         /** How long a stream picked by hand is kept: 3 days, the same as the last played source. */
         private const val MANUAL_PICK_TTL_MILLIS = 3L * 24 * 60 * 60 * 1000
+        private const val KEY_AUTO_SOURCE_PICK = "auto_source_pick"
         private const val KEY_PREFERRED_QUALITY = "preferred_quality"
         private const val KEY_PREFERRED_LANGUAGE = "preferred_language"
         private const val KEY_PAUSE_SCREEN = "pause_screen"
