@@ -347,8 +347,8 @@ fun ContinueWatchingThumbnail(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(8.dp * scale)
-                    .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(10.dp * scale))
-                    .border(1.dp * scale, Color.White.copy(alpha = 0.22f), RoundedCornerShape(10.dp * scale))
+                    .background(AnsuColors.SurfaceGlassBase.copy(alpha = 0.78f), RoundedCornerShape(6.dp * scale))
+                    .border(1.dp * scale, AnsuColors.StrokeGlass, RoundedCornerShape(6.dp * scale))
                     .padding(horizontal = 10.dp * scale, vertical = 5.dp * scale),
             )
         }

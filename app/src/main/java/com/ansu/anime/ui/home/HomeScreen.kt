@@ -293,6 +293,41 @@ fun HomeScreen(
                             ),
                         )
                     },
+                    onPlayManually = { entry ->
+                        actionTarget = null
+                        // The episode this card would resume (the next one when it says Next Up), with the source list first.
+                        val info = target.info
+                        val episode = if (info is com.ansu.anime.ui.components.ResumeCardInfo.NextUp) {
+                            val number = info.episodeNumber.toInt()
+                            com.ansu.anime.core.model.SEpisode(
+                                id = "${entry.anilistId}-al-$number",
+                                name = info.title ?: "Episode $number",
+                                episodeNumber = info.episodeNumber,
+                                thumbnailUrl = info.thumbnailUrl,
+                            )
+                        } else {
+                            com.ansu.anime.core.model.SEpisode(
+                                id = entry.episodeId,
+                                name = entry.episodeName,
+                                episodeNumber = entry.episodeNumber,
+                            )
+                        }
+                        container.selectionHolder.selectAnime(
+                            SAnime(
+                                id = entry.anilistId.toString(),
+                                title = entry.title,
+                                posterUrl = entry.posterUrl,
+                                bannerUrl = entry.bannerUrl,
+                                anilistId = entry.anilistId,
+                                origin = com.ansu.anime.core.model.MediaOrigin.Extension(
+                                    sourceId = entry.originExtensionSourceId ?: 1L,
+                                    urlPath = entry.anilistId.toString(),
+                                ),
+                            ),
+                        )
+                        container.selectionHolder.selectEpisode(episode)
+                        navController.navigate(Dest.SOURCES)
+                    },
                     onRemove = { entry -> viewModel.removeContinueWatching(entry.anilistId) },
                     onFinished = { actionTarget = null },
                 )

@@ -63,6 +63,7 @@ object Dest {
     const val MY_SPACE = "my_space"
     const val DOWNLOADS = "downloads"
     const val DETAILS = "details"
+    const val SOURCES = "sources"
     const val PLAYER = "player"
     const val EXTENSIONS = "extensions"
     const val ANILIST_LOGIN = "anilist_login"
@@ -308,10 +309,14 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
                     navController = navController,
                     onEpisodeSelected = { episode ->
                         container.selectionHolder.selectEpisode(episode)
-                        navController.navigate(Dest.PLAYER)
+                        // Every stream of every source is listed first; the person picks one (or holds one to download it).
+                        navController.navigate(Dest.SOURCES)
                     },
                 )
             }
+        }
+        composable(Dest.SOURCES) {
+            com.ansu.anime.ui.sources.SourcePickerScreen(container = container, navController = navController)
         }
         composable(Dest.PLAYER) {
             PlayerScreen(container = container, navController = navController)

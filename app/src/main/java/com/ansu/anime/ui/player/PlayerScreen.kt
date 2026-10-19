@@ -188,7 +188,14 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     var inPip by remember { mutableStateOf(false) }
     DisposableEffect(activity) {
         val owner = activity as? ComponentActivity
-        val listener = Consumer<PictureInPictureModeChangedInfo> { info -> inPip = info.isInPictureInPictureMode }
+        val listener = Consumer<PictureInPictureModeChangedInfo> { info ->
+            inPip = info.isInPictureInPictureMode
+            // Leaving picture-in-picture while the app is not on screen means the floating window was closed
+            // (an expand would have brought the app back to the foreground): stop the video.
+            if (!info.isInPictureInPictureMode && owner?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.STARTED) == false) {
+                viewModel.onBackgrounded()
+            }
+        }
         owner?.addOnPictureInPictureModeChangedListener(listener)
         onDispose { owner?.removeOnPictureInPictureModeChangedListener(listener) }
     }
@@ -216,8 +223,10 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     DisposableEffect(lifecycleOwner, activity) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP && activity?.isInPictureInPictureMode != true) {
-                viewModel.player.pause()
+                viewModel.onBackgrounded()
             }
+            // Back on screen: a video that was still loading when the app was left starts now.
+            if (event == Lifecycle.Event.ON_START) viewModel.onForegrounded()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -290,6 +299,15 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         buildPausedInfo(state.anime, state.episode, pausedArtwork, titleLanguage)
     }
     val resumeFromPause = { if (!state.isPlaying) viewModel.togglePlayPause() }
+    // The buffering screen: shown from the moment a stream is chosen until its first picture is out.
+    val startingArtwork by produceState<AnimeArtwork?>(initialValue = null, anilistIdForArt) {
+        value = anilistIdForArt?.let { container.artworkRepository.get(it) }
+    }
+    val startingInfo = remember(state.anime, state.episode, startingArtwork, titleLanguage) {
+        buildPausedInfo(state.anime, state.episode, startingArtwork, titleLanguage)
+    }
+    val startingBackdrop = startingBackdrop(startingArtwork, state.anime?.bannerUrl ?: state.anime?.posterUrl)
+    val showStarting = !inPip && state.error == null && (state.isLoadingSources || state.isStarting)
 
     val hasPrev = remember(state.episode, state.episodes) { viewModel.previousEpisode() != null }
     val hasNext = remember(state.episode, state.episodes) { viewModel.nextEpisode() != null }
@@ -444,6 +462,14 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     }
                 }
                 PausedOverlay(visible = showPauseScreen, info = pausedInfo, onResume = resumeFromPause, compact = true)
+                StartingScreen(
+                    visible = showStarting,
+                    backdropUrl = startingBackdrop,
+                    logoUrl = startingInfo.logoUrl,
+                    title = startingInfo.title,
+                    onBack = { navController.popBackStack() },
+                    compact = true,
+                )
                 }
                 if (!inPip) {
                     EpisodeInfoPane(
@@ -457,6 +483,13 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
 
         if (isLandscape) {
             PausedOverlay(visible = showPauseScreen, info = pausedInfo, onResume = resumeFromPause)
+            StartingScreen(
+                visible = showStarting,
+                backdropUrl = startingBackdrop,
+                logoUrl = startingInfo.logoUrl,
+                title = startingInfo.title,
+                onBack = { navController.popBackStack() },
+            )
         }
 
         if (isLandscape && panelVisible) {

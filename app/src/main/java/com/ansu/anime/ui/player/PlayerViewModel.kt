@@ -185,6 +185,8 @@ data class PlayerUiState(
     /** Measured response time per stream url in ms; -1 = unreachable, missing = not measured yet. */
     val pings: Map<String, Long> = emptyMap(),
     val isMeasuringPings: Boolean = false,
+    /** True from the moment a stream is chosen until its first picture (or sound) is out: the buffering screen shows meanwhile. */
+    val isStarting: Boolean = true,
 )
 
 class PlayerViewModel(
@@ -227,6 +229,40 @@ class PlayerViewModel(
         )
         .build()
 
+    /** True while the app is out of sight (not in picture-in-picture): a stream that finishes loading then must not start by itself. */
+    @Volatile
+    private var backgrounded = false
+
+    /** A video was meant to start (still loading when the app was left): it starts when the person comes back. */
+    private var playOnReturn = false
+
+    /** The app left the screen: pause, and remember a start that had not happened yet so it is not lost. */
+    fun onBackgrounded() {
+        backgrounded = true
+        val waiting = player.mediaItemCount == 0 || (player.playWhenReady && !player.isPlaying && _uiState.value.isStarting)
+        if (waiting) playOnReturn = true
+        player.pause()
+    }
+
+    /** The app is back on screen: a start that was held back while it was away goes ahead now. */
+    fun onForegrounded() {
+        backgrounded = false
+        if (playOnReturn) {
+            playOnReturn = false
+            if (player.mediaItemCount > 0) player.playWhenReady = true
+        }
+    }
+
+    /** Starts the prepared media, unless the app is out of sight; then it waits for [onForegrounded]. */
+    private fun playWhenVisible() {
+        if (backgrounded) {
+            playOnReturn = true
+            player.playWhenReady = false
+        } else {
+            player.playWhenReady = true
+        }
+    }
+
     // Declared before init{}: loadSources() runs from init and assigns these.
     private var loadJob: kotlinx.coroutines.Job? = null
 
@@ -265,8 +301,12 @@ class PlayerViewModel(
     init {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                _uiState.value = _uiState.value.copy(isPlaying = isPlaying)
+                _uiState.value = _uiState.value.copy(isPlaying = isPlaying, isStarting = if (isPlaying) false else _uiState.value.isStarting)
                 diagnostics?.log(LogCategory.PLAYBACK, if (isPlaying) "Playback started" else "Playback paused")
+            }
+
+            override fun onRenderedFirstFrame() {
+                _uiState.value = _uiState.value.copy(isStarting = false)
             }
 
             override fun onTracksChanged(tracks: Tracks) {
@@ -361,6 +401,24 @@ class PlayerViewModel(
         val offlineId = selectionHolder.offlineDownloadId
         if (offlineId != null && downloads != null) {
             playOffline(anime, episode, offlineId, downloads)
+            return
+        }
+
+        // The source picker already asked every extension and the person chose a stream: play it, no second lookup.
+        val picked = selectionHolder.pickedStream
+        selectionHolder.pickedStream = null
+        if (picked != null) {
+            diagnostics?.log(LogCategory.PLAYBACK, "Playing the stream picked in the source picker: ${picked.selected.label}")
+            loadJob?.cancel()
+            graceJob?.cancel()
+            expectedSourceIds = emptyList()
+            loadJob = viewModelScope.launch {
+                startPositionMs = savedPositionMs(anime, episode)
+                // The person may have moved to another episode while the saved point was being read.
+                if (_uiState.value.episode?.id != episode.id) return@launch
+                _uiState.value = _uiState.value.copy(isLoadingSources = false, sources = picked.sources, error = null)
+                selectSource(picked.selected)
+            }
             return
         }
 
@@ -507,7 +565,7 @@ class PlayerViewModel(
             val factory = DefaultMediaSourceFactory(repository.dataSourceFactory)
             player.setMediaSource(factory.createMediaSource(item), startMs)
             player.prepare()
-            player.playWhenReady = true
+            playWhenVisible()
         }
     }
 
@@ -629,15 +687,16 @@ class PlayerViewModel(
         val anilistId = _uiState.value.anime?.anilistId
         val sourceId = source.sourceId
         if (anilistId != null && sourceId != null) playerPrefs?.setManualPick(anilistId, sourceId, source.serverName, source.label)
-        selectSource(source)
+        // Chosen inside the player, the video is already on screen: no buffering screen over it.
+        selectSource(source, showStartingScreen = false)
     }
 
-    fun selectSource(source: PlayableSource) {
+    fun selectSource(source: PlayableSource, showStartingScreen: Boolean = true) {
         diagnostics?.log(LogCategory.PLAYBACK, "Source selected: ${source.label} → ${source.url.ifBlank { "(resolved when played)" }}")
         source.sourceId?.let { id ->
             sessionSource = _uiState.value.anime?.anilistId to com.ansu.anime.data.repository.LastPlayedSource(id, source.serverName, source.label)
         }
-        _uiState.value = _uiState.value.copy(selectedSource = source)
+        _uiState.value = _uiState.value.copy(selectedSource = source, isStarting = showStartingScreen || _uiState.value.isStarting)
         // Switching source (or falling back to the next one) carries on from where the video is now.
         if (player.mediaItemCount > 0 && player.currentPosition > 2_000L) startPositionMs = player.currentPosition
 
@@ -782,7 +841,7 @@ class PlayerViewModel(
             player.setMediaSource(if (audio.isEmpty()) main else MergingMediaSource(main, *audio.toTypedArray()), startMs)
         }
         player.prepare()
-        player.playWhenReady = true
+        playWhenVisible()
     }
 
     /**
@@ -1037,6 +1096,7 @@ class PlayerViewModel(
             audioOptions = emptyList(),
             textOptions = emptyList(),
             skipSegments = emptyList(),
+            isStarting = true,
         )
         loadSources()
     }

@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -229,6 +230,7 @@ fun ContinueWatchingActionOverlay(
     target: ContinueWatchingActionTarget,
     backdrop: BackdropState,
     onGoToDetails: (ContinueWatchingEntity) -> Unit,
+    onPlayManually: (ContinueWatchingEntity) -> Unit,
     onRemove: (ContinueWatchingEntity) -> Unit,
     onFinished: () -> Unit,
 ) {
@@ -487,6 +489,9 @@ fun ContinueWatchingActionOverlay(
                     onGoToDetails = {
                         if (phase == ActionPhase.Menu) onGoToDetails(entry)
                     },
+                    onPlayManually = {
+                        if (phase == ActionPhase.Menu) onPlayManually(entry)
+                    },
                     onRemove = { startRemove() },
                 )
             }
@@ -512,7 +517,7 @@ private fun Modifier.revealWith(progress: Animatable<Float, *>, density: Density
     }
 
 @Composable
-private fun ActionMenu(onGoToDetails: () -> Unit, onRemove: () -> Unit) {
+private fun ActionMenu(onGoToDetails: () -> Unit, onPlayManually: () -> Unit, onRemove: () -> Unit) {
     FrostedGlassCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -520,6 +525,8 @@ private fun ActionMenu(onGoToDetails: () -> Unit, onRemove: () -> Unit) {
     ) {
         Column {
             ActionMenuRow("Go to details", Icons.Outlined.Info, AnsuColors.TextPrimary, onGoToDetails)
+            Box(Modifier.fillMaxWidth().height(1.dp).background(AnsuColors.StrokeGlass))
+            ActionMenuRow("Play manually", Icons.Outlined.TouchApp, AnsuColors.TextPrimary, onPlayManually)
             Box(Modifier.fillMaxWidth().height(1.dp).background(AnsuColors.StrokeGlass))
             ActionMenuRow("Remove", Icons.Outlined.Delete, AnsuColors.Error, onRemove)
         }

@@ -22,8 +22,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The video no longer keeps playing after picture-in-picture is closed or the app is left while loading.** Closing the floating window left the app stopped but the video running, because the player only paused on a stop that happened outside picture-in-picture. It now also pauses when picture-in-picture ends while the app is not on screen. A stream that finished loading after the person had already left the app used to start by itself in the background; it now waits, and starts when the app comes back.
+
+### Changed
+
+- **Continue Watching chip is darker and squarer.** The chip in the top-right of a card (time left, "Next Up", air countdown) now uses the same dark glass as the hold menu and softer corners like the player's subtitle bars, instead of a light, pill-shaped chip.
+
 ### Added
 
+- **Download progress in the notification.** The running download notification now names the episode ("Show · E5"), shows a real progress bar with the percent and the size saved, says "Waiting for a connection…" when the network is missing and counts the episodes still queued. While the app is still finding the stream, a "Preparing download…" notification stands in, so there is feedback from the first tap. When an episode finishes, or fails, a separate notification says so and opens the app. **Constraint:** a notification only shows once the notification permission is granted.
+- **Buffering screen when a source is chosen.** From the moment a stream is picked until its first picture is out, the player shows the show's artwork dimmed, its title logo (or name) in the middle, "Buffering…" under it and a back button, instead of a black screen with a spinner. It also shows while the sources are still being looked up, covers the small video box in the portrait layout, and fades away when the video starts. **Constraint:** a stream chosen in the player's own Sources panel does not bring it back, since the video is already on screen.
+- **"Play manually" in the Continue Watching hold menu.** Holding a Continue Watching card now offers Go to details, Play manually and Remove. Play manually opens the source picker for the episode that card would resume (the next episode when the card says Next Up), so you choose the stream yourself instead of the app picking it; hold a stream there to download it.
+- **Source picker when you tap an episode.** Tapping an episode (or Play / Play movie) on a show's page now opens a
+  source screen instead of starting the stream blindly: the episode's picture and name on top, chips for All and each
+  extension that answered (plus a refresh button), then one card per stream with the extension and server, the
+  quality and Sub/Dub chips and the number of subtitle and audio tracks. Streams appear as each extension answers, so
+  a slow extension never holds the list back. Tap a card to play it; hold a card for a menu with **Download**, which
+  downloads exactly that stream (and its subtitles) rather than the one the app would have picked. The stream you tap
+  is remembered for the show's next episodes, like a pick in the player's Sources panel, and the player reuses the
+  list, so it does not ask every extension a second time. **Constraint:** only the details page opens the picker;
+  Continue Watching and Downloads still start playing directly.
 - **"Next Up" Continue Watching cards.** The card keeps its layout (title and episode under the picture) and gains a glass
   chip in the picture's top-right corner. While an episode is still going the chip shows the time left (for example
   "12m left") and the progress bar stays. Once an episode has 30 seconds or less to go, the card switches to **Next Up**:

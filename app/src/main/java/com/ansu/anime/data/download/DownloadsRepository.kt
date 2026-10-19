@@ -194,8 +194,12 @@ class DownloadsRepository(
 
     // ---- the public API ------------------------------------------------------------------------------------
 
-    /** Starts downloading [episode] of [anime]. Does nothing when it is already downloaded or in progress. */
-    fun enqueue(anime: SAnime, episode: SEpisode) {
+    /**
+     * Starts downloading [episode] of [anime]. Does nothing when it is already downloaded or in progress.
+     * With [chosen] (a stream picked in the source picker) exactly that stream is downloaded; without it the stream
+     * the player would start with is found and used.
+     */
+    fun enqueue(anime: SAnime, episode: SEpisode, chosen: PlayableSource? = null) {
         val anilistId = anime.anilistId ?: anime.id.toIntOrNull() ?: return
         val id = downloadKey(anilistId, episode.episodeNumber)
         val existing = items.value.firstOrNull { it.entry.id == id }
@@ -215,10 +219,12 @@ class DownloadsRepository(
         )
         saveEntry(stub)
         setPreparing(id, DownloadStatus(DownloadPhase.Preparing))
+        DownloadNotifications.preparing(appContext, stub)
         scope.launch {
             try {
-                val prepared = withContext(Dispatchers.IO) { prepare(stub, anime, episode) }
+                val prepared = withContext(Dispatchers.IO) { prepare(stub, anime, episode, chosen) }
                 saveEntry(prepared.first)
+                DownloadNotifications.clearPreparing(appContext, id)
                 try {
                     DownloadService.sendAddDownload(appContext, AnisuDownloadService::class.java, prepared.second, false)
                 } catch (e: Exception) {
@@ -231,6 +237,8 @@ class DownloadsRepository(
                 throw e
             } catch (e: Throwable) {
                 diagnostics?.log(LogCategory.PLAYBACK, "Download of ${anime.title} E${episode.episodeNumber} failed to start: ${e::class.simpleName}: ${e.message}", e)
+                DownloadNotifications.clearPreparing(appContext, id)
+                DownloadNotifications.failed(appContext, stub, e.message)
                 setPreparing(id, DownloadStatus(DownloadPhase.Failed, message = e.message ?: "Could not start the download"))
             }
         }
@@ -267,8 +275,8 @@ class DownloadsRepository(
 
     // ---- preparing a download ------------------------------------------------------------------------------
 
-    private suspend fun prepare(stub: DownloadEntry, anime: SAnime, episode: SEpisode): Pair<DownloadEntry, DownloadRequest> {
-        val (video, label, sourceId) = findBestVideo(anime, episode) ?: throw IOException("No playable source found for this episode")
+    private suspend fun prepare(stub: DownloadEntry, anime: SAnime, episode: SEpisode, chosen: PlayableSource?): Pair<DownloadEntry, DownloadRequest> {
+        val (video, label, sourceId) = (if (chosen != null) resolveChosen(chosen) else findBestVideo(anime, episode)) ?: throw IOException("No playable source found for this episode")
         hostHeaders[Uri.parse(video.url).host.orEmpty()] = video.headers
         lastHeaders = video.headers
         val mime = mimeOf(video.url, video.headers)
@@ -289,6 +297,36 @@ class DownloadsRepository(
     }
 
     private data class Found(val video: Video, val label: String, val sourceId: Long?)
+
+    /** Resolves the one stream the person picked in the source picker (listed streams are resolved only now). */
+    private suspend fun resolveChosen(chosen: PlayableSource): Found? {
+        val pending = chosen.resolve
+        val ready: PlayableSource? = if (pending == null) {
+            chosen
+        } else {
+            try {
+                withTimeout(RESOLVE_TIMEOUT_MS) { pending() }
+            } catch (e: CancellationException) {
+                if (e is TimeoutCancellationException) null else throw e
+            } catch (e: Throwable) {
+                null
+            }
+        }
+        if (ready == null || ready.url.isBlank()) return null
+        val label = listOfNotNull(chosen.extensionName, chosen.serverName, chosen.label).distinct().joinToString(" · ")
+        return Found(
+            Video(
+                url = ready.url,
+                quality = ready.label,
+                sourceLabel = chosen.extensionName.orEmpty(),
+                headers = ready.headers,
+                subtitleTracks = ready.subtitles.ifEmpty { chosen.subtitles },
+                audioTracks = ready.audioTracks,
+            ),
+            label,
+            chosen.sourceId,
+        )
+    }
 
     /** Asks every source that has the episode and picks the stream the player would start with. */
     private suspend fun findBestVideo(anime: SAnime, episode: SEpisode): Found? {

@@ -37,8 +37,16 @@ class SelectionHolder {
     var offlineDownloadId: String? = null
         private set
 
+    /**
+     * The streams the source picker found and the one the person chose; the player takes it (once) when it opens.
+     * Cleared by every normal episode choice, so only the picker's own hand-off reaches the player.
+     */
+    @Volatile
+    var pickedStream: com.ansu.anime.ui.sources.SourcePick? = null
+
     fun selectEpisode(episode: SEpisode) {
         _currentEpisode.value = episode
+        pickedStream = null
         // Any normal episode choice (details page, next episode) streams; only [selectOffline] plays a download.
         offlineDownloadId = null
     }
