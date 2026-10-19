@@ -1,563 +1,155 @@
-# 🎬 Horizontal Player Layout Implementation Package
+<div align="center">
 
-## 📦 What's Included
+<img src="logo.jpg" alt="Anisu logo" width="120" height="120" />
 
-This package contains everything you need to implement modern, horizontal-scrolling player layouts for source selection, subtitle settings, and stream information in your anime player app.
+# Anisu
 
-**Total Lines of Code**: 2,612 lines  
-**Files Included**: 7 files (3 Kotlin, 4 Documentation)  
-**Implementation Time**: 1-2 hours  
-**Difficulty Level**: Intermediate ⭐⭐⭐
+**An Android anime client built around AniList: browse, track, stream and download, with sources you choose.**
 
----
+![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84?logo=android&logoColor=white)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.1.0-7F52FF?logo=kotlin&logoColor=white)
+![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white)
+![Version](https://img.shields.io/badge/version-0.4.8-blue)
 
-## 📁 File Structure
-
-### 🔹 Kotlin Source Files (Ready to Use)
-
-#### 1. **PlayerControls.kt** (7.7 KB)
-**Status**: ✅ MODIFIED (replaces existing)
-```
-- Enhanced SourceSelectSheet with horizontal layout
-- New SourceChip composable for individual sources
-- Removed vertical radio button list
-- Added close button to header
-- LazyRow for horizontal scrolling
-```
-
-#### 2. **PlayerSettings.kt** (17 KB)
-**Status**: ✅ NEW (add to project)
-```
-- SubtitleSettingsSheet (complete subtitle control)
-- StreamSelectionSheet (multi-stream selection)
-- 5 languages with horizontal scroll
-- Size, background, position controls
-- Delay adjustment with slider
-- Stream cards with full info display
-- Sub/Dub language toggle
-```
-
-#### 3. **PlayerScreen.kt** (5.4 KB)
-**Status**: ✅ MODIFIED (replaces existing)
-```
-- Integrated subtitle settings state
-- Integrated stream selection state
-- Example data for testing
-- Sheet display logic
-- Updated imports
-```
-
-### 📚 Documentation Files
-
-#### 4. **IMPLEMENTATION_GUIDE.md** (11 KB)
-**Purpose**: Step-by-step integration guide
-```
-- Detailed component breakdown
-- Integration steps (4 phases)
-- Color scheme reference
-- Data models
-- Customization options
-- Animation enhancements
-- Testing checklist
-- Best practices
-- Future enhancements
-```
-
-#### 5. **UI_LAYOUTS.md** (17 KB)
-**Purpose**: Visual reference and ASCII diagrams
-```
-- Full player screen layout
-- Source selection sheet structure
-- Subtitle settings detailed layout
-- Stream selection sheet
-- Responsive behavior
-- Touch interaction states
-- Animation timeline
-- Typography hierarchy
-- Example data
-- Polish details
-```
-
-#### 6. **QUICK_REFERENCE.md** (8 KB)
-**Purpose**: Quick lookup for developers
-```
-- 5-minute quick start
-- Cheat sheets
-- Common tasks
-- Troubleshooting guide
-- File structure
-- Integration workflow
-- Pro tips
-- Critical checks
-```
-
-#### 7. **BEFORE_AFTER_COMPARISON.md** (14 KB)
-**Purpose**: Show improvements and changes
-```
-- Comparison of old vs new UI
-- Feature matrix
-- Performance improvements
-- User experience timeline
-- Code quality improvements
-- Migration path
-```
+</div>
 
 ---
 
-## 🚀 Quick Start (5 Minutes)
+## What is Anisu?
 
-### Step 1: Copy Files
+Anisu is a native Android app that puts your AniList account, the airing schedule, news and playback in one place. It ships with **no video sources of its own**: you add extension repositories, and Anisu finds each episode in every source you have enabled, so you can play whichever stream works best for you.
+
+- Package id: `com.ansu.anime`
+- Minimum Android: 8.0 (API 26), target API 35
+- Source code: <https://github.com/Ansu216/Anisu>
+
+---
+
+## Features
+
+### Discover and track
+- **Home** with a looping hero banner, Continue Watching, trending and seasonal shelves, "Your Next Watch" recommendations based on what you watch, and banners for newly released titles.
+- **Search** with filters, grid or list view (your choice is remembered), romaji-name matching, and an optional per-source search.
+- **Schedule and News** tabs: the airing calendar and an Anime News Network feed.
+- **My Space**: sign in with AniList and see Favourites, Watching, Planning and Dropped lists with progress bars, plus Sync.
+- **Details page** with episodes, trailers (sub, dub and others), characters, comments and discussions, English titles and clear-logo artwork. Unreleased titles show a "Notify me" button instead of playable episodes, and movies show their duration with a "Play movie" button.
+- **Notifications** for new episodes of titles you are watching and for titles that have just released, collected in an inbox at the top of Home.
+
+### Watch
+- **Pluggable sources.** Anisu loads Aniyomi-compatible extension APKs (extension library versions 12 to 17) from the repositories you add. The same episode is matched across every enabled source.
+- **Source picker.** Tap an episode to choose from every stream found, grouped by extension. Tap to play, hold to download.
+- **Smart stream choice.** Set a preferred quality (Any, 1080p, 720p, 480p, 360p) and language (Sub or Dub); Anisu starts from those, remembers the source that worked for each show, and keeps a stream you picked by hand for that show's next episodes. A drag-to-order **streaming priority** list decides which sources win ties.
+- **Player** built on Media3 / ExoPlayer: side panels for Sources, Audio, Subtitles and Episodes (landscape and portrait), subtitle offset, size, position and a rounded-bar background, double-tap and swipe gestures, brightness and volume gestures, AniSkip intro/outro buttons, a Nuvio-style pause overlay and picture-in-picture.
+- **Downloads.** Save episodes for offline viewing, along with every subtitle the source offers (including subtitles carried inside the stream, and a dub borrows the sub stream's subtitle files when it lists none). Progress shows live in the Your downloads screen and in the notification.
+
+### Make it yours
+- Appearance options: nav-bar frosted blur and roundness, custom fonts (including a separate subtitle font), and optional haptic feedback with adjustable strength.
+- A built-in adult-content filter that keeps 18+ sources and titles out of search and blocks them from streaming.
+- Backup and restore (manual and automatic), a self-updater (stable releases and nightly builds), and an in-app diagnostics log.
+
+> Extension support is currently the Aniyomi format only. Other formats (for example Cloudstream plugins) are planned, not built.
+
+---
+
+## Install
+
+Download the newest APK from the project's **Releases** page, or a nightly build from the `apk-nightly` branch, and install it on your phone. Android may ask you to allow installing from your browser or file manager the first time. After that, Anisu can update itself from **Settings > About / Updates**.
+
+### Add sources
+
+Anisu does not include any streaming sources. To watch anything:
+
+1. Open **Extensions**.
+2. Add an extension repository (its `index.min.json` address).
+3. Install the extensions you want from **Available**, and use **Test** on an installed one to check that it can find episodes and streams.
+
+You are responsible for the repositories you add and for making sure your use of them is lawful where you live.
+
+---
+
+## Build from source
+
+You need **JDK 21**, the Android SDK (`platforms;android-35`, `build-tools;35.0.0`) and a network connection on the first run.
+
 ```bash
-# Copy to your project
-cp PlayerControls.kt app/src/main/java/com/ansu/anime/ui/player/
-cp PlayerSettings.kt app/src/main/java/com/ansu/anime/ui/player/
-cp PlayerScreen.kt app/src/main/java/com/ansu/anime/ui/player/
+git clone https://github.com/Ansu216/Anisu.git
+cd Anisu
+echo "sdk.dir=/path/to/Android/Sdk" > local.properties
+
+./gradlew assembleDebug                         # debug APK
+./gradlew assembleDebug assembleRelease --console=plain   # the full check, both variants
 ```
 
-### Step 2: Verify Compilation
-```bash
-# Build project to check for errors
-./gradlew build
-```
+The APK lands in `app/build/outputs/apk/`. New to Android builds? [`how-to-compile.md`](how-to-compile.md) walks through it step by step.
 
-### Step 3: Test UI
-```bash
-# Run on emulator or device
-./gradlew installDebug
-```
+Please do not upgrade Gradle, AGP, Kotlin, KSP or the Compose BOM unless that is the task; the versions are tied together. [`CLAUDE.md`](CLAUDE.md) holds the exact build procedure and the traps that have broken it before.
 
-### Step 4: Integration Complete! ✅
+### Version and release
 
-For detailed integration, see **IMPLEMENTATION_GUIDE.md**.
+[`version.txt`](version.txt) is the single source of truth: line 1 is the version, line 2 the version code (only ever increases), line 3 the channel (`nightly`, `beta` or `stable`). Release notes come from [`CHANGELOG.md`](CHANGELOG.md), so every change adds an entry under `## [Unreleased]`.
 
 ---
 
-## 📊 What You Get
+## Tech stack
 
-### ✨ New UI Components
+| Area | Used |
+|---|---|
+| Language and build | Kotlin 2.1.0, Java 17 target, JDK 21 toolchain, Gradle 8.9, AGP 8.7.2, KSP |
+| UI | Jetpack Compose, Material 3, Navigation Compose, Coil |
+| Playback | Media3 / ExoPlayer (HLS, DASH), Media3 download manager |
+| Data | Room, SharedPreferences and DataStore, EncryptedSharedPreferences for the AniList token, WorkManager |
+| Network | OkHttp, DNS over HTTPS, kotlinx.serialization |
+| Extensions | Aniyomi extension API re-implementation, Jsoup, RxJava, Injekt, QuickJS, NanoHTTPD |
 
-| Component | Purpose | Reusable |
-|-----------|---------|----------|
-| `SourceChip` | Individual source display | ✅ Yes |
-| `SubtitleLanguageChip` | Language selection | ✅ Yes |
-| `SubtitleSizeButton` | Size selection | ✅ Yes |
-| `BackgroundOption` | Background style button | ✅ Yes |
-| `SubtitlePositionButton` | Position selection | ✅ Yes |
-| `LanguageToggleButton` | Sub/Dub toggle | ✅ Yes |
-| `StreamCard` | Stream information card | ✅ Yes |
-| `SubtitleSettingsSheet` | Full subtitle panel | ✅ Yes |
-| `StreamSelectionSheet` | Stream picker sheet | ✅ Yes |
-| `SourceSelectSheet` | Source picker sheet | ✅ Yes |
+There is no dependency-injection framework: `AnsuApp` builds a manual container (`di/AppContainer.kt`) and passes dependencies explicitly.
 
-### 🎨 Features
+### Project layout
 
-- ✅ Horizontal scrollable source selection
-- ✅ Multi-language subtitle support (5 languages)
-- ✅ 3 subtitle size options (S/M/L)
-- ✅ 3 background styles (None, Shadow, Box)
-- ✅ 2 position options (Low, High)
-- ✅ Delay adjustment (±1000ms with slider)
-- ✅ Stream selection with resolution, source, and latency
-- ✅ Sub/Dub language toggle
-- ✅ Tap-to-select with auto-close
-- ✅ Modern design (Material Design 3)
-- ✅ Mobile optimized
-- ✅ Dark theme compatible
+Everything lives in one Gradle module, `:app`, under `app/src/main/java/com/ansu/anime/`:
 
-### 📈 Improvements
+| Path | What it holds |
+|---|---|
+| `ui/` | Screens and view models: home, search, details, player, player settings, sources, downloads, extensions, My Space, schedule, settings, about |
+| `extension/` | Extension manager and repositories, source matching and testing, the Aniyomi loader and adapter |
+| `eu/kanade/tachiyomi/` | Intentionally not renamed: the Aniyomi extension API that extension APKs are compiled against |
+| `anilist/` | AniList GraphQL API, models, repository and OAuth |
+| `data/` | Downloads, backup, notifications, preferences, repositories, updater, Room database |
+| `core/` | Shared models, networking and error handling, diagnostics, haptics, utilities |
 
-| Metric | Before | After | Change |
-|--------|--------|-------|--------|
-| **Interaction Speed** | Standard | 66% faster | ⚡ |
-| **User Taps** | 2-3 | 1-2 | Reduced |
-| **Visual Hierarchy** | Flat | Clear | Enhanced |
-| **Feature Count** | 1 | 10+ | Increased |
-| **Code Reusability** | Low | High | Improved |
-| **Mobile Friendly** | OK | Excellent | Optimized |
+More detail on the architecture, conventions and pitfalls is in [`CLAUDE.md`](CLAUDE.md). Design notes and older implementation guides are in [`docs/`](docs/).
 
 ---
 
-## 🎯 Use Cases
+## Data sources and credits
 
-### 1. Source Selection
-```
-Before: Vertical radio list
-After:  Horizontal scrollable chips
-```
+Anisu is built on the work of others. The in-app **License and attribution** screen lists them all; the main ones are:
 
-### 2. Subtitle Configuration
-```
-Before: Binary on/off only
-After:  Full control panel
-```
+- [AniList](https://anilist.co) for accounts, lists, titles, schedules, comments and discussions
+- [MyAnimeList](https://myanimelist.net) through [Jikan](https://jikan.moe) for English titles, trailers and ids
+- [TMDB](https://www.themoviedb.org) for posters and artwork (this product uses the TMDB API but is not endorsed or certified by TMDB)
+- [ani.zip](https://ani.zip) for episode titles, thumbnails and logos, and [Kitsu](https://kitsu.app) for id mappings
+- [AniSkip](https://api.aniskip.com) for intro and outro timestamps
+- [Anime News Network](https://www.animenewsnetwork.com) for news headlines
+- YouTube for trailer playback
+- [Aniyomi](https://github.com/aniyomiorg/aniyomi) for the extension format Anisu is compatible with
 
-### 3. Stream Comparison
-```
-Before: Basic list
-After:  Info cards with latency
-```
+Contributors are listed in the app (Settings > Contributors) and read from [`contributorsansu.json`](contributorsansu.json); open a pull request to add yourself.
 
 ---
 
-## 📚 Documentation Map
+## Contributing
 
-```
-START HERE
-    ↓
-README.md (this file)
-    ↓
-    ├─→ QUICK_REFERENCE.md (for quick lookup)
-    ├─→ IMPLEMENTATION_GUIDE.md (step-by-step)
-    ├─→ UI_LAYOUTS.md (visual reference)
-    └─→ BEFORE_AFTER_COMPARISON.md (why upgrade?)
-```
+Bug reports and pull requests are welcome.
+
+1. Run the build once before you change anything; it must be green on a clean tree.
+2. Fix what the issue asks and avoid unrelated refactors.
+3. Add an entry to `CHANGELOG.md` under `## [Unreleased]`.
+4. Make sure `./gradlew assembleDebug assembleRelease --console=plain` finishes with no errors and no warnings.
+
+When reporting a playback or download problem, attach the app's diagnostics log if you can: it records which source answered and why a stream failed.
 
 ---
 
-## 🔧 Customization
+## Disclaimer
 
-### Theme Color
-- **File**: `PlayerSettings.kt`, `PlayerControls.kt`
-- **Search**: `AnsuColors.Accent`
-- **Replace with**: Your app's accent color
-
-### Spacing
-- **File**: All files with `spacedBy()`
-- **Values**: 8.dp, 12.dp, 16.dp
-- **Change to**: Your preferred values
-
-### Font Sizes
-- **File**: All files with `MaterialTheme.typography`
-- **Change**: `titleMedium`, `labelMedium`, `labelSmall`
-
-### Border Radius
-- **File**: All files with `RoundedCornerShape`
-- **Values**: 8.dp, 12.dp
-- **Change**: Any value you prefer
-
-See **IMPLEMENTATION_GUIDE.md** → Customization section for more.
-
----
-
-## 🧪 Testing
-
-### Checklist
-- [ ] Files compile without errors
-- [ ] Horizontal scrolling works
-- [ ] Selection state updates correctly
-- [ ] Colors match your theme
-- [ ] Text is readable
-- [ ] Bottom sheets dismiss properly
-- [ ] No crashes on device rotation
-- [ ] Touch targets are adequate (48dp+ height)
-
-### Devices to Test
-- Phone (360dp width)
-- Tablet (600dp width)
-- Landscape orientation
-- Android 9+
-
----
-
-## 🐛 Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| `AnsuColors` error | Check your theme imports |
-| Horizontal scroll not working | Ensure `LazyRow` parent is scrollable |
-| Colors look wrong | Verify `AnsuColors.Accent` in theme |
-| Text overflow | Add `maxLines = 1, overflow = TextOverflow.Ellipsis` |
-| Sheet not showing | Check state variable and conditionals |
-
-More troubleshooting in **QUICK_REFERENCE.md** → Troubleshooting section.
-
----
-
-## 📖 Documentation Summary
-
-### IMPLEMENTATION_GUIDE.md ⭐ START HERE
-- **Length**: 11 KB
-- **Purpose**: Complete integration guide
-- **Contains**: 
-  - File descriptions
-  - Component breakdown
-  - Integration steps
-  - Color schemes
-  - Customization
-  - Best practices
-- **Read Time**: 15 minutes
-- **Difficulty**: Intermediate
-
-### QUICK_REFERENCE.md ⭐ DURING DEVELOPMENT
-- **Length**: 8 KB
-- **Purpose**: Quick lookup and cheat sheets
-- **Contains**:
-  - 5-minute quick start
-  - Component cheat sheet
-  - Common tasks
-  - Troubleshooting
-  - Pro tips
-- **Read Time**: 10 minutes
-- **Difficulty**: Beginner-friendly
-
-### UI_LAYOUTS.md ⭐ FOR VISUAL REFERENCE
-- **Length**: 17 KB
-- **Purpose**: Visual design documentation
-- **Contains**:
-  - ASCII diagrams
-  - Component structure
-  - Spacing metrics
-  - Animation timeline
-  - Typography hierarchy
-- **Read Time**: 10 minutes
-- **Difficulty**: Visual learner
-
-### BEFORE_AFTER_COMPARISON.md ⭐ TO UNDERSTAND CHANGES
-- **Length**: 14 KB
-- **Purpose**: Show improvements
-- **Contains**:
-  - Before/after comparisons
-  - Feature matrix
-  - Performance improvements
-  - User experience changes
-- **Read Time**: 8 minutes
-- **Difficulty**: Beginner
-
----
-
-## 💡 Key Features Explained
-
-### 🎬 Source Selection
-- Horizontal scrollable chips
-- Single-tap selection
-- Auto-closes sheet
-- Shows resolution and source
-
-### 🔤 Subtitle Settings
-- Multi-language support
-- Size adjustment (S/M/L)
-- Background styles
-- Position control
-- Sync delay (±1000ms)
-
-### 📺 Stream Selection
-- Sub/Dub toggle
-- Resolution display
-- Source identification
-- Latency information
-- Horizontal scrollable cards
-
----
-
-## 🎨 Design Highlights
-
-### Colors
-```kotlin
-Selected:   AnsuColors.Accent (usually blue/purple)
-Unselected: White with 10% opacity
-Text:       Black (selected) or White (unselected)
-Headers:    White with 70% opacity
-```
-
-### Typography
-```
-Titles:    MaterialTheme.typography.titleMedium
-Labels:    MaterialTheme.typography.labelMedium
-Small:     MaterialTheme.typography.labelSmall
-```
-
-### Spacing
-```
-Horizontal:  16.dp (main padding)
-Vertical:    12.dp (section padding)
-Gaps:        8-12.dp (between items)
-Corner:      8-12.dp (border radius)
-```
-
----
-
-## 🚀 Integration Steps
-
-### Phase 1: Drop-in (15 minutes)
-1. Copy Kotlin files
-2. Check compilation
-3. Test basic functionality
-
-### Phase 2: Add Subtitle Panel (30 minutes)
-1. Add subtitle state
-2. Integrate SubtitleSettingsSheet
-3. Connect callbacks
-4. Test UI
-
-### Phase 3: Add Stream Selection (30 minutes)
-1. Add stream state
-2. Integrate StreamSelectionSheet
-3. Connect callbacks
-4. Test UI
-
-### Phase 4: Polish & Optimize (30 minutes)
-1. Add animations
-2. Add haptic feedback
-3. Optimize performance
-4. Final testing
-
-**Total Time: 1-2 hours**
-
----
-
-## 📞 Support Resources
-
-### Documentation
-- 📘 IMPLEMENTATION_GUIDE.md - Step-by-step guide
-- 📗 QUICK_REFERENCE.md - Cheat sheets
-- 📙 UI_LAYOUTS.md - Visual reference
-- 📕 BEFORE_AFTER_COMPARISON.md - Improvements
-
-### Code Comments
-All Kotlin files include:
-- Function documentation
-- Parameter descriptions
-- UI structure comments
-- Integration notes
-
-### Quick Links in Code
-- `@Composable` marks UI functions
-- `//` comments explain design choices
-- Data models at top of files
-- Example usage in PlayerScreen
-
----
-
-## ✅ Verification Checklist
-
-Before using in production:
-
-- [ ] All files placed in correct directory
-- [ ] Project compiles without errors
-- [ ] No import errors
-- [ ] Colors match your theme
-- [ ] Text is readable on all screen sizes
-- [ ] Touch targets meet 48dp minimum
-- [ ] Bottom sheets dismiss properly
-- [ ] Horizontal scrolling works smoothly
-- [ ] Selection state updates correctly
-- [ ] No crashes on rotation
-- [ ] Works on devices from API 21+
-- [ ] Tested on phone and tablet
-
----
-
-## 🎁 Bonus: What's NOT Included But Can Be Added
-
-- 🎵 Audio track selection
-- 🎚️ Playback speed settings
-- 📊 Quality auto-adjustment
-- 💾 Remember user preferences
-- ♿ Enhanced accessibility features
-- 🔄 Gesture controls
-- ⌨️ Keyboard shortcuts
-- 🌙 Theme customization
-
-Each can be added following the pattern in this package.
-
----
-
-## 📊 Statistics
-
-```
-Total Code:        2,612 lines
-Kotlin Code:       ~1,200 lines
-Documentation:     ~1,400 lines
-Composables:       10+ reusable components
-Data Models:       3 new classes
-Features Added:    10+ improvements
-Breaking Changes:  None (drop-in replacement)
-```
-
----
-
-## 🎓 Learning Value
-
-By using this package, you'll learn:
-- ✅ Modern Compose patterns
-- ✅ Bottom sheet implementation
-- ✅ Horizontal scrolling (LazyRow)
-- ✅ State management in Compose
-- ✅ Material Design 3 components
-- ✅ Responsive UI design
-- ✅ Reusable composables
-- ✅ Professional code structure
-
----
-
-## 📝 License & Attribution
-
-This package was created based on:
-- Modern streaming app design patterns (Netflix, PenguPlay)
-- Material Design 3 guidelines
-- Android Jetpack Compose best practices
-- Your original sketches and requirements
-
-Feel free to modify and extend as needed for your project.
-
----
-
-## 🎯 Next Steps
-
-1. **Read QUICK_REFERENCE.md** (5 min)
-2. **Read IMPLEMENTATION_GUIDE.md** (15 min)
-3. **Copy Kotlin files** (2 min)
-4. **Verify compilation** (5 min)
-5. **Run and test** (30 min)
-6. **Customize colors/spacing** (15 min)
-7. **Connect to your ViewModel** (30 min)
-8. **Deploy!** 🚀
-
----
-
-## 🏆 Quality Metrics
-
-| Metric | Status |
-|--------|--------|
-| Code Quality | ⭐⭐⭐⭐⭐ |
-| Documentation | ⭐⭐⭐⭐⭐ |
-| Ease of Integration | ⭐⭐⭐⭐⭐ |
-| Reusability | ⭐⭐⭐⭐⭐ |
-| Mobile Optimization | ⭐⭐⭐⭐⭐ |
-| Visual Design | ⭐⭐⭐⭐⭐ |
-
----
-
-## 📅 Version Information
-
-- **Version**: 1.0 (Release)
-- **Created**: October 3, 2026
-- **Status**: ✅ Production Ready
-- **Tested on**: Jetpack Compose 1.5+
-- **Min API**: Android 21+
-- **Target API**: Android 34+
-
----
-
-## 🙏 Thank You!
-
-This package was carefully crafted to provide you with:
-- Modern, professional UI
-- Clean, reusable code
-- Comprehensive documentation
-- Easy integration
-- Best practices
-
-Good luck with your anime player! 🎬
-
----
-
-**Ready to start? Begin with IMPLEMENTATION_GUIDE.md or jump to QUICK_REFERENCE.md!** ✨
-
-For questions or issues, refer to the appropriate documentation file using the map at the top of this README.
-
----
-
-**Last Updated**: October 3, 2026  
-**Status**: ✅ Ready for Production  
-**Confidence Level**: 🟢 High
+Anisu is a client application. It does not host, store or distribute any video content, and it is not affiliated with AniList, MyAnimeList, TMDB, Aniyomi or any extension or source. Content comes from third-party extensions that you choose to install.

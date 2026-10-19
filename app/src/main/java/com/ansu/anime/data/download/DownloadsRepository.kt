@@ -29,11 +29,13 @@ import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.core.model.MediaOrigin
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.SEpisode
+import com.ansu.anime.core.model.SubtitleTrack
 import com.ansu.anime.core.model.Video
 import com.ansu.anime.data.prefs.PlayerPrefs
 import com.ansu.anime.extension.ExtensionManager
 import com.ansu.anime.extension.findEpisodesByTitle
 import com.ansu.anime.ui.player.PlayableSource
+import com.ansu.anime.ui.player.kindChip
 import com.ansu.anime.ui.player.pickStart
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -217,7 +219,7 @@ class DownloadsRepository(
      * With [chosen] (a stream picked in the source picker) exactly that stream is downloaded; without it the stream
      * the player would start with is found and used.
      */
-    fun enqueue(anime: SAnime, episode: SEpisode, chosen: PlayableSource? = null) {
+    fun enqueue(anime: SAnime, episode: SEpisode, chosen: PlayableSource? = null, siblings: List<PlayableSource> = emptyList()) {
         val anilistId = anime.anilistId ?: anime.id.toIntOrNull() ?: return
         val id = downloadKey(anilistId, episode.episodeNumber)
         val existing = items.value.firstOrNull { it.entry.id == id }
@@ -241,7 +243,7 @@ class DownloadsRepository(
         DownloadNotifications.preparing(appContext, stub, startText)
         scope.launch {
             try {
-                val prepared = withContext(Dispatchers.IO) { prepare(stub, anime, episode, chosen) { text ->
+                val prepared = withContext(Dispatchers.IO) { prepare(stub, anime, episode, chosen, siblings) { text ->
                     setPreparing(stub.id, DownloadStatus(DownloadPhase.Preparing, message = text))
                     DownloadNotifications.preparing(appContext, stub, text)
                 } }
@@ -302,9 +304,17 @@ class DownloadsRepository(
         anime: SAnime,
         episode: SEpisode,
         chosen: PlayableSource?,
+        siblings: List<PlayableSource>,
         onStage: (String) -> Unit,
     ): Pair<DownloadEntry, DownloadRequest> {
-        val (resolvedVideo, label, sourceId) = (if (chosen != null) resolveChosen(chosen) else findBestVideo(anime, episode)) ?: throw IOException(if (chosen != null) "The stream you picked did not respond. Try another source." else "No playable source found for this episode")
+        val found = (if (chosen != null) resolveChosen(chosen) else findBestVideo(anime, episode)) ?: throw IOException(if (chosen != null) "The stream you picked did not respond. Try another source." else "No playable source found for this episode")
+        val label = found.label
+        val sourceId = found.sourceId
+        val pool = if (chosen != null) siblings else found.pool
+        // A dub often lists no subtitle files of its own (they belong to the sub stream), so the same extension's
+        // sub streams are asked for theirs. Without this a dubbed episode was saved with no subtitles at all.
+        onStage("Looking for subtitles…")
+        val resolvedVideo = withSiblingSubtitles(found.video, found.picked ?: chosen, pool)
         // Extensions sometimes hand back links that are not files at all (a magnet or torrent), and request headers
         // that would break a resumed download. Both are dealt with here, before anything is saved.
         checkDownloadable(resolvedVideo.url)
@@ -395,7 +405,15 @@ class DownloadsRepository(
             throw IOException("$what took too long. Delete it and try another source.")
         }
 
-    private data class Found(val video: Video, val label: String, val sourceId: Long?)
+    private data class Found(
+        val video: Video,
+        val label: String,
+        val sourceId: Long?,
+        /** The stream the video was resolved from (listed form). */
+        val picked: PlayableSource? = null,
+        /** Every stream the sources listed for the episode, for borrowing subtitles. */
+        val pool: List<PlayableSource> = emptyList(),
+    )
 
     /** Resolves the one stream the person picked in the source picker (listed streams are resolved only now). */
     private suspend fun resolveChosen(chosen: PlayableSource): Found? {
@@ -424,6 +442,7 @@ class DownloadsRepository(
             ),
             label,
             chosen.sourceId,
+            picked = chosen,
         )
     }
 
@@ -491,9 +510,51 @@ class DownloadsRepository(
                 ),
                 label,
                 chosen.sourceId,
+                picked = chosen,
+                pool = collected.toList(),
             )
         }
         return null
+    }
+
+    /** True when the stream is the dubbed version of the episode (label, server name or extension name says so). */
+    private fun PlayableSource.isDubStream(): Boolean =
+        kindChip() == "Dub" ||
+            serverName?.contains("dub", ignoreCase = true) == true ||
+            extensionName?.contains("dub", ignoreCase = true) == true ||
+            audioTracks.any { it.lang.contains("dub", ignoreCase = true) }
+
+    /**
+     * Adds the subtitle files of the same extension's sub streams to a dub's own. Streams that already list their
+     * subtitles are used as they are; otherwise up to three sub streams (the same server first) are resolved, and
+     * the first one that has subtitles is used. Only a dub borrows, and a failure just leaves the video as it was.
+     */
+    private suspend fun withSiblingSubtitles(video: Video, picked: PlayableSource?, pool: List<PlayableSource>): Video {
+        if (picked == null || !picked.isDubStream()) return video
+        val donors = pool
+            .filter { it !== picked && it.sourceId == picked.sourceId && !it.isDubStream() }
+            .sortedBy { if (it.serverName == picked.serverName) 0 else 1 }
+        if (donors.isEmpty()) return video
+        val borrowed = mutableListOf<SubtitleTrack>()
+        donors.firstOrNull { it.subtitles.isNotEmpty() }?.let { borrowed += it.subtitles }
+        if (borrowed.isEmpty()) {
+            for (donor in donors.filter { it.resolve != null }.take(3)) {
+                val ready = try {
+                    withTimeout(SIBLING_TIMEOUT_MS) { donor.resolve?.invoke() }
+                } catch (e: CancellationException) {
+                    if (e is TimeoutCancellationException) null else throw e
+                } catch (e: Throwable) {
+                    null
+                }
+                if (ready != null && ready.subtitles.isNotEmpty()) {
+                    borrowed += ready.subtitles
+                    break
+                }
+            }
+        }
+        if (borrowed.isEmpty()) return video
+        diagnostics?.log(LogCategory.PLAYBACK, "Download: dub stream has ${video.subtitleTracks.size} subtitle(s); borrowed ${borrowed.size} from the sub stream")
+        return video.copy(subtitleTracks = (video.subtitleTracks + borrowed).distinctBy { it.url })
     }
 
     private fun Video.toPlayable(): PlayableSource = PlayableSource(
@@ -614,7 +675,13 @@ class DownloadsRepository(
         // Audio that is a separate file cannot be kept by taking one picture quality alone, so the whole playlist is
         // downloaded then. It is larger, but it has sound.
         val separateAudio = lines.any { it.startsWith("#EXT-X-MEDIA") && "TYPE=AUDIO" in it && "URI=" in it }
-        if (separateAudio) return hls.build()
+        // Subtitles carried inside the stream (a subtitle rendition in the playlist) are the same: taking one picture
+        // quality alone would leave them behind, which is how a dub that streams with subtitles downloaded without.
+        val embeddedSubtitles = lines.any { it.startsWith("#EXT-X-MEDIA") && "TYPE=SUBTITLES" in it && "URI=" in it }
+        if (separateAudio || embeddedSubtitles) {
+            diagnostics?.log(LogCategory.PLAYBACK, "Download: whole playlist kept (separate audio: $separateAudio, embedded subtitles: $embeddedSubtitles)")
+            return hls.build()
+        }
 
         val wanted = playerPrefs.preferredQuality.value.takeIf { it != PlayerPrefs.QUALITY_ANY } ?: 1080
         val withHeight = variants.filter { it.height > 0 }.sortedBy { it.height }
@@ -699,6 +766,8 @@ class DownloadsRepository(
             }.build()
             helper.addTrackSelection(0, params)
         }
+        val textGroups = tracks.groups.count { it.type == C.TRACK_TYPE_TEXT }
+        diagnostics?.log(LogCategory.PLAYBACK, "Download: stream carries $textGroups embedded subtitle track group(s)")
     }
 
     /**
@@ -798,6 +867,7 @@ class DownloadsRepository(
         const val KEY_ENTRIES = "entries"
         const val FIND_TIMEOUT_MS = 25_000L
         const val RESOLVE_TIMEOUT_MS = 30_000L
+        const val SIBLING_TIMEOUT_MS = 15_000L
         const val MIME_TIMEOUT_MS = 20_000L
         const val SUBTITLE_TIMEOUT_MS = 30_000L
         const val HELPER_TIMEOUT_MS = 20_000L

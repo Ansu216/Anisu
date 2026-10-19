@@ -121,7 +121,7 @@ fun SourcePickerScreen(container: AppContainer, navController: NavHostController
             DownloadPhase.Preparing, DownloadPhase.Queued, DownloadPhase.Downloading -> "Already downloading"
             else -> {
                 container.diagnostics.log(LogCategory.CLICK, "Download from picker: ${anime.title} E${episode.episodeNumber} via ${source.extensionName}")
-                container.downloads.enqueue(anime, episode, source)
+                container.downloads.enqueue(anime, episode, source, state.sources)
                 "Download started"
             }
         }
