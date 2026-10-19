@@ -35,7 +35,6 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -46,6 +45,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.util.lerp
 import coil.compose.AsyncImage
 import coil.memory.MemoryCache
@@ -183,7 +183,7 @@ fun Modifier.posterTransitionOrigin(
             awaitEachGesture {
                 awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 holder.coordinates?.takeIf { it.isAttached }?.let {
-                    PosterTransition.setPending(PosterTransition.Origin(it.boundsInRoot(), posterUrl, cornerRadius, latestCover, bars))
+                    PosterTransition.setPending(PosterTransition.Origin(it.fullBoundsInRoot(), posterUrl, cornerRadius, latestCover, bars))
                 }
             }
         }
@@ -215,10 +215,17 @@ fun Modifier.posterTransitionTrigger(
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
         handle.coordinates?.takeIf { it.isAttached }?.let {
-            PosterTransition.setPending(PosterTransition.Origin(it.boundsInRoot(), posterUrl, cornerRadius))
+            PosterTransition.setPending(PosterTransition.Origin(it.fullBoundsInRoot(), posterUrl, cornerRadius))
         }
     }
 }
+
+/**
+ * The poster's whole rectangle in the root, even the part that is scrolled or cut off outside the screen or its
+ * list. boundsInRoot() returns only the visible part, so a poster sitting at a side or corner (half off the screen
+ * edge) gave a smaller, shifted rectangle and the opening animation started from the wrong place.
+ */
+private fun LayoutCoordinates.fullBoundsInRoot(): Rect = Rect(positionInRoot(), size.toSize())
 
 /** A plain (non-state) holder: layout coordinates change every frame while scrolling and must not recompose. */
 private class CoordinatesHolder {
@@ -345,8 +352,6 @@ fun AnimatedContentScope.PosterExpandContainer(
     val shapePath = remember { Path() }
     // The page may apply its held-back data once the motion is over (see LocalPosterSettled).
     val settled by remember { derivedStateOf { progress.value >= 0.999f } }
-    // The poster cover is only needed until the page is fully open; dropping it then frees its layer.
-    val coverVisible by remember { derivedStateOf { progress.value < 0.999f } }
     // True while the page is being popped (back press / back gesture) rather than covered by another page.
     // The close shrinks the whole page into the poster; the open is left exactly as it was.
     val closing = transition.targetState == EnterExitState.PostExit && !isOnBackStack()
@@ -395,7 +400,11 @@ fun AnimatedContentScope.PosterExpandContainer(
                 },
                 alpha = { ((0.75f - progress.value) / 0.25f).coerceIn(0f, 1f) },
             )
-        } else if (origin != null && origin.posterUrl != null && coverVisible) {
+        } else if (origin != null && origin.posterUrl != null) {
+            // Kept composed for as long as the page lives, like the banner above: it used to be dropped once the
+            // page was open and composed again on the first frame of the close, where the heavy page was also
+            // recomposing, so the close started late (the page froze for a moment before shrinking). Its alpha is 0
+            // while the page is open, so nothing is drawn; its picture is already in the cache.
             PosterCover(
                 posterUrl = origin.posterUrl,
                 posterBounds = origin.bounds,
