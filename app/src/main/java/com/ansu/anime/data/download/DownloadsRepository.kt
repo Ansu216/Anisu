@@ -91,6 +91,12 @@ class DownloadsRepository(
 
     /** For the small requests made while preparing (stream type, subtitle files): each call ends by itself after 15 s. */
     private val quickClient: OkHttpClient = okHttpClient.newBuilder().callTimeout(15, java.util.concurrent.TimeUnit.SECONDS).build()
+
+    /** For reading a stream's playlist directly: slow hosts get 30 s per try instead of 10. */
+    private val patientClient: OkHttpClient = okHttpClient.newBuilder()
+        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(35, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val prefs = appContext.getSharedPreferences("ansu_downloads", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
@@ -646,12 +652,23 @@ class DownloadsRepository(
 
     /** Reads an HLS playlist with a plain request, picks the quality, and returns the request for it. */
     private suspend fun readHlsPlaylist(id: String, url: String, headers: Map<String, String>): DownloadRequest {
+        // Some hosts (the Vidstream ones) can take 10 s or more to answer the playlist request, so this read is
+        // patient and tries twice: a slow answer is not a dead source.
         val text = withContext(Dispatchers.IO) {
             val request = Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()
-            quickClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) throw IOException("The source answered HTTP ${response.code} for the playlist")
-                response.body?.source()?.let { source -> source.request(512L * 1024L); source.buffer.clone().readUtf8() }.orEmpty()
+            var last: IOException? = null
+            for (attempt in 1..2) {
+                try {
+                    return@withContext patientClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) throw IOException("The source answered HTTP ${response.code} for the playlist")
+                        response.body?.source()?.let { source -> source.request(512L * 1024L); source.buffer.clone().readUtf8() }.orEmpty()
+                    }
+                } catch (e: java.net.SocketTimeoutException) {
+                    last = e
+                    diagnostics?.log(LogCategory.PLAYBACK, "Download: the playlist did not answer in time (attempt $attempt of 2)")
+                }
             }
+            throw last ?: IOException("The playlist could not be read")
         }
         if (!text.trimStart('\uFEFF', ' ', '\n', '\r', '\t').startsWith("#EXTM3U")) throw IOException("The source did not return a playlist")
         val hls = DownloadRequest.Builder(id, Uri.parse(url)).setMimeType(MimeTypes.APPLICATION_M3U8)
@@ -879,7 +896,7 @@ class DownloadsRepository(
         const val MIME_TIMEOUT_MS = 20_000L
         const val SUBTITLE_TIMEOUT_MS = 30_000L
         const val HELPER_TIMEOUT_MS = 20_000L
-        const val REQUEST_TIMEOUT_MS = 60_000L
+        const val REQUEST_TIMEOUT_MS = 110_000L
         const val MAX_RESOLVE_ATTEMPTS = 5
     }
 }
