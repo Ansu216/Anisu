@@ -52,6 +52,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
@@ -84,6 +85,9 @@ class DownloadsRepository(
     private val diagnostics: Diagnostics?,
 ) {
     private val appContext = context.applicationContext
+
+    /** For the small requests made while preparing (stream type, subtitle files): each call ends by itself after 15 s. */
+    private val quickClient: OkHttpClient = okHttpClient.newBuilder().callTimeout(15, java.util.concurrent.TimeUnit.SECONDS).build()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val prefs = appContext.getSharedPreferences("ansu_downloads", Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
@@ -218,11 +222,15 @@ class DownloadsRepository(
             createdAt = System.currentTimeMillis(),
         )
         saveEntry(stub)
-        setPreparing(id, DownloadStatus(DownloadPhase.Preparing))
-        DownloadNotifications.preparing(appContext, stub)
+        val startText = if (chosen != null) "Getting your chosen stream…" else "Finding the best stream…"
+        setPreparing(id, DownloadStatus(DownloadPhase.Preparing, message = startText))
+        DownloadNotifications.preparing(appContext, stub, startText)
         scope.launch {
             try {
-                val prepared = withContext(Dispatchers.IO) { prepare(stub, anime, episode, chosen) }
+                val prepared = withContext(Dispatchers.IO) { prepare(stub, anime, episode, chosen) { text ->
+                    setPreparing(stub.id, DownloadStatus(DownloadPhase.Preparing, message = text))
+                    DownloadNotifications.preparing(appContext, stub, text)
+                } }
                 saveEntry(prepared.first)
                 DownloadNotifications.clearPreparing(appContext, id)
                 try {
@@ -275,17 +283,28 @@ class DownloadsRepository(
 
     // ---- preparing a download ------------------------------------------------------------------------------
 
-    private suspend fun prepare(stub: DownloadEntry, anime: SAnime, episode: SEpisode, chosen: PlayableSource?): Pair<DownloadEntry, DownloadRequest> {
-        val (video, label, sourceId) = (if (chosen != null) resolveChosen(chosen) else findBestVideo(anime, episode)) ?: throw IOException("No playable source found for this episode")
+    private suspend fun prepare(
+        stub: DownloadEntry,
+        anime: SAnime,
+        episode: SEpisode,
+        chosen: PlayableSource?,
+        onStage: (String) -> Unit,
+    ): Pair<DownloadEntry, DownloadRequest> {
+        val (video, label, sourceId) = (if (chosen != null) resolveChosen(chosen) else findBestVideo(anime, episode)) ?: throw IOException(if (chosen != null) "The stream you picked did not respond. Try another source." else "No playable source found for this episode")
         hostHeaders[Uri.parse(video.url).host.orEmpty()] = video.headers
         lastHeaders = video.headers
-        val mime = mimeOf(video.url, video.headers)
+
+        onStage("Checking the stream…")
+        val mime = stepTimeout(MIME_TIMEOUT_MS, "Checking the stream") { mimeOf(video.url, video.headers) }
 
         // Every subtitle file the source lists, saved before the video so they are there when it finishes.
-        val subtitles = downloadSubtitles(stub.id, video)
+        // A slow subtitle host must not hold the video back: whatever could not be fetched in time is skipped.
+        onStage("Saving subtitles…")
+        val subtitles = withTimeoutOrNull(SUBTITLE_TIMEOUT_MS) { downloadSubtitles(stub.id, video) } ?: emptyList()
         diagnostics?.log(LogCategory.PLAYBACK, "Download: ${anime.title} E${episode.episodeNumber} from $label, ${subtitles.size} subtitle file(s)")
 
-        val request = buildRequest(stub.id, video.url, mime)
+        onStage("Reading the stream…")
+        val request = stepTimeout(REQUEST_TIMEOUT_MS, "Reading the stream") { buildRequest(stub.id, video.url, mime) }
         val entry = stub.copy(
             sourceId = sourceId,
             sourceLabel = label,
@@ -295,6 +314,17 @@ class DownloadsRepository(
         )
         return entry to request
     }
+
+    /**
+     * Runs one preparing step with a time limit. A timeout is turned into a plain failure: left as it is, a
+     * timeout is a cancellation, which [enqueue] rethrows, and the download would sit on "Preparing" forever.
+     */
+    private suspend fun <T> stepTimeout(ms: Long, what: String, block: suspend () -> T): T =
+        try {
+            withTimeout(ms) { block() }
+        } catch (e: TimeoutCancellationException) {
+            throw IOException("$what took too long. Delete it and try another source.")
+        }
 
     private data class Found(val video: Video, val label: String, val sourceId: Long?)
 
@@ -423,7 +453,7 @@ class DownloadsRepository(
                         .apply { headers.forEach { (k, v) -> header(k, v) } }
                         .header("Range", "bytes=0-1023")
                         .build()
-                    okHttpClient.newCall(request).execute().use { response ->
+                    quickClient.newCall(request).execute().use { response ->
                         if (!response.isSuccessful) return@use null
                         val head = response.peekBody(1024).string().trimStart('\uFEFF', ' ', '\n', '\r', '\t')
                         val type = response.header("Content-Type")?.substringBefore(';')?.trim()?.lowercase().orEmpty()
@@ -529,7 +559,7 @@ class DownloadsRepository(
                 val request = Request.Builder().url(track.url)
                     .apply { video.headers.forEach { (k, v) -> header(k, v) } }
                     .build()
-                okHttpClient.newCall(request).execute().use { response ->
+                quickClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) return@use
                     val bytes = response.body?.bytes() ?: return@use
                     if (bytes.isEmpty()) return@use
@@ -598,6 +628,9 @@ class DownloadsRepository(
         const val KEY_ENTRIES = "entries"
         const val FIND_TIMEOUT_MS = 25_000L
         const val RESOLVE_TIMEOUT_MS = 30_000L
+        const val MIME_TIMEOUT_MS = 20_000L
+        const val SUBTITLE_TIMEOUT_MS = 20_000L
+        const val REQUEST_TIMEOUT_MS = 45_000L
         const val MAX_RESOLVE_ATTEMPTS = 5
     }
 }

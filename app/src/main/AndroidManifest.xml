@@ -13,6 +13,8 @@
     <!-- Episode downloads keep running in the background as a data-sync foreground service. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Android 16: lets the download notification be shown as a live update (status bar chip). -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Needed for ACTION_DELETE: without it Android silently ignores the uninstall request. -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />

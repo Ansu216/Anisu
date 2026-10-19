@@ -170,7 +170,7 @@ private fun DownloadCard(item: DownloadItem, onPlay: () -> Unit, onDelete: () ->
 @Composable
 private fun StatusLine(phase: DownloadPhase, percent: Float, bytes: Long, message: String?) {
     val text = when (phase) {
-        DownloadPhase.Preparing -> "Finding the best stream…"
+        DownloadPhase.Preparing -> message ?: "Finding the best stream…"
         DownloadPhase.Queued -> "Waiting to download"
         DownloadPhase.Downloading -> if (percent >= 0f) "Downloading ${percent.toInt()}% · ${formatSize(bytes)}" else "Downloading · ${formatSize(bytes)}"
         DownloadPhase.Completed -> "Ready to watch offline · ${formatSize(bytes)}"

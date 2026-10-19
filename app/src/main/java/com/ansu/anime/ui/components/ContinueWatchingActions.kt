@@ -329,7 +329,7 @@ fun ContinueWatchingActionOverlay(
     ) {
         val cardWidth = min(maxWidth.value * 0.84f, 320f).dp
         val cardHeight = cardWidth * 9f / 16f
-        val stackHeight = cardHeight + GapAfterCard + TitleHeight + SubtitleHeight + GapBeforeMenu + MenuRowHeight * 2 + 1.dp
+        val stackHeight = cardHeight + GapAfterCard + TitleHeight + SubtitleHeight + GapBeforeMenu + MenuRowHeight * 3 + 2.dp
         val cardUnit = cardWidth.value / CardBaseWidth.value
 
         val cardWidthPx = with(density) { cardWidth.toPx() }
@@ -524,7 +524,7 @@ private fun ActionMenu(onGoToDetails: () -> Unit, onPlayManually: () -> Unit, on
         tintAlpha = 0.66f,
     ) {
         Column {
-            ActionMenuRow("Go to details", Icons.Outlined.Info, AnsuColors.TextPrimary, onGoToDetails)
+            ActionMenuRow("View details", Icons.Outlined.Info, AnsuColors.TextPrimary, onGoToDetails)
             Box(Modifier.fillMaxWidth().height(1.dp).background(AnsuColors.StrokeGlass))
             ActionMenuRow("Play manually", Icons.Outlined.TouchApp, AnsuColors.TextPrimary, onPlayManually)
             Box(Modifier.fillMaxWidth().height(1.dp).background(AnsuColors.StrokeGlass))
