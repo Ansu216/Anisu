@@ -12,6 +12,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.NoOpCacheEvictor
@@ -140,8 +141,16 @@ class DownloadsRepository(
         .setUpstreamDataSourceFactory(upstreamFactory)
         .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
 
+    /** What went wrong with each failed download, as the Downloads screen words it. */
+    private val failureMessages = ConcurrentHashMap<String, String>()
+
     private val listener = object : DownloadManager.Listener {
         override fun onDownloadChanged(downloadManager: DownloadManager, download: Download, finalException: Exception?) {
+            if (download.state == Download.STATE_FAILED) {
+                describeFailure(finalException)?.let { failureMessages[download.request.id] = it }
+            } else {
+                failureMessages.remove(download.request.id)
+            }
             media3States.value = media3States.value + (download.request.id to download)
             if (download.state == Download.STATE_FAILED) {
                 diagnostics?.log(LogCategory.PLAYBACK, "Download failed (${download.failureReason}): ${download.request.id} ${finalException?.message.orEmpty()}")
@@ -290,7 +299,11 @@ class DownloadsRepository(
         chosen: PlayableSource?,
         onStage: (String) -> Unit,
     ): Pair<DownloadEntry, DownloadRequest> {
-        val (video, label, sourceId) = (if (chosen != null) resolveChosen(chosen) else findBestVideo(anime, episode)) ?: throw IOException(if (chosen != null) "The stream you picked did not respond. Try another source." else "No playable source found for this episode")
+        val (resolvedVideo, label, sourceId) = (if (chosen != null) resolveChosen(chosen) else findBestVideo(anime, episode)) ?: throw IOException(if (chosen != null) "The stream you picked did not respond. Try another source." else "No playable source found for this episode")
+        // Extensions sometimes hand back links that are not files at all (a magnet or torrent), and request headers
+        // that would break a resumed download. Both are dealt with here, before anything is saved.
+        checkDownloadable(resolvedVideo.url)
+        val video = resolvedVideo.copy(headers = sanitizeHeaders(resolvedVideo.headers))
         hostHeaders[Uri.parse(video.url).host.orEmpty()] = video.headers
         lastHeaders = video.headers
 
@@ -304,7 +317,7 @@ class DownloadsRepository(
         diagnostics?.log(LogCategory.PLAYBACK, "Download: ${anime.title} E${episode.episodeNumber} from $label, ${subtitles.size} subtitle file(s)")
 
         onStage("Reading the stream…")
-        val request = stepTimeout(REQUEST_TIMEOUT_MS, "Reading the stream") { buildRequest(stub.id, video.url, mime) }
+        val request = stepTimeout(REQUEST_TIMEOUT_MS, "Reading the stream") { buildRequest(stub.id, video.url, mime, video.headers) }
         val entry = stub.copy(
             sourceId = sourceId,
             sourceLabel = label,
@@ -313,6 +326,52 @@ class DownloadsRepository(
             subtitles = subtitles,
         )
         return entry to request
+    }
+
+    /** Refuses what can never be downloaded, with a message that says why: torrents and anything that is not http(s). */
+    private fun checkDownloadable(url: String) {
+        val lower = url.trim().lowercase()
+        val path = lower.substringBefore('?').substringBefore('#')
+        when {
+            lower.startsWith("magnet:") || lower.startsWith("torrent:") || path.endsWith(".torrent") ->
+                throw IOException("This source gives a torrent link, which cannot be downloaded. Pick another source.")
+            !lower.startsWith("http://") && !lower.startsWith("https://") ->
+                throw IOException("This source's link cannot be downloaded. Pick another source.")
+        }
+    }
+
+    /**
+     * Headers an extension asks for, minus what must stay under the downloader's control. A Range header from the
+     * extension would override the one a resumed download sends and corrupt or restart the file, and Accept-Encoding
+     * would let the server compress the bytes, so neither is passed on. Blank entries are dropped.
+     */
+    private fun sanitizeHeaders(headers: Map<String, String>): Map<String, String> =
+        headers.mapNotNull { (key, value) ->
+            val name = key.trim()
+            val text = value.trim()
+            if (name.isEmpty() || text.isEmpty() ||
+                name.equals("Range", true) || name.equals("If-Range", true) || name.equals("Accept-Encoding", true)
+            ) null else name to text
+        }.toMap()
+
+    /** Why a download failed, in words: the HTTP status the source answered with, or null when it is not an HTTP error. */
+    fun describeFailure(error: Throwable?): String? {
+        var cause: Throwable? = error
+        while (cause != null) {
+            if (cause is HttpDataSource.InvalidResponseCodeException) {
+                val code = cause.responseCode
+                return when {
+                    code == 401 || code == 403 -> "The source refused the download (HTTP $code). Its link may have expired: delete this download and start it again."
+                    code == 404 || code == 410 -> "The file is gone from the source (HTTP $code). Try another source."
+                    code == 429 -> "The source is limiting downloads (HTTP 429). Try again in a few minutes."
+                    code >= 500 -> "The source's server had a problem (HTTP $code). Try again later."
+                    else -> "The source answered with HTTP $code."
+                }
+            }
+            val next = cause.cause
+            cause = if (next === cause) null else next
+        }
+        return null
     }
 
     /**
@@ -475,7 +534,89 @@ class DownloadsRepository(
      * the Preferred quality) is chosen, and every audio and subtitle track the stream carries is kept with it;
      * downloading its whole manifest would fetch every quality. A plain file needs no choice.
      */
-    private suspend fun buildRequest(id: String, url: String, mime: String?): DownloadRequest {
+    /**
+     * The request that downloads [url]. A plain file needs nothing more. A stream (HLS or DASH) is first read the way
+     * the player reads it. If that fails or takes too long, an HLS stream is read directly: its playlist is fetched,
+     * the picture quality is chosen from it, and the download starts from there. This is the path that works when the
+     * player's own reader cannot get through a source.
+     */
+    private suspend fun buildRequest(id: String, url: String, mime: String?, headers: Map<String, String>): DownloadRequest {
+        val adaptive = mime == MimeTypes.APPLICATION_M3U8 || mime == MimeTypes.APPLICATION_MPD
+        if (!adaptive) return readWithHelper(id, url, mime)
+
+        var helperError: Throwable? = null
+        try {
+            return stepTimeout(HELPER_TIMEOUT_MS, "Reading the stream") { readWithHelper(id, url, mime) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            helperError = e
+        }
+        diagnostics?.log(LogCategory.PLAYBACK, "Download: the player could not read the stream (${helperError?.message}); reading its playlist directly")
+        val reason = describeFailure(helperError) ?: "Could not read the stream: ${helperError?.message ?: helperError?.let { it::class.simpleName }}"
+        if (mime != MimeTypes.APPLICATION_M3U8) throw IOException(reason, helperError)
+        return try {
+            readHlsPlaylist(id, url, headers)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            diagnostics?.log(LogCategory.PLAYBACK, "Download: reading the playlist directly failed too: ${e::class.simpleName}: ${e.message}")
+            throw IOException(reason, e)
+        }
+    }
+
+    /** Reads an HLS playlist with a plain request, picks the quality, and returns the request for it. */
+    private suspend fun readHlsPlaylist(id: String, url: String, headers: Map<String, String>): DownloadRequest {
+        val text = withContext(Dispatchers.IO) {
+            val request = Request.Builder().url(url).apply { headers.forEach { (k, v) -> header(k, v) } }.build()
+            quickClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw IOException("The source answered HTTP ${response.code} for the playlist")
+                response.body?.source()?.let { source -> source.request(512L * 1024L); source.buffer.clone().readUtf8() }.orEmpty()
+            }
+        }
+        if (!text.trimStart('\uFEFF', ' ', '\n', '\r', '\t').startsWith("#EXTM3U")) throw IOException("The source did not return a playlist")
+        val hls = DownloadRequest.Builder(id, Uri.parse(url)).setMimeType(MimeTypes.APPLICATION_M3U8)
+        if (!text.contains("#EXT-X-STREAM-INF")) return hls.build() // already one quality: nothing to choose
+
+        // A master playlist: every quality it lists, in order, with its height and bitrate.
+        data class Variant(val height: Int, val bandwidth: Long, val uri: String)
+        val lines = text.lines().map { it.trim() }
+        val variants = mutableListOf<Variant>()
+        var i = 0
+        while (i < lines.size) {
+            val line = lines[i]
+            if (line.startsWith("#EXT-X-STREAM-INF")) {
+                var j = i + 1
+                while (j < lines.size && (lines[j].isEmpty() || lines[j].startsWith("#"))) j++
+                if (j < lines.size) {
+                    val attrs = line.substringAfter(':')
+                    val bandwidth = Regex("BANDWIDTH=(\\d+)").find(attrs)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                    val height = Regex("RESOLUTION=\\d+x(\\d+)").find(attrs)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                    val uri = runCatching { java.net.URI(url).resolve(lines[j]).toString() }.getOrDefault(lines[j])
+                    variants += Variant(height, bandwidth, uri)
+                    i = j
+                }
+            }
+            i++
+        }
+        if (variants.isEmpty()) throw IOException("The playlist lists no qualities")
+
+        // Audio that is a separate file cannot be kept by taking one picture quality alone, so the whole playlist is
+        // downloaded then. It is larger, but it has sound.
+        val separateAudio = lines.any { it.startsWith("#EXT-X-MEDIA") && "TYPE=AUDIO" in it && "URI=" in it }
+        if (separateAudio) return hls.build()
+
+        val wanted = playerPrefs.preferredQuality.value.takeIf { it != PlayerPrefs.QUALITY_ANY } ?: 1080
+        val withHeight = variants.filter { it.height > 0 }.sortedBy { it.height }
+        val chosen = if (withHeight.isNotEmpty()) {
+            withHeight.lastOrNull { it.height <= wanted } ?: withHeight.first()
+        } else {
+            variants.maxByOrNull { it.bandwidth } ?: variants.first()
+        }
+        return DownloadRequest.Builder(id, Uri.parse(chosen.uri)).setMimeType(MimeTypes.APPLICATION_M3U8).build()
+    }
+
+    private suspend fun readWithHelper(id: String, url: String, mime: String?): DownloadRequest {
         val adaptive = mime == MimeTypes.APPLICATION_M3U8 || mime == MimeTypes.APPLICATION_MPD
         if (!adaptive) {
             return DownloadRequest.Builder(id, Uri.parse(url)).apply { mime?.let { setMimeType(it) } }.build()
@@ -598,7 +739,7 @@ class DownloadsRepository(
         return when (state) {
             Download.STATE_COMPLETED -> DownloadStatus(DownloadPhase.Completed, 100f, bytesDownloaded)
             Download.STATE_DOWNLOADING -> DownloadStatus(DownloadPhase.Downloading, percent, bytesDownloaded)
-            Download.STATE_FAILED -> DownloadStatus(DownloadPhase.Failed, percent, bytesDownloaded, "The download failed")
+            Download.STATE_FAILED -> DownloadStatus(DownloadPhase.Failed, percent, bytesDownloaded, failureMessages[request.id] ?: "The download failed")
             Download.STATE_STOPPED -> DownloadStatus(DownloadPhase.Queued, percent, bytesDownloaded)
             else -> DownloadStatus(DownloadPhase.Queued, percent, bytesDownloaded)
         }
@@ -630,7 +771,8 @@ class DownloadsRepository(
         const val RESOLVE_TIMEOUT_MS = 30_000L
         const val MIME_TIMEOUT_MS = 20_000L
         const val SUBTITLE_TIMEOUT_MS = 20_000L
-        const val REQUEST_TIMEOUT_MS = 45_000L
+        const val HELPER_TIMEOUT_MS = 20_000L
+        const val REQUEST_TIMEOUT_MS = 60_000L
         const val MAX_RESOLVE_ATTEMPTS = 5
     }
 }

@@ -97,7 +97,7 @@ class AnisuDownloadService : DownloadService(
             val entry = (application as AnsuApp).container.downloads.entryFor(download.request.id) ?: return
             when (download.state) {
                 Download.STATE_COMPLETED -> DownloadNotifications.completed(this@AnisuDownloadService, entry)
-                Download.STATE_FAILED -> DownloadNotifications.failed(this@AnisuDownloadService, entry, finalException?.message)
+                Download.STATE_FAILED -> DownloadNotifications.failed(this@AnisuDownloadService, entry, (application as AnsuApp).container.downloads.describeFailure(finalException) ?: finalException?.message)
             }
         }
     }
