@@ -96,12 +96,17 @@ class DownloadsRepository(
 
     private val entries = MutableStateFlow(loadEntries())
     private val preparing = MutableStateFlow<Map<String, DownloadStatus>>(emptyMap())
-    private val media3States = MutableStateFlow<Map<String, Download>>(emptyMap())
+    /**
+     * Where each Media3 download stands, as plain values. Media3 keeps one [Download] object per download and
+     * updates its progress in place, so storing the objects made every poll look like "no change" to the flow
+     * and the Downloads screen never moved. A fresh [DownloadStatus] is copied out each time instead.
+     */
+    private val media3States = MutableStateFlow<Map<String, DownloadStatus>>(emptyMap())
 
     /** Every download, newest first, with where it stands. */
     val items: StateFlow<List<DownloadItem>> = combine(entries, preparing, media3States) { saved, prep, states ->
         saved.sortedByDescending { it.createdAt }.map { entry ->
-            DownloadItem(entry, prep[entry.id] ?: states[entry.id]?.toStatus() ?: DownloadStatus(DownloadPhase.Queued))
+            DownloadItem(entry, prep[entry.id] ?: states[entry.id] ?: DownloadStatus(DownloadPhase.Queued))
         }
     }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
@@ -151,7 +156,7 @@ class DownloadsRepository(
             } else {
                 failureMessages.remove(download.request.id)
             }
-            media3States.value = media3States.value + (download.request.id to download)
+            media3States.value = media3States.value + (download.request.id to download.toStatus())
             if (download.state == Download.STATE_FAILED) {
                 diagnostics?.log(LogCategory.PLAYBACK, "Download failed (${download.failureReason}): ${download.request.id} ${finalException?.message.orEmpty()}")
             }
@@ -181,8 +186,8 @@ class DownloadsRepository(
             while (true) {
                 val active = downloadManager.currentDownloads
                 if (active.isEmpty()) break
-                media3States.value = media3States.value + active.associateBy { it.request.id }
-                delay(1_000L)
+                media3States.value = media3States.value + active.associate { it.request.id to it.toStatus() }
+                delay(500L)
             }
         }
     }
@@ -200,7 +205,7 @@ class DownloadsRepository(
                     }
                 }.getOrDefault(emptyList())
             }
-            media3States.value = media3States.value + saved.associateBy { it.request.id }
+            media3States.value = media3States.value + saved.associate { it.request.id to it.toStatus() }
             if (saved.any { it.state == Download.STATE_QUEUED || it.state == Download.STATE_DOWNLOADING }) startProgressPolling()
         }
     }

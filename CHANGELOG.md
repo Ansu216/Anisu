@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Less buffering during playback.** After a stall the player resumed on only 3 s of video, so a weak connection stalled again within seconds; it now waits for 6 s (and starts on 2 s). The in-memory window was five minutes ahead and five behind with the memory cap overridden, which could squeeze low-memory phones into stutter; it is now two minutes ahead and one behind, with the cap respected. Streams also get 15 s connect and read timeouts (the stock 8 s failed slow servers outright) and follow redirects between http and https.
+- **A stream that never loads no longer leaves the buffering screen up forever.** Only errors used to move playback on, so a link that hung without failing buffered endlessly. If a stream is not ready after 25 s the next listed source is tried; for a stream picked by hand the player says that source is not responding so another can be picked.
+- **Downloads screen now moves live.** Media3 updates each download's progress inside the same object, so the list saw "no change" and stayed frozen (0% · 2 MB) while the notification kept counting. Progress is now copied out as plain values every half second, so the percent, size and bar on Your downloads follow the notification.
+- **The nav pill stays on My Space (or any tab) when Settings or Your downloads opens.** While the bar fades out the route is no longer a tab, and the pill fell back to Home. It now keeps the last tab it was on.
+- **A disabled source can be switched back on.** The long-press menu on an installed source kept the row it saw first, so it kept offering "Disable". The press handler now follows the row's current state, and Enable reads the live disabled list.
 - **The video no longer keeps playing after picture-in-picture is closed or the app is left while loading.** Closing the floating window left the app stopped but the video running, because the player only paused on a stop that happened outside picture-in-picture. It now also pauses when picture-in-picture ends while the app is not on screen. A stream that finished loading after the person had already left the app used to start by itself in the background; it now waits, and starts when the app comes back.
 
 ### Changed

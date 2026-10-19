@@ -27,7 +27,13 @@ class MediaCache(context: Context) {
     )
 
     /** A data-source factory that serves cached bytes and falls back to [upstream] (plus the network). */
-    fun dataSourceFactory(upstream: DataSource.Factory = DefaultHttpDataSource.Factory()): DataSource.Factory =
+    fun dataSourceFactory(
+        upstream: DataSource.Factory = DefaultHttpDataSource.Factory()
+            // The stock 8 s timeouts fail slow CDNs outright, which the player then reports as a broken source.
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(15_000),
+    ): DataSource.Factory =
         CacheDataSource.Factory()
             .setCache(cache)
             .setUpstreamDataSourceFactory(upstream)

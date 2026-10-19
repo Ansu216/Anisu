@@ -146,9 +146,12 @@ private const val MAX_SUBTITLE_OFFSET_MS = 10_000L
  * busy system disk cache is not relied on. The byte cap keeps the window within a bounded amount of
  * memory on a device that has little to spare.
  */
-private const val RAM_BUFFER_AHEAD_MS = 300_000
-private const val RAM_BUFFER_BEHIND_MS = 300_000
+private const val RAM_BUFFER_AHEAD_MS = 120_000
+private const val RAM_BUFFER_BEHIND_MS = 60_000
 private const val RAM_BUFFER_BYTES = 128 * 1024 * 1024
+
+/** A stream that has not reached "ready" this long after it was opened is treated as stuck, not as slow. */
+private const val START_STALL_MS = 25_000L
 
 /** One selectable audio or subtitle track the player reported. */
 data class TrackOption(
@@ -214,10 +217,13 @@ class PlayerViewModel(
     val player: ExoPlayer = ExoPlayer.Builder(context, subtitleLead)
         .setLoadControl(
             androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                .setBufferDurationsMs(30_000, RAM_BUFFER_AHEAD_MS, 1_500, 3_000)
+                // Start after 2 s of data, but after a stall wait for 6 s: resuming on 3 s made a weak connection
+                // stall again within seconds, which showed up as constant buffering. The byte cap now really bounds
+                // the window (time no longer overrides it), so a big window cannot squeeze memory and stutter.
+                .setBufferDurationsMs(30_000, RAM_BUFFER_AHEAD_MS, 2_000, 6_000)
                 .setBackBuffer(RAM_BUFFER_BEHIND_MS, true)
                 .setTargetBufferBytes(RAM_BUFFER_BYTES)
-                .setPrioritizeTimeOverSizeThresholds(true)
+                .setPrioritizeTimeOverSizeThresholds(false)
                 .build(),
         )
         // Read through the shared cache, so an episode pre-loaded at launch plays from disk and every
@@ -265,6 +271,11 @@ class PlayerViewModel(
 
     // Declared before init{}: loadSources() runs from init and assigns these.
     private var loadJob: kotlinx.coroutines.Job? = null
+
+    private var startWatchdog: kotlinx.coroutines.Job? = null
+
+    /** True while the stream being opened was picked by hand (Sources panel or picker): a stuck one is reported, not swapped. */
+    private var userPicked = false
 
     /**
      * Where the next stream should start, in ms. Set from the saved continue-watching point when an episode opens,
@@ -334,6 +345,7 @@ class PlayerViewModel(
             }
 
             override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_READY) startWatchdog?.cancel()
                 _uiState.value = _uiState.value.copy(isBuffering = state == Player.STATE_BUFFERING)
             }
 
@@ -342,7 +354,7 @@ class PlayerViewModel(
                 // Fall through to the next listed source instead of leaving a black screen.
                 val list = _uiState.value.sources
                 val index = list.indexOf(_uiState.value.selectedSource)
-                if (index in 0 until list.lastIndex) selectSource(list[index + 1])
+                if (index in 0 until list.lastIndex) { userPicked = false; selectSource(list[index + 1]) }
                 else _uiState.value = _uiState.value.copy(error = "Playback failed (${error.errorCodeName})")
             }
         })
@@ -417,6 +429,7 @@ class PlayerViewModel(
                 // The person may have moved to another episode while the saved point was being read.
                 if (_uiState.value.episode?.id != episode.id) return@launch
                 _uiState.value = _uiState.value.copy(isLoadingSources = false, sources = picked.sources, error = null)
+                userPicked = true
                 selectSource(picked.selected)
             }
             return
@@ -442,6 +455,7 @@ class PlayerViewModel(
                     startPositionMs = savedPositionMs(anime, episode)
                     // The person may have moved to another episode while the saved point was being read.
                     if (_uiState.value.episode?.id != episode.id || collected.isEmpty()) return@launch
+                    userPicked = false
                     selectSource(
                         pickStart(
                             collected,
@@ -688,10 +702,36 @@ class PlayerViewModel(
         val sourceId = source.sourceId
         if (anilistId != null && sourceId != null) playerPrefs?.setManualPick(anilistId, sourceId, source.serverName, source.label)
         // Chosen inside the player, the video is already on screen: no buffering screen over it.
+        userPicked = true
         selectSource(source, showStartingScreen = false)
     }
 
+    /**
+     * A stream that never errors and never gets ready (a dead segment host, a link that hangs) used to leave the
+     * buffering screen up forever, because only errors moved on to another source. After [START_STALL_MS] without
+     * reaching "ready" the next listed source is tried, or, for a stream the person picked, they are told.
+     */
+    private fun armStartWatchdog(source: PlayableSource) {
+        startWatchdog?.cancel()
+        startWatchdog = viewModelScope.launch {
+            delay(START_STALL_MS)
+            if (player.playbackState == Player.STATE_READY || backgrounded) return@launch
+            diagnostics?.log(LogCategory.PLAYBACK, "'${source.label}' did not get ready in ${START_STALL_MS / 1000}s")
+            val list = _uiState.value.sources
+            val index = list.indexOfFirst { it.url == source.url }
+            if (!userPicked && index in 0 until list.lastIndex) {
+                selectSource(list[index + 1])
+            } else {
+                _uiState.value = _uiState.value.copy(
+                    isStarting = false,
+                    error = "'${source.label}' is not responding. Pick another source.",
+                )
+            }
+        }
+    }
+
     fun selectSource(source: PlayableSource, showStartingScreen: Boolean = true) {
+        startWatchdog?.cancel()
         diagnostics?.log(LogCategory.PLAYBACK, "Source selected: ${source.label} → ${source.url.ifBlank { "(resolved when played)" }}")
         source.sourceId?.let { id ->
             sessionSource = _uiState.value.anime?.anilistId to com.ansu.anime.data.repository.LastPlayedSource(id, source.serverName, source.label)
@@ -727,7 +767,7 @@ class PlayerViewModel(
             diagnostics?.log(LogCategory.PLAYBACK, "'${source.label}' could not be resolved")
             val list = _uiState.value.sources
             val index = list.indexOf(source)
-            if (index in 0 until list.lastIndex) selectSource(list[index + 1])
+            if (index in 0 until list.lastIndex) { userPicked = false; selectSource(list[index + 1]) }
             else _uiState.value = _uiState.value.copy(error = "Could not open '${source.label}'")
             return null
         }
@@ -824,6 +864,8 @@ class PlayerViewModel(
             // Extension sites usually insist on a Referer/User-Agent; send what the source asked for.
             val upstream = DefaultHttpDataSource.Factory()
                 .setAllowCrossProtocolRedirects(true)
+                .setConnectTimeoutMs(15_000)
+                .setReadTimeoutMs(15_000)
                 .setDefaultRequestProperties(source.headers)
             // Read through the shared cache too, so a warmed episode plays from disk here as well.
             val dataSource = mediaCache?.dataSourceFactory(upstream) ?: upstream
@@ -842,6 +884,7 @@ class PlayerViewModel(
         }
         player.prepare()
         playWhenVisible()
+        armStartWatchdog(source)
     }
 
     /**

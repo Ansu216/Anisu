@@ -242,7 +242,12 @@ fun NavBarSurface(
     val shape = navBarShape(roundness)
     val slotPx = with(LocalDensity.current) { NavSlotWidth.toPx() }
     val maxLeft = slotPx * (barItems.size - 1)
-    val targetIndex = barItems.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
+    // While a full-screen route (Settings, Downloads, details...) is opening over a tab, the bar is still drawn for a
+    // moment but the route is no longer a tab. The pill must stay on the tab it was on instead of falling back to Home.
+    val routeIndex = barItems.indexOfFirst { it.route == currentRoute }
+    val lastTabIndex = remember { intArrayOf(routeIndex.coerceAtLeast(0)) }
+    if (routeIndex >= 0) lastTabIndex[0] = routeIndex
+    val targetIndex = if (routeIndex >= 0) routeIndex else lastTabIndex[0]
     val scope = rememberCoroutineScope()
 
     val pill = remember { PillMotion(targetIndex * slotPx, slotPx) }

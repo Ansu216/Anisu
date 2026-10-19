@@ -376,7 +376,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                                 },
                                 modifier = Modifier
                                     .onGloballyPositioned { holder[0] = it.boundsInWindow() }
-                                    .pointerInput(row.key) {
+                                    .pointerInput(row.key, row.enabled, row.hasUpdate) {
                                         detectTapGestures(onLongPress = {
                                             actionTarget = ExtensionActionTarget(row, holder[0])
                                         })
@@ -522,7 +522,8 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                     target = target,
                     backdrop = backdrop,
                     onConfigure = { row -> settingsFor = row.settings },
-                    onToggleEnabled = { row -> row.source?.let { manager.setSourceEnabled(it.id, !row.enabled) } },
+                    // Read the live state, not the row captured when the menu opened: switching back on must see "disabled".
+                    onToggleEnabled = { row -> row.source?.let { manager.setSourceEnabled(it.id, it.id in manager.disabledSourceIds.value) } },
                     onDelete = { row ->
                         row.packageName?.let { pkg -> scope.launch(Dispatchers.IO) { manager.uninstall(pkg) } }
                     },
