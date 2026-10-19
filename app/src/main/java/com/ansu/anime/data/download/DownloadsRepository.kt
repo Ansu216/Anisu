@@ -134,9 +134,17 @@ class DownloadsRepository(
         return lastHeaders.takeIf { it.isNotEmpty() }
     }
 
+    // DefaultDataSource (not the bare HTTP one) so local file:// URIs work too: a finished download's subtitle files
+    // are read from app storage through this same factory, and an HTTP-only source silently failed to open them,
+    // which is why a dubbed download played with no subtitles even though they had been saved.
     private val upstreamFactory: DataSource.Factory = ResolvingDataSource.Factory(
-        DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true),
+        androidx.media3.datasource.DefaultDataSource.Factory(
+            appContext,
+            DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true),
+        ),
         ResolvingDataSource.Resolver { spec ->
+            val scheme = spec.uri.scheme?.lowercase()
+            if (scheme != "http" && scheme != "https") return@Resolver spec
             val extra = headersFor(spec.uri.host)
             if (extra.isNullOrEmpty()) spec else spec.withAdditionalHeaders(extra)
         },
