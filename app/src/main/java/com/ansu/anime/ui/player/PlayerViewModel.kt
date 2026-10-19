@@ -278,6 +278,46 @@ class PlayerViewModel(
     private var userPicked = false
 
     /**
+     * The entry of the Sources list that was last selected. A source listed without a URL is resolved when it plays,
+     * and the resolved copy becomes [PlayerUiState.selectedSource], while the list keeps (or gets back, when more
+     * sources arrive) the unresolved entry. Looking the playing stream up in the list by the resolved copy found
+     * nothing, so the fall-through to the next source never ran and automatic mode gave up on the first source.
+     */
+    private var listedSelection: PlayableSource? = null
+
+    /** The subtitle tracks the current stream was started with, and how many of them have been given up on after a crash. */
+    private var subtitleOptions: List<MediaItem.SubtitleConfiguration> = emptyList()
+    private var subtitleStage = 0
+    private var rebuildPlayback: ((List<MediaItem.SubtitleConfiguration>, Long) -> Unit)? = null
+
+    /** Where the playing stream sits in [list], whether the list holds its listed entry or its resolved copy; -1 if neither. */
+    private fun currentIndexIn(list: List<PlayableSource>): Int {
+        val selected = _uiState.value.selectedSource
+        val listed = listedSelection
+        return list.indexOfFirst { it == selected || (listed != null && it == listed) }
+    }
+
+    /**
+     * The stream to try after the one at [index] failed: the next one on a different server (a server that is down
+     * fails every quality it lists), else simply the next one. Null when the failed one is the last in the list.
+     */
+    private fun nextAfter(list: List<PlayableSource>, index: Int): PlayableSource? {
+        if (index !in 0 until list.lastIndex) return null
+        val failed = list[index]
+        val tail = list.subList(index + 1, list.size)
+        return tail.firstOrNull { it.sourceId != failed.sourceId || it.serverName != failed.serverName } ?: tail.first()
+    }
+
+    /** The one subtitle track to keep when all of them together broke playback: English if there is one, else the first. */
+    private fun preferredSubtitleOnly(options: List<MediaItem.SubtitleConfiguration>): List<MediaItem.SubtitleConfiguration> {
+        val english = options.firstOrNull { o ->
+            val name = (o.language ?: o.label).orEmpty()
+            name.equals("en", true) || name.contains("english", true)
+        }
+        return listOfNotNull(english ?: options.firstOrNull())
+    }
+
+    /**
      * Where the next stream should start, in ms. Set from the saved continue-watching point when an episode opens,
      * and from the live position when the source is switched, so neither a resume nor a source change restarts
      * the episode. It is handed to the player together with the media (a seek issued before the media is set
@@ -351,10 +391,30 @@ class PlayerViewModel(
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 diagnostics?.log(LogCategory.PLAYBACK, "Player error: ${error.errorCodeName}", error)
+                // A subtitle track that Media3 cannot load (it throws from inside the track's loader) must not take
+                // the video down with it, and the video is not at fault, so the next source is not the answer either:
+                // start the same stream again with one subtitle track, then with none.
+                val rebuild = rebuildPlayback
+                if (error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK &&
+                    rebuild != null && subtitleOptions.isNotEmpty() && subtitleStage < 2
+                ) {
+                    subtitleStage += 1
+                    val keep = if (subtitleStage == 1) preferredSubtitleOnly(subtitleOptions) else emptyList()
+                    val tracks = subtitleOptions.joinToString { "${it.language ?: it.label}:${it.mimeType}" }
+                    diagnostics?.log(
+                        LogCategory.PLAYBACK,
+                        "A subtitle track broke playback (${subtitleOptions.size} track(s): $tracks); starting again with " +
+                            if (keep.isEmpty()) "no subtitles" else "one subtitle track",
+                    )
+                    val position = player.currentPosition
+                    subtitleChoiceApplied = false
+                    rebuild(keep, if (position > 0L) position else C.TIME_UNSET)
+                    return
+                }
                 // Fall through to the next listed source instead of leaving a black screen.
                 val list = _uiState.value.sources
-                val index = list.indexOf(_uiState.value.selectedSource)
-                if (index in 0 until list.lastIndex) { userPicked = false; selectSource(list[index + 1]) }
+                val next = nextAfter(list, currentIndexIn(list))
+                if (next != null) { userPicked = false; selectSource(next) }
                 else _uiState.value = _uiState.value.copy(error = "Playback failed (${error.errorCodeName})")
             }
         })
@@ -477,8 +537,11 @@ class PlayerViewModel(
                     collected += fresh
                     // The list follows the person's source priority; within one source, arrival order is kept.
                     collected.sortWith(compareBy<PlayableSource> { rankOf(it.sourceId) })
+                    // Read before it is cleared just below: it used to be read after, so it was never set and a later
+                    // source was never tried once the first ones had failed.
+                    val hadError = _uiState.value.error != null
                     _uiState.value = _uiState.value.copy(isLoadingSources = false, sources = collected.toList(), error = null)
-                    if (!first && _uiState.value.error != null) {
+                    if (!first && hadError && !userPicked) {
                         // Earlier streams all failed; a later source just answered, so try it.
                         _uiState.value = _uiState.value.copy(error = null)
                         selectSource(fresh.first())
@@ -577,9 +640,16 @@ class PlayerViewModel(
             val offline = PlayableSource(label = "Downloaded · $label", url = item.localConfiguration?.uri?.toString().orEmpty())
             _uiState.value = _uiState.value.copy(isLoadingSources = false, sources = listOf(offline), selectedSource = offline, error = null)
             val factory = DefaultMediaSourceFactory(repository.dataSourceFactory)
-            player.setMediaSource(factory.createMediaSource(item), startMs)
-            player.prepare()
-            playWhenVisible()
+            val subtitleList = item.localConfiguration?.subtitleConfigurations.orEmpty()
+            val build: (List<MediaItem.SubtitleConfiguration>, Long) -> Unit = { subtitles, positionMs ->
+                player.setMediaSource(factory.createMediaSource(item.buildUpon().setSubtitleConfigurations(subtitles).build()), positionMs)
+                player.prepare()
+                playWhenVisible()
+            }
+            subtitleOptions = subtitleList
+            subtitleStage = 0
+            rebuildPlayback = build
+            build(subtitleList, startMs)
         }
     }
 
@@ -718,9 +788,9 @@ class PlayerViewModel(
             if (player.playbackState == Player.STATE_READY || backgrounded) return@launch
             diagnostics?.log(LogCategory.PLAYBACK, "'${source.label}' did not get ready in ${START_STALL_MS / 1000}s")
             val list = _uiState.value.sources
-            val index = list.indexOfFirst { it.url == source.url }
-            if (!userPicked && index in 0 until list.lastIndex) {
-                selectSource(list[index + 1])
+            val next = nextAfter(list, currentIndexIn(list))
+            if (!userPicked && next != null) {
+                selectSource(next)
             } else {
                 _uiState.value = _uiState.value.copy(
                     isStarting = false,
@@ -732,6 +802,7 @@ class PlayerViewModel(
 
     fun selectSource(source: PlayableSource, showStartingScreen: Boolean = true) {
         startWatchdog?.cancel()
+        listedSelection = source
         diagnostics?.log(LogCategory.PLAYBACK, "Source selected: ${source.label} → ${source.url.ifBlank { "(resolved when played)" }}")
         source.sourceId?.let { id ->
             sessionSource = _uiState.value.anime?.anilistId to com.ansu.anime.data.repository.LastPlayedSource(id, source.serverName, source.label)
@@ -766,8 +837,8 @@ class PlayerViewModel(
         if (resolved == null || resolved.url.isBlank()) {
             diagnostics?.log(LogCategory.PLAYBACK, "'${source.label}' could not be resolved")
             val list = _uiState.value.sources
-            val index = list.indexOf(source)
-            if (index in 0 until list.lastIndex) { userPicked = false; selectSource(list[index + 1]) }
+            val next = nextAfter(list, list.indexOf(source))
+            if (next != null) { userPicked = false; selectSource(next) }
             else _uiState.value = _uiState.value.copy(error = "Could not open '${source.label}'")
             return null
         }
@@ -858,32 +929,41 @@ class PlayerViewModel(
         
         val startMs = if (startPositionMs > 0L) startPositionMs else C.TIME_UNSET
         startPositionMs = 0L
-        if (source.headers.isEmpty() && source.audioTracks.isEmpty()) {
-            player.setMediaItem(mediaItem, startMs)
-        } else {
-            // Extension sites usually insist on a Referer/User-Agent; send what the source asked for.
-            val upstream = DefaultHttpDataSource.Factory()
-                .setAllowCrossProtocolRedirects(true)
-                .setConnectTimeoutMs(15_000)
-                .setReadTimeoutMs(15_000)
-                .setDefaultRequestProperties(source.headers)
-            // Read through the shared cache too, so a warmed episode plays from disk here as well.
-            val dataSource = mediaCache?.dataSourceFactory(upstream) ?: upstream
-            val factory = DefaultMediaSourceFactory(dataSource)
-            val main = factory.createMediaSource(mediaItem)
-            // External audio streams (dubs) are merged into the video; the player lists them as audio tracks.
-            val audio = source.audioTracks.map { track ->
-                factory.createMediaSource(
-                    MediaItem.Builder()
-                        .setUri(track.url)
-                        .apply { detectMimeType(track.url)?.let { setMimeType(it) } }
-                        .build(),
-                )
+        val subtitleList = mediaItem.localConfiguration?.subtitleConfigurations.orEmpty()
+        // Built by a function so a subtitle track that crashes the player can be dropped and the stream started again.
+        val build: (List<MediaItem.SubtitleConfiguration>, Long) -> Unit = { subtitles, positionMs ->
+            val item = mediaItem.buildUpon().setSubtitleConfigurations(subtitles).build()
+            if (source.headers.isEmpty() && source.audioTracks.isEmpty()) {
+                player.setMediaItem(item, positionMs)
+            } else {
+                // Extension sites usually insist on a Referer/User-Agent; send what the source asked for.
+                val upstream = DefaultHttpDataSource.Factory()
+                    .setAllowCrossProtocolRedirects(true)
+                    .setConnectTimeoutMs(15_000)
+                    .setReadTimeoutMs(15_000)
+                    .setDefaultRequestProperties(source.headers)
+                // Read through the shared cache too, so a warmed episode plays from disk here as well.
+                val dataSource = mediaCache?.dataSourceFactory(upstream) ?: upstream
+                val factory = DefaultMediaSourceFactory(dataSource)
+                val main = factory.createMediaSource(item)
+                // External audio streams (dubs) are merged into the video; the player lists them as audio tracks.
+                val audio = source.audioTracks.map { track ->
+                    factory.createMediaSource(
+                        MediaItem.Builder()
+                            .setUri(track.url)
+                            .apply { detectMimeType(track.url)?.let { setMimeType(it) } }
+                            .build(),
+                    )
+                }
+                player.setMediaSource(if (audio.isEmpty()) main else MergingMediaSource(main, *audio.toTypedArray()), positionMs)
             }
-            player.setMediaSource(if (audio.isEmpty()) main else MergingMediaSource(main, *audio.toTypedArray()), startMs)
+            player.prepare()
+            playWhenVisible()
         }
-        player.prepare()
-        playWhenVisible()
+        subtitleOptions = subtitleList
+        subtitleStage = 0
+        rebuildPlayback = build
+        build(subtitleList, startMs)
         armStartWatchdog(source)
     }
 
