@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
@@ -105,7 +106,7 @@ fun BackgroundAnimation(
 }
 
 private fun DrawScope.drawUnit(path: Path, radius: Float, color: Color, fillAlpha: Float, strokeAlpha: Float, density: Float) {
-    androidx.compose.ui.graphics.drawscope.scale(radius, radius, Offset.Zero) {
+    scale(radius, radius, Offset.Zero) {
         drawPath(path, color.copy(alpha = fillAlpha))
         if (strokeAlpha > 0f) {
             drawPath(path, color.copy(alpha = strokeAlpha.coerceAtMost(0.4f)), style = Stroke(width = density / radius))
