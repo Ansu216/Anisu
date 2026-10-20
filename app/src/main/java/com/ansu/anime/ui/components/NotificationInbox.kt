@@ -1,6 +1,7 @@
 package com.ansu.anime.ui.components
 
 import android.text.format.DateUtils
+import androidx.compose.foundation.clickable
 import android.app.Activity
 import android.graphics.Color as AndroidColor
 import android.os.Build
@@ -70,8 +71,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.ansu.anime.core.haptics.Haptics
-import com.ansu.anime.core.haptics.softClickable
 import com.ansu.anime.data.notify.NotificationEntry
 import com.ansu.anime.ui.theme.AnsuColors
 
@@ -121,7 +120,6 @@ fun NotificationInbox(
             Box(modifier = Modifier.size(38.dp)) {
                 IconButton(
                     onClick = {
-                        Haptics.tick()
                         InboxOverlayState.open = true
                     },
                     modifier = Modifier.fillMaxSize(),
@@ -210,11 +208,11 @@ fun NotificationInboxOverlay() {
                         modifier = Modifier.weight(1f),
                     )
                     if (entries.isNotEmpty()) {
-                        TextButton(onClick = { Haptics.tick(); InboxOverlayState.onClear() }) {
+                        TextButton(onClick = { InboxOverlayState.onClear() }) {
                             Text("Clear", color = AnsuColors.TextSecondary, fontSize = 14.sp)
                         }
                     }
-                    IconButton(onClick = { Haptics.tick(); InboxOverlayState.close() }, modifier = Modifier.size(44.dp)) {
+                    IconButton(onClick = { InboxOverlayState.close() }, modifier = Modifier.size(44.dp)) {
                         Icon(
                             imageVector = Icons.Filled.Close,
                             contentDescription = "Close notifications",
@@ -287,7 +285,7 @@ private fun InboxRow(entry: NotificationEntry, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .softClickable(onClick = onClick)
+            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),

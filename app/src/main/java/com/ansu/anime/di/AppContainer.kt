@@ -56,9 +56,7 @@ class AppContainer(context: Context) {
     val apiErrorHandler: ApiErrorHandler = ApiErrorHandler(diagnostics)
 
     val aniListAuthManager: AniListAuthManager = AniListAuthManager(appContext)
-    val appearancePrefs: AppearancePrefs = AppearancePrefs(appContext).also {
-        com.ansu.anime.core.haptics.Haptics.init(appContext, it)
-    }
+    val appearancePrefs: AppearancePrefs = AppearancePrefs(appContext)
     val playerPrefs: com.ansu.anime.data.prefs.PlayerPrefs = com.ansu.anime.data.prefs.PlayerPrefs(appContext)
     val searchHistory: com.ansu.anime.data.prefs.SearchHistoryPrefs = com.ansu.anime.data.prefs.SearchHistoryPrefs(appContext)
     val searchSession: com.ansu.anime.ui.search.SearchSession = com.ansu.anime.ui.search.SearchSession()

@@ -73,6 +73,26 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putBoolean(KEY_PIP, value).apply()
     }
 
+    private val _autoplayNext = MutableStateFlow(prefs.getBoolean(KEY_AUTOPLAY_NEXT, true))
+
+    /** When an episode ends, the next one starts on its own (the pill toggle in the player's top bar). */
+    val autoplayNext: StateFlow<Boolean> = _autoplayNext
+
+    fun setAutoplayNext(value: Boolean) {
+        _autoplayNext.value = value
+        prefs.edit().putBoolean(KEY_AUTOPLAY_NEXT, value).apply()
+    }
+
+    private val _hideEpisodeButtons = MutableStateFlow(prefs.getBoolean(KEY_HIDE_EPISODE_BUTTONS, false))
+
+    /** Hides the previous/next episode buttons on the player controls. */
+    val hideEpisodeButtons: StateFlow<Boolean> = _hideEpisodeButtons
+
+    fun setHideEpisodeButtons(value: Boolean) {
+        _hideEpisodeButtons.value = value
+        prefs.edit().putBoolean(KEY_HIDE_EPISODE_BUTTONS, value).apply()
+    }
+
     private val _ambientMode = MutableStateFlow(prefs.getBoolean(KEY_AMBIENT_MODE, true))
 
     /** The portrait player glows under the video in the colours of what is playing. */
@@ -266,6 +286,8 @@ class PlayerPrefs(context: Context) {
     }
 
     companion object {
+        private const val KEY_AUTOPLAY_NEXT = "autoplay_next"
+        private const val KEY_HIDE_EPISODE_BUTTONS = "hide_episode_buttons"
         private const val KEY_AMBIENT_MODE = "ambient_mode"
         val SKIP_OPTIONS = listOf(5, 10, 15)
         /** "Any": no resolution is aimed for; playback starts on the first stream in the chosen language that answers. */

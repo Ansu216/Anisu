@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## How this file is used
 
 - Every change updates the `## [Unreleased]` section **in the same commit** as
+
+### Added
+- **Background animation** (Appearance > Background > Background Animation): None, Circles, Triangles or Material shapes drift slowly behind the screens. They are drawn behind everything, so posters, cards and sheets stay fully opaque and the shapes only show in the empty space. Off by default; the loop pauses when the app is in the background.
+- **Autoplay switch in the player.** A YouTube-style pill in the player's top bar (landscape and portrait); when on, the next episode starts when one ends. Hide Next And Previous in Settings > Player and streaming removes those two buttons from the controls, and the play and seek buttons spread out to fill the gap.
+
+### Changed
+- Autoplay is controlled only from the player, not from Settings.
+
+### Removed
+- Haptic feedback: the vibration on taps, switches and holds, its Settings switch and the VIBRATE permission.
+- YouTube from the License and attribution screen.
   the code. See `CLAUDE.md` §7 for the full rules.
 - At release time the entries move under a new `## [<version>] - <YYYY-MM-DD>`
   heading, where `<version>` is the pushed tag **without** its `v` prefix

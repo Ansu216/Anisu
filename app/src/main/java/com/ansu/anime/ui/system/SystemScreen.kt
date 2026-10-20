@@ -87,7 +87,7 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
     }
 
     Scaffold(
-        containerColor = AnsuColors.Background,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             TopAppBar(
                 title = { Text("System") },

@@ -108,14 +108,6 @@ private val dataCredits = listOf(
         url = "https://aniskip.com",
     ),
     Credit(
-        name = "YouTube",
-        domain = "youtube.com",
-        badge = "Y", badgeColor = 0xFFFF0000,
-        usedFor = "Trailer, PV and teaser playback.",
-        attribution = "YouTube is a trademark of Google LLC. Trailers belong to their publishers and are shown from YouTube.",
-        url = "https://www.youtube.com",
-    ),
-    Credit(
         name = "Anime News Network",
         domain = "animenewsnetwork.com",
         badge = "N", badgeColor = 0xFF1B5E8C,
@@ -153,7 +145,7 @@ private val softwareCredits = listOf(
 fun LicensesScreen(container: AppContainer, navController: NavHostController) {
     val context = LocalContext.current
     Scaffold(
-        containerColor = AnsuColors.Background,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {},

@@ -1,9 +1,7 @@
 package com.ansu.anime.ui.components
 
 import androidx.compose.foundation.layout.statusBarsPadding
-import com.ansu.anime.core.haptics.Haptics
 import com.ansu.anime.data.notify.NotificationEntry
-import com.ansu.anime.core.haptics.softClickable
 import androidx.compose.foundation.Image
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -196,7 +194,7 @@ fun PagedPosterRow(
 
 @Composable
 fun AnimeCard(anime: SAnime, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.width(130.dp).softClickable(onClick = onClick)) {
+    Column(modifier = modifier.width(130.dp).clickable(onClick = onClick)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -405,7 +403,6 @@ fun ContinueWatchingCard(
                 interactionSource = interaction,
                 indication = null,
                 onClick = {
-                    Haptics.soft()
                     onClick()
                 },
                 onLongClick = onLongPress?.let { callback ->
@@ -727,7 +724,7 @@ private fun HeroSlide(
                     Text("View Details", color = AnsuColors.OnAccent, fontWeight = FontWeight.Bold)
                 }
                 FrostedGlassCard(modifier = Modifier.size(48.dp), shape = CircleShape, tintAlpha = 0.5f) {
-                    IconButton(onClick = { Haptics.tick(); onToggleFavourite() }, modifier = Modifier.fillMaxSize()) {
+                    IconButton(onClick = { onToggleFavourite() }, modifier = Modifier.fillMaxSize()) {
                         Icon(
                             imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                             contentDescription = if (isLiked) "Unlike" else "Like",
@@ -970,7 +967,7 @@ fun StatItem(
 /** A clickable person card used for both the Characters and Staff grids on the details page. */
 @Composable
 fun PersonCard(imageUrl: String?, name: String, role: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.width(88.dp).softClickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier = modifier.width(88.dp).clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(88.dp)

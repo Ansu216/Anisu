@@ -1,6 +1,7 @@
 package com.ansu.anime.ui.player
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -32,7 +33,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.ansu.anime.core.haptics.tickClickable
 import com.ansu.anime.data.repository.AnimeArtwork
 
 /** The picture behind the buffering screen: the show's widest artwork, falling back to the details banner. */
@@ -114,7 +114,7 @@ fun StartingScreen(
                         .size(46.dp)
                         .clip(CircleShape)
                         .background(Color.Black.copy(alpha = 0.45f))
-                        .tickClickable(onClick = onBack),
+                        .clickable(onClick = onBack),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(24.dp))

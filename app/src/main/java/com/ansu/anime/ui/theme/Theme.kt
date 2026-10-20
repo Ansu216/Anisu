@@ -27,8 +27,14 @@ import androidx.compose.ui.unit.sp
  * different opacities for cards, sheets, and nav bars.
  */
 object AnsuColors {
-    val Background = Color(0xFF07080B)
-    val BackgroundElevated = Color(0xFF0F1015)
+    // Pure black when the AMOLED switch in Appearance is on (state, so every screen redraws at once).
+    private var amoledState by mutableStateOf(false)
+    val Background: Color get() = if (amoledState) Color.Black else Color(0xFF07080B)
+    val BackgroundElevated: Color get() = if (amoledState) Color(0xFF050506) else Color(0xFF0F1015)
+
+    fun setAmoled(enabled: Boolean) {
+        amoledState = enabled
+    }
     val SurfaceGlassBase = Color(0xFF1B1D27)
     val StrokeGlass = Color(0xFFFFFFFF).copy(alpha = 0.08f)
 
@@ -56,7 +62,9 @@ private fun ansuColorScheme(accent: Color) = darkColorScheme(
     primary = accent,
     onPrimary = AnsuColors.OnAccent,
     secondary = AnsuColors.TextSecondary,
-    background = AnsuColors.Background,
+    // See-through, so the animated background (drawn behind the screens by the nav host) shows in the empty space.
+    // The nav host paints AnsuColors.Background under everything, so with no animation nothing changes.
+    background = Color.Transparent,
     onBackground = AnsuColors.TextPrimary,
     surface = AnsuColors.BackgroundElevated,
     onSurface = AnsuColors.TextPrimary,
@@ -130,9 +138,11 @@ fun AnsuTheme(content: @Composable () -> Unit) {
     // The font the person added in Appearance wins over the one shipped in assets.
     val family = AnsuFont.appFamily ?: rememberAnsuFontFamily()
     MaterialTheme(
-        colorScheme = remember(accent) { ansuColorScheme(accent) },
+        colorScheme = remember(accent, AnsuColors.Background) { ansuColorScheme(accent) },
         typography = remember(family) { ansuTypography(family) },
         shapes = AnsuShapes,
-        content = content,
-    )
+    ) {
+        // Text outside a Surface would otherwise fall back to the system font; this makes every Text inherit the app font.
+        androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodyLarge, content)
+    }
 }

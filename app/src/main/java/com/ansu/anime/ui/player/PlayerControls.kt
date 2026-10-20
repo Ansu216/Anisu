@@ -3,8 +3,6 @@
 package com.ansu.anime.ui.player
 
 import com.ansu.anime.ui.components.GlassModalBottomSheet
-import com.ansu.anime.core.haptics.Haptics
-import com.ansu.anime.core.haptics.softClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
@@ -56,6 +54,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Size
@@ -100,7 +99,42 @@ class PlayerActions(
     val onSkipOutro: () -> Unit,
     /** Seconds the back/forward buttons jump (Settings > Player and streaming). */
     val seekSeconds: Int = 15,
+    /** The autoplay switch in the top bar: on = the next episode starts when this one ends. */
+    val autoplayNext: Boolean = true,
+    val onAutoplayNext: (Boolean) -> Unit = {},
+    /** Settings > Player and streaming > Hide Next And Previous. */
+    val hideEpisodeButtons: Boolean = false,
 )
+
+/** YouTube-style autoplay pill: a track with a round thumb that carries a play/pause glyph and slides across. */
+@Composable
+fun AutoplayToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val thumbOffset by androidx.compose.animation.core.animateDpAsState(if (checked) 20.dp else 0.dp, label = "autoplayThumb")
+    Box(
+        modifier = modifier
+            .size(width = 46.dp, height = 26.dp)
+            .clip(CircleShape)
+            .background(if (checked) Color.White.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.3f))
+            .clickable(role = androidx.compose.ui.semantics.Role.Switch) { onCheckedChange(!checked) }
+            .padding(3.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .offset(x = thumbOffset)
+                .size(20.dp)
+                .clip(CircleShape)
+                .background(if (checked) Color.White else Color.White.copy(alpha = 0.85f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (checked) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+                contentDescription = if (checked) "Autoplay on" else "Autoplay off",
+                tint = Color.Black.copy(alpha = 0.8f),
+                modifier = Modifier.size(14.dp),
+            )
+        }
+    }
+}
 
 private val SeekTrackColor = Color(0xFF4A4660)
 private val ScrimBrush = Brush.verticalGradient(
@@ -168,6 +202,11 @@ fun PlayerControlsOverlay(
                     )
                 }
             }
+            AutoplayToggle(
+                checked = actions.autoplayNext,
+                onCheckedChange = actions.onAutoplayNext,
+                modifier = Modifier.padding(horizontal = 8.dp).align(Alignment.CenterVertically),
+            )
             IconButton(onClick = actions.onLock) {
                 Icon(Icons.Rounded.Lock, contentDescription = "Lock controls", tint = Color.White, modifier = Modifier.size(26.dp))
             }
@@ -275,14 +314,14 @@ private fun TransportRow(
 ) {
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy((36 * iconScale).dp),
+        horizontalArrangement = Arrangement.spacedBy(((if (actions.hideEpisodeButtons) 64 else 36) * iconScale).dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        EpisodeSkipButton(Icons.Rounded.SkipPrevious, "Previous episode", hasPrev, iconScale, actions.onPrevEpisode)
+        if (!actions.hideEpisodeButtons) EpisodeSkipButton(Icons.Rounded.SkipPrevious, "Previous episode", hasPrev, iconScale, actions.onPrevEpisode)
         SeekGlyph(forward = false, seconds = actions.seekSeconds, scale = iconScale, onClick = { actions.onSeekBy(-actions.seekSeconds * 1000L) })
         PlayPauseGlyph(isPlaying = isPlaying, isBuffering = isBuffering, scale = iconScale, onClick = actions.onPlayPause)
         SeekGlyph(forward = true, seconds = actions.seekSeconds, scale = iconScale, onClick = { actions.onSeekBy(actions.seekSeconds * 1000L) })
-        EpisodeSkipButton(Icons.Rounded.SkipNext, "Next episode", hasNext, iconScale, actions.onNextEpisode)
+        if (!actions.hideEpisodeButtons) EpisodeSkipButton(Icons.Rounded.SkipNext, "Next episode", hasNext, iconScale, actions.onNextEpisode)
     }
 }
 
@@ -302,7 +341,7 @@ private fun EpisodeSkipButton(icon: ImageVector, description: String, enabled: B
 @Composable
 private fun SeekGlyph(forward: Boolean, seconds: Int, scale: Float, onClick: () -> Unit) {
     Box(
-        modifier = Modifier.size((48 * scale).dp).clip(CircleShape).softClickable(onClick = onClick),
+        modifier = Modifier.size((48 * scale).dp).clip(CircleShape).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -320,7 +359,7 @@ private fun SeekGlyph(forward: Boolean, seconds: Int, scale: Float, onClick: () 
 private fun PlayPauseGlyph(isPlaying: Boolean, isBuffering: Boolean, scale: Float, onClick: () -> Unit) {
     val morph = rememberBufferingMorph(isBuffering)
     Box(
-        modifier = Modifier.size((64 * scale).dp).clip(CircleShape).softClickable(onClick = onClick),
+        modifier = Modifier.size((64 * scale).dp).clip(CircleShape).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         // While it buffers the bars squeeze, curl into a spinner and spring back (see BufferingGlyph.kt).
@@ -357,7 +396,7 @@ internal fun SkipOutroButton(label: String, progress: Float = 0f, onClick: () ->
                 drawRect(AnsuColors.Accent.copy(alpha = 0.35f), size = Size(size.width * progress.coerceIn(0f, 1f), size.height))
             }
             .border(1.dp, AnsuColors.Accent.copy(alpha = 0.85f), shape)
-            .softClickable(onClick = onClick)
+            .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 6.dp),
     ) {
         Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -389,7 +428,6 @@ private fun ControlPill(fitLabel: String, speedLabel: String, actions: PlayerAct
 private fun PillItem(icon: ImageVector, label: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-            Haptics.tick()
             onClick()
         },
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -424,6 +462,7 @@ fun PlayerControlsCompact(
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White)
             }
             Box(modifier = Modifier.weight(1f))
+            AutoplayToggle(checked = actions.autoplayNext, onCheckedChange = actions.onAutoplayNext, modifier = Modifier.padding(horizontal = 6.dp))
             IconButton(onClick = actions.onLock) {
                 Icon(Icons.Rounded.Lock, contentDescription = "Lock controls", tint = Color.White, modifier = Modifier.size(22.dp))
             }

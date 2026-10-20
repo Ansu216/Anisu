@@ -2,9 +2,6 @@ package com.ansu.anime.ui.details
 
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.outlined.NotificationsNone
-import com.ansu.anime.core.haptics.Haptics
-import com.ansu.anime.core.haptics.softClickable
-import com.ansu.anime.core.haptics.tickClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -616,7 +613,7 @@ private fun PlayLikeRow(
     ) {
         Button(
             onClick = if (notifyMode) {
-                { Haptics.tick(); onNotify() }
+                { onNotify() }
             } else {
                 onPlay
             },
@@ -646,7 +643,7 @@ private fun PlayLikeRow(
             )
         }
         FrostedGlassCard(modifier = Modifier.size(50.dp), shape = CircleShape, tintAlpha = 0.5f) {
-            IconButton(onClick = { Haptics.tick(); onToggleLike() }, modifier = Modifier.fillMaxSize()) {
+            IconButton(onClick = { onToggleLike() }, modifier = Modifier.fillMaxSize()) {
                 Icon(
                     imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                     contentDescription = "Favourite",
@@ -710,7 +707,7 @@ private fun CommentsEntry(onOpen: () -> Unit) {
             .padding(horizontal = 20.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(AnsuColors.BackgroundElevated)
-            .softClickable(onClick = onOpen)
+            .clickable(onClick = onOpen)
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -741,7 +738,7 @@ private fun MoreEpisodesChip(remaining: Int, onClick: () -> Unit) {
             modifier = Modifier
                 .clip(CircleShape)
                 .background(AnsuColors.Accent)
-                .softClickable(onClick = onClick)
+                .clickable(onClick = onClick)
                 .padding(horizontal = 24.dp, vertical = 12.dp),
         ) {
             Text(
@@ -772,7 +769,7 @@ private fun EpisodeGroupChips(groups: List<List<SEpisode>>, selected: Int, onSel
                 modifier = Modifier
                     .clip(CircleShape)
                     .background(if (isSelected) AnsuColors.Accent else AnsuColors.SurfaceGlassBase)
-                    .tickClickable { onSelect(index) }
+                    .clickable { onSelect(index) }
                     .padding(horizontal = 22.dp, vertical = 10.dp),
             ) {
                 Text(
@@ -795,7 +792,7 @@ private fun EpisodeRow(
     onClick: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().softClickable(onClick = onClick).padding(horizontal = 20.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Box(
@@ -1028,7 +1025,7 @@ private fun EpisodeBadge(episode: SEpisode) {
 
 @Composable
 private fun RelatedPoster(media: AniListMedia, onClick: () -> Unit, badge: String? = null) {
-    Column(modifier = Modifier.width(120.dp).softClickable(onClick = onClick)) {
+    Column(modifier = Modifier.width(120.dp).clickable(onClick = onClick)) {
         Box(
             modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).posterTransitionOrigin(media.posterUrl, 10.dp).clip(RoundedCornerShape(10.dp)).background(AnsuColors.BackgroundElevated),
         ) {

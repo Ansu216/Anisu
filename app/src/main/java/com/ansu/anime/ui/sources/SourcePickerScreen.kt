@@ -55,8 +55,6 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.ansu.anime.core.diagnostics.LogCategory
-import com.ansu.anime.core.haptics.Haptics
-import com.ansu.anime.core.haptics.tickClickable
 import com.ansu.anime.data.download.DownloadPhase
 import com.ansu.anime.data.download.downloadKey
 import com.ansu.anime.di.AppContainer
@@ -195,11 +193,9 @@ fun SourcePickerScreen(container: AppContainer, navController: NavHostController
                             SourceCard(
                                 source = source,
                                 onClick = {
-                                    Haptics.soft()
                                     play(source)
                                 },
                                 onLongClick = {
-                                    Haptics.hold()
                                     menuFor = source
                                 },
                             )
@@ -252,7 +248,7 @@ private fun PickerHero(imageUrl: String?, episodeLabel: String, title: String, s
                 .size(44.dp)
                 .clip(CircleShape)
                 .background(Color.Black.copy(alpha = 0.45f))
-                .tickClickable(onClick = onBack),
+                .clickable(onClick = onBack),
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(24.dp))
@@ -295,7 +291,7 @@ private fun FilterChip(text: String, selected: Boolean, onClick: () -> Unit) {
             .height(46.dp)
             .clip(RoundedCornerShape(23.dp))
             .background(if (selected) AnsuColors.Accent else AnsuColors.BackgroundElevated)
-            .tickClickable(onClick = onClick)
+            .clickable(onClick = onClick)
             .padding(horizontal = 20.dp),
         contentAlignment = Alignment.Center,
     ) {

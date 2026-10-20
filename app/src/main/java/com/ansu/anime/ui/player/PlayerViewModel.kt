@@ -352,7 +352,13 @@ class PlayerViewModel(
     init {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                _uiState.value = _uiState.value.copy(isPlaying = isPlaying, isStarting = if (isPlaying) false else _uiState.value.isStarting)
+                // The stream got going after all: a "not responding" message left over from the watchdog is stale.
+                val stale = isPlaying && _uiState.value.error?.contains("is not responding") == true
+                _uiState.value = _uiState.value.copy(
+                    isPlaying = isPlaying,
+                    isStarting = if (isPlaying) false else _uiState.value.isStarting,
+                    error = if (stale) null else _uiState.value.error,
+                )
                 diagnostics?.log(LogCategory.PLAYBACK, if (isPlaying) "Playback started" else "Playback paused")
             }
 
@@ -386,7 +392,14 @@ class PlayerViewModel(
 
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY) startWatchdog?.cancel()
-                _uiState.value = _uiState.value.copy(isBuffering = state == Player.STATE_BUFFERING)
+                if (state == Player.STATE_ENDED && playerPrefs?.autoplayNext?.value != false && !backgrounded) {
+                    nextEpisode()?.let { playEpisode(it) }
+                }
+                val stale = state == Player.STATE_READY && _uiState.value.error?.contains("is not responding") == true
+                _uiState.value = _uiState.value.copy(
+                    isBuffering = state == Player.STATE_BUFFERING,
+                    error = if (stale) null else _uiState.value.error,
+                )
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
@@ -792,8 +805,12 @@ class PlayerViewModel(
             if (!userPicked && next != null) {
                 selectSource(next)
             } else {
+                // Telling the person the source failed while it keeps loading (and then plays behind the message)
+                // is the bug: stop it so the message and the player agree.
+                player.stop()
                 _uiState.value = _uiState.value.copy(
                     isStarting = false,
+                    isBuffering = false,
                     error = "'${source.label}' is not responding. Pick another source.",
                 )
             }

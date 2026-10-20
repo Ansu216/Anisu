@@ -163,6 +163,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     val brightnessGesture by container.playerPrefs.brightnessGesture.collectAsStateWithLifecycle()
     val volumeGesture by container.playerPrefs.volumeGesture.collectAsStateWithLifecycle()
     val skipSeconds by container.playerPrefs.skipSeconds.collectAsStateWithLifecycle()
+    val autoplayNext by container.playerPrefs.autoplayNext.collectAsStateWithLifecycle()
+    val hideEpisodeButtons by container.playerPrefs.hideEpisodeButtons.collectAsStateWithLifecycle()
     val gestureConfig = PlayerGestureConfig(doubleTapSeek, brightnessGesture, volumeGesture, skipSeconds, enabled = !locked, swipeSeek = swipeSeek)
 
     val configuration = LocalConfiguration.current
@@ -365,6 +367,9 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         onSettings = { sheet = PlayerSheet.SETTINGS },
         onSkipOutro = viewModel::skipCurrentSegment,
         seekSeconds = skipSeconds,
+        autoplayNext = autoplayNext,
+        onAutoplayNext = container.playerPrefs::setAutoplayNext,
+        hideEpisodeButtons = hideEpisodeButtons,
     )
 
     // The video view of the portrait layout, read by the ambient glow for the colours under the video.

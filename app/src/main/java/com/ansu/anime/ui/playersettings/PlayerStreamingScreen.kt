@@ -86,6 +86,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val prefs = container.playerPrefs
     val doubleTap by prefs.doubleTapSeek.collectAsStateWithLifecycle()
     val swipeSeek by prefs.swipeSeek.collectAsStateWithLifecycle()
+    val hideEpisodeButtons by prefs.hideEpisodeButtons.collectAsStateWithLifecycle()
     val brightness by prefs.brightnessGesture.collectAsStateWithLifecycle()
     val volume by prefs.volumeGesture.collectAsStateWithLifecycle()
     val skipSeconds by prefs.skipSeconds.collectAsStateWithLifecycle()
@@ -166,6 +167,17 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                         prefs.setBrightnessGesture(on)
                         prefs.setVolumeGesture(on)
                     },
+                )
+            }
+
+            GlassGroupLabel("Controls")
+            GlassGroup {
+                GlassToggleRow(
+                    title = "Hide Next And Previous",
+                    description = "Remove the previous and next episode buttons from the player controls",
+                    checked = hideEpisodeButtons,
+                    onCheckedChange = prefs::setHideEpisodeButtons,
+                    showDivider = false,
                 )
             }
 

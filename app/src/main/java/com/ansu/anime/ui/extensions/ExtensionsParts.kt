@@ -1,6 +1,5 @@
 package com.ansu.anime.ui.extensions
 
-import com.ansu.anime.core.haptics.Haptics
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -343,7 +342,6 @@ internal fun AddExtensionCardContent(
                     Switch(
                         checked = repoUrl !in disabledRepos,
                         onCheckedChange = {
-                            Haptics.tick()
                             onRepoEnabled(repoUrl, it)
                         },
                         modifier = Modifier.padding(horizontal = 6.dp),
@@ -443,7 +441,6 @@ internal fun ExtensionActionOverlay(
     val vanish = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
-        Haptics.hold()
         launch { bg.animateTo(1f, tween(320, easing = FastOutSlowInEasing)) }
         launch { open.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = 330f)) }
         launch {

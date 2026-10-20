@@ -1,8 +1,6 @@
 package com.ansu.anime.ui.player
 
 import com.ansu.anime.ui.components.GlassModalBottomSheet
-import com.ansu.anime.core.haptics.tickClickable
-import com.ansu.anime.core.haptics.Haptics
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
@@ -189,7 +187,6 @@ internal fun SubtitlesPanel(
                         Switch(
                             checked = state.textEnabled,
                             onCheckedChange = {
-                                Haptics.tick()
                                 onToggle(it)
                             },
                             enabled = state.textOptions.isNotEmpty(),
@@ -283,7 +280,6 @@ internal fun SubtitlesPanel(
                         Switch(
                             checked = roundedBg,
                             onCheckedChange = {
-                                Haptics.tick()
                                 onRoundedBg(it)
                             },
                         )
@@ -397,7 +393,7 @@ private fun SourceCard(source: PlayableSource, selected: Boolean, ping: Long?, m
             .clip(PanelCardShape)
             .background(PanelCard)
             .border(1.dp, border, PanelCardShape)
-            .tickClickable(onClick = onClick)
+            .clickable(onClick = onClick)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -498,7 +494,7 @@ internal fun AudioPanel(
                         .clip(PanelCardShape)
                         .background(PanelCard)
                         .border(1.dp, border, PanelCardShape)
-                        .tickClickable { onSelect(option) }
+                        .clickable { onSelect(option) }
                         .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -551,7 +547,7 @@ private fun PanelValueRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .let { if (onClick != null) it.tickClickable(onClick = onClick) else it }
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -584,7 +580,7 @@ private fun PanelChoiceRow(text: String, selected: Boolean, onClick: () -> Unit)
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .background(if (selected) AnsuColors.Accent.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.05f))
-            .tickClickable(onClick = onClick)
+            .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -629,7 +625,7 @@ private fun StepperButton(icon: androidx.compose.ui.graphics.vector.ImageVector,
             .size(32.dp)
             .clip(RoundedCornerShape(8.dp))
             .border(1.dp, Color.White.copy(alpha = if (enabled) 0.3f else 0.12f), RoundedCornerShape(8.dp))
-            .tickClickable(enabled = enabled, onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = description, tint = Color.White.copy(alpha = if (enabled) 1f else 0.3f), modifier = Modifier.size(18.dp))
@@ -643,7 +639,7 @@ private fun PanelChip(text: String, selected: Boolean, onClick: () -> Unit) {
             .clip(RoundedCornerShape(50))
             .background(if (selected) AnsuColors.Accent else Color.Transparent)
             .border(1.dp, if (selected) AnsuColors.Accent else Color.White.copy(alpha = 0.35f), RoundedCornerShape(50))
-            .tickClickable(onClick = onClick)
+            .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 6.dp),
     ) {
         Text(

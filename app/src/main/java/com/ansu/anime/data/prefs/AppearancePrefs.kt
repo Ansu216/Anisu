@@ -54,14 +54,29 @@ class AppearancePrefs(context: Context) {
         prefs.edit().putBoolean(KEY_NAV_BACKDROP_BLUR, value).apply()
     }
 
-    private val _hapticsEnabled = MutableStateFlow(prefs.getBoolean(KEY_HAPTICS, DEFAULT_HAPTICS))
+    private val _amoledBlack = MutableStateFlow(prefs.getBoolean(KEY_AMOLED, DEFAULT_AMOLED))
 
-    /** Soft vibration on taps, toggles, tab changes and long-presses (the "Haptic feedback" switch in Settings). */
-    val hapticsEnabled: StateFlow<Boolean> = _hapticsEnabled
+    /** Pure black (#000) app background instead of the near-black default, for AMOLED screens. */
+    val amoledBlack: StateFlow<Boolean> = _amoledBlack
 
-    fun setHapticsEnabled(value: Boolean) {
-        _hapticsEnabled.value = value
-        prefs.edit().putBoolean(KEY_HAPTICS, value).apply()
+    init {
+        AnsuColors.setAmoled(_amoledBlack.value)
+    }
+
+    fun setAmoledBlack(value: Boolean) {
+        _amoledBlack.value = value
+        AnsuColors.setAmoled(value)
+        prefs.edit().putBoolean(KEY_AMOLED, value).apply()
+    }
+
+    private val _backgroundStyle = MutableStateFlow(BackgroundStyle.fromKey(prefs.getString(KEY_BACKGROUND_STYLE, null)))
+
+    /** The animation drifting behind the app's screens (Appearance > Background animation). */
+    val backgroundStyle: StateFlow<BackgroundStyle> = _backgroundStyle
+
+    fun setBackgroundStyle(value: BackgroundStyle) {
+        _backgroundStyle.value = value
+        prefs.edit().putString(KEY_BACKGROUND_STYLE, value.key).apply()
     }
 
     private val _titleLanguage = MutableStateFlow(
@@ -247,8 +262,9 @@ class AppearancePrefs(context: Context) {
         private const val KEY_MY_SPACE_TAB = "my_space_tab"
         private const val KEY_TITLE_LANGUAGE = "title_language"
 
-        private const val KEY_HAPTICS = "haptics_enabled"
-        const val DEFAULT_HAPTICS = true
+        private const val KEY_BACKGROUND_STYLE = "background_style"
+        private const val KEY_AMOLED = "amoled_black"
+        const val DEFAULT_AMOLED = false
 
         private const val KEY_NAV_ROUNDNESS = "nav_bar_roundness"
         const val DEFAULT_NAV_ROUNDNESS = 0.7f // ≈ the previous fixed 24dp corners
@@ -258,6 +274,18 @@ class AppearancePrefs(context: Context) {
 
         private const val KEY_NAV_BACKDROP_BLUR = "nav_bar_backdrop_blur"
         const val DEFAULT_NAV_BACKDROP_BLUR = true
+    }
+}
+
+/** Background animations; None keeps the plain background. */
+enum class BackgroundStyle(val key: String, val label: String) {
+    NONE("none", "None"),
+    CIRCLES("circles", "Circles"),
+    TRIANGLES("triangles", "Triangles"),
+    SHAPES("shapes", "Material shapes");
+
+    companion object {
+        fun fromKey(key: String?): BackgroundStyle = entries.firstOrNull { it.key == key } ?: NONE
     }
 }
 

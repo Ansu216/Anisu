@@ -1,7 +1,5 @@
 package com.ansu.anime.ui.myspace
 
-import com.ansu.anime.core.haptics.softClickable
-import com.ansu.anime.core.haptics.tickClickable
 import android.widget.Toast
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -164,12 +162,12 @@ fun MySpaceScreen(
     }
 
     Scaffold(
-        containerColor = AnsuColors.Background,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         bottomBar = { AppBottomBarReserve() },
     ) { padding ->
         // The background sits inside the recorded layer: without it the layer is transparent wherever no card is
         // drawn, so the nav bar had nothing opaque to blur on this screen.
-        Column(modifier = Modifier.fillMaxSize().backdropSource(backdrop).background(AnsuColors.Background).padding(top = padding.calculateTopPadding())) {
+        Column(modifier = Modifier.fillMaxSize().backdropSource(backdrop).padding(top = padding.calculateTopPadding())) {
             ProfileBanner(
                 name = viewer?.name,
                 avatarUrl = viewer?.avatarUrl,
@@ -352,7 +350,7 @@ private fun ShiftingGradient(modifier: Modifier = Modifier) {
 @Composable
 private fun ShortcutBox(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
     FrostedGlassCard(
-        modifier = Modifier.fillMaxWidth().softClickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         tintAlpha = 0.4f,
     ) {
@@ -371,7 +369,7 @@ private fun ShortcutBox(icon: androidx.compose.ui.graphics.vector.ImageVector, l
 /** Small frosted pill with a sync icon; shows a spinner while a sync is running. */
 @Composable
 private fun SyncButton(syncing: Boolean, onClick: () -> Unit) {
-    FrostedGlassCard(modifier = Modifier.tickClickable(onClick = onClick), shape = RoundedCornerShape(20.dp), tintAlpha = 0.45f) {
+    FrostedGlassCard(modifier = Modifier.clickable(onClick = onClick), shape = RoundedCornerShape(20.dp), tintAlpha = 0.45f) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -393,11 +391,11 @@ private fun ListChip(text: String, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(20.dp)
     if (selected) {
         Box(
-            modifier = Modifier.clip(shape).background(AnsuColors.Accent).tickClickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 9.dp),
+            modifier = Modifier.clip(shape).background(AnsuColors.Accent).clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 9.dp),
             contentAlignment = Alignment.Center,
         ) { Text(text, color = AnsuColors.OnAccent, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
     } else {
-        FrostedGlassCard(modifier = Modifier.tickClickable(onClick = onClick), shape = shape, tintAlpha = 0.45f) {
+        FrostedGlassCard(modifier = Modifier.clickable(onClick = onClick), shape = shape, tintAlpha = 0.45f) {
             Text(
                 text,
                 color = AnsuColors.TextSecondary,
@@ -416,7 +414,7 @@ private fun ListItemRow(media: AniListMedia, onDetails: () -> Unit) {
     // A tap anywhere on the card opens the page out of its poster, not only a tap on the poster itself.
     val originHandle = remember { PosterOriginHandle() }
     FrostedGlassCard(
-        modifier = Modifier.fillMaxWidth().posterTransitionTrigger(originHandle, media.posterUrl, 10.dp).softClickable(onClick = onDetails),
+        modifier = Modifier.fillMaxWidth().posterTransitionTrigger(originHandle, media.posterUrl, 10.dp).clickable(onClick = onDetails),
         shape = RoundedCornerShape(16.dp),
         tintAlpha = 0.4f,
     ) {

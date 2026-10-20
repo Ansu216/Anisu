@@ -1,8 +1,5 @@
 package com.ansu.anime.ui.schedule
 
-import com.ansu.anime.core.haptics.Haptics
-import com.ansu.anime.core.haptics.softClickable
-import com.ansu.anime.core.haptics.tickClickable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -108,7 +105,7 @@ fun ScheduleScreen(
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
 
     Scaffold(
-        containerColor = AnsuColors.Background,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         bottomBar = { AppBottomBarReserve() },
     ) { padding ->
         val barInset = padding.calculateBottomPadding()
@@ -118,8 +115,7 @@ fun ScheduleScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .backdropSource(backdrop)
-                    .padding(top = padding.calculateTopPadding())
-                    .background(AnsuColors.Background),
+                    .padding(top = padding.calculateTopPadding()),
             ) {
                 Text(
                     text = if (tab == ScheduleTab.NEWS) "Anime News" else "Schedule",
@@ -289,7 +285,6 @@ private fun ToggleSegment(
         modifier = modifier
             .fillMaxHeight()
             .clickable(interactionSource = interactionSource, indication = null) {
-                Haptics.tick()
                 onClick()
             },
         contentAlignment = Alignment.Center,
@@ -441,7 +436,7 @@ private fun DayPillBar(selectedDate: LocalDate, onSelectDate: (LocalDate) -> Uni
                         .width(62.dp)
                         .clip(RoundedCornerShape(22.dp))
                         .background(if (isSelected) AnsuColors.Accent else Color.Transparent)
-                        .tickClickable { onSelectDate(date) }
+                        .clickable { onSelectDate(date) }
                         .padding(vertical = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
@@ -469,7 +464,7 @@ private fun ScheduleCard(entry: ScheduleEntry, onClick: () -> Unit) {
     FrostedGlassCard(
         modifier = Modifier
             .fillMaxWidth()
-            .softClickable(onClick = onClick),
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
     ) {
         Row(

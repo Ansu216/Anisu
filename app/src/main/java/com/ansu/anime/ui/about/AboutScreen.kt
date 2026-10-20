@@ -87,7 +87,7 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
     val context = LocalContext.current
 
     Scaffold(
-        containerColor = AnsuColors.Background,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {},

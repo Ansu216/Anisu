@@ -106,7 +106,7 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
     LaunchedEffect(Unit) { container.updateManager.check() }
 
     Scaffold(
-        containerColor = AnsuColors.Background,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             TopAppBar(
                 title = { Text("Updates") },

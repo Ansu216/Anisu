@@ -1,6 +1,7 @@
 package com.ansu.anime.ui.home
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.foundation.clickable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -34,7 +35,6 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.ansu.anime.core.haptics.softClickable
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.ui.components.ShelfHeader
 import com.ansu.anime.ui.components.posterTransitionOrigin
@@ -141,7 +141,7 @@ private fun NextWatchCard(
             .posterTransitionOrigin(posterUrl = pick.anime.bannerUrl ?: pick.anime.posterUrl, cornerRadius = 20.dp, bars = true)
             .clip(shape)
             .background(AnsuColors.BackgroundElevated)
-            .softClickable(onClick = onClick),
+            .clickable(onClick = onClick),
     ) {
         AsyncImage(
             model = pick.anime.bannerUrl ?: pick.anime.posterUrl,

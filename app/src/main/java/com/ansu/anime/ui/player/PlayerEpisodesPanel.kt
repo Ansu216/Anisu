@@ -1,7 +1,7 @@
 package com.ansu.anime.ui.player
 
-import com.ansu.anime.core.haptics.tickClickable
 import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.clickable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -150,7 +150,7 @@ private fun EpisodeTile(episode: SEpisode, current: Boolean, onClick: () -> Unit
             .clip(shape)
             .background(if (current) AnsuColors.Accent else Color.White.copy(alpha = 0.07f))
             .border(1.dp, if (current) AnsuColors.Accent else Color.White.copy(alpha = 0.18f), shape)
-            .tickClickable(onClick = onClick),
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(

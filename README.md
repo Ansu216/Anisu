@@ -43,7 +43,7 @@ Anisu is a native Android app that puts your AniList account, the airing schedul
 - **Downloads.** Save episodes for offline viewing, along with every subtitle the source offers (including subtitles carried inside the stream, and a dub borrows the sub stream's subtitle files when it lists none). Progress shows live in the Your downloads screen and in the notification.
 
 ### Make it yours
-- Appearance options: nav-bar frosted blur and roundness, custom fonts (including a separate subtitle font), and optional haptic feedback with adjustable strength.
+- Appearance options: nav-bar frosted blur and roundness, custom fonts (including a separate subtitle font).
 - A built-in adult-content filter that keeps 18+ sources and titles out of search and blocks them from streaming.
 - Backup and restore (manual and automatic), a self-updater (stable releases and nightly builds), and an in-app diagnostics log.
 
@@ -114,7 +114,7 @@ Everything lives in one Gradle module, `:app`, under `app/src/main/java/com/ansu
 | `eu/kanade/tachiyomi/` | Intentionally not renamed: the Aniyomi extension API that extension APKs are compiled against |
 | `anilist/` | AniList GraphQL API, models, repository and OAuth |
 | `data/` | Downloads, backup, notifications, preferences, repositories, updater, Room database |
-| `core/` | Shared models, networking and error handling, diagnostics, haptics, utilities |
+| `core/` | Shared models, networking and error handling, diagnostics, utilities |
 
 More detail on the architecture, conventions and pitfalls is in [`CLAUDE.md`](CLAUDE.md). Design notes and older implementation guides are in [`docs/`](docs/).
 
@@ -130,7 +130,6 @@ Anisu is built on the work of others. The in-app **License and attribution** scr
 - [ani.zip](https://ani.zip) for episode titles, thumbnails and logos, and [Kitsu](https://kitsu.app) for id mappings
 - [AniSkip](https://api.aniskip.com) for intro and outro timestamps
 - [Anime News Network](https://www.animenewsnetwork.com) for news headlines
-- YouTube for trailer playback
 - [Aniyomi](https://github.com/aniyomiorg/aniyomi) for the extension format Anisu is compatible with
 
 Contributors are listed in the app (Settings > Contributors) and read from [`contributorsansu.json`](contributorsansu.json); open a pull request to add yourself.

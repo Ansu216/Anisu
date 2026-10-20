@@ -255,13 +255,12 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     val availableState = rememberLazyListState()
     val installedState = rememberLazyListState()
 
-    Box(modifier = Modifier.fillMaxSize().background(AnsuColors.Background)) {
+    Box(modifier = Modifier.fillMaxSize()) {
         // ---------------- Content (what the bar and the cards blur) ----------------
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .backdropSource(backdrop)
-                .background(AnsuColors.Background)
                 .statusBarsPadding(),
         ) {
             Row(

@@ -52,6 +52,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -96,6 +97,16 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
     val roundness by container.appearancePrefs.navBarRoundness.collectAsStateWithLifecycle()
     val frostiness by container.appearancePrefs.navBarFrostiness.collectAsStateWithLifecycle()
     val backdropBlur by container.appearancePrefs.navBarBackdropBlur.collectAsStateWithLifecycle()
+    val amoled by container.appearancePrefs.amoledBlack.collectAsStateWithLifecycle()
+    val backgroundStyle by container.appearancePrefs.backgroundStyle.collectAsStateWithLifecycle()
+    var showBackgroundPicker by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    if (showBackgroundPicker) {
+        BackgroundAnimationPicker(
+            selected = backgroundStyle,
+            onSelect = { container.appearancePrefs.setBackgroundStyle(it) },
+            onDismiss = { showBackgroundPicker = false },
+        )
+    }
     val previewBackdrop = rememberBackdropState()
     val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
     val accent by container.appearancePrefs.accent.collectAsStateWithLifecycle()
@@ -190,6 +201,23 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                         ) { Box(modifier = Modifier.fillMaxWidth(0.6f).fillMaxHeight().background(AnsuColors.Accent)) }
                     }
                 }
+            }
+
+            GlassGroupLabel("Background")
+            GlassGroup {
+                GlassToggleRow(
+                    title = "AMOLED Black",
+                    description = "Pure black background instead of the default near-black",
+                    checked = amoled,
+                    onCheckedChange = { container.appearancePrefs.setAmoledBlack(it) },
+                )
+                GlassRow(
+                    title = "Background Animation",
+                    description = "Shapes that float behind the screens. Posters and cards stay solid",
+                    trailing = { com.ansu.anime.ui.components.GlassRowValue(backgroundStyle.label) },
+                    showDivider = false,
+                    onClick = { showBackgroundPicker = true },
+                )
             }
 
             GlassGroupLabel("Font")
@@ -314,6 +342,8 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                         container.appearancePrefs.setNavBarFrostiness(AppearancePrefs.DEFAULT_NAV_FROSTINESS)
                         container.appearancePrefs.setNavBarBackdropBlur(AppearancePrefs.DEFAULT_NAV_BACKDROP_BLUR)
                         container.appearancePrefs.setAccent(AccentPalette.WHITE)
+                        container.appearancePrefs.setAmoledBlack(AppearancePrefs.DEFAULT_AMOLED)
+                        container.appearancePrefs.setBackgroundStyle(com.ansu.anime.data.prefs.BackgroundStyle.NONE)
                     },
                 )
             }

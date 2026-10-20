@@ -2,7 +2,6 @@
 
 package com.ansu.anime.ui.components
 
-import com.ansu.anime.core.haptics.Haptics
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -53,17 +52,20 @@ import com.ansu.anime.ui.theme.AnsuColors
  */
 
 /** Settings text, sized and spaced like a roomy system settings page: a plain title over a lighter grey description. */
-internal val SettingsTitleStyle = androidx.compose.ui.text.TextStyle(
+internal val SettingsTitleStyle: androidx.compose.ui.text.TextStyle get() = androidx.compose.ui.text.TextStyle(
+    fontFamily = com.ansu.anime.ui.theme.AnsuFont.appFamily,
     fontWeight = FontWeight.Normal,
     fontSize = 17.sp,
     lineHeight = 24.sp,
 )
-internal val SettingsDescriptionStyle = androidx.compose.ui.text.TextStyle(
+internal val SettingsDescriptionStyle: androidx.compose.ui.text.TextStyle get() = androidx.compose.ui.text.TextStyle(
+    fontFamily = com.ansu.anime.ui.theme.AnsuFont.appFamily,
     fontWeight = FontWeight.Normal,
     fontSize = 14.5.sp,
     lineHeight = 20.sp,
 )
-internal val SettingsLabelStyle = androidx.compose.ui.text.TextStyle(
+internal val SettingsLabelStyle: androidx.compose.ui.text.TextStyle get() = androidx.compose.ui.text.TextStyle(
+    fontFamily = com.ansu.anime.ui.theme.AnsuFont.appFamily,
     fontWeight = FontWeight.Bold,
     fontSize = 12.5.sp,
     lineHeight = 16.sp,
@@ -174,7 +176,6 @@ fun GlassToggleRow(
         showDivider = showDivider,
         onClick = if (enabled) {
             {
-                Haptics.tick()
                 onCheckedChange(!checked)
             }
         } else {
@@ -185,7 +186,6 @@ fun GlassToggleRow(
                 checked = checked,
                 enabled = enabled,
                 onCheckedChange = {
-                    Haptics.tick()
                     onCheckedChange(it)
                 },
                 colors = SwitchDefaults.colors(

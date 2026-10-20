@@ -3,6 +3,7 @@
 package com.ansu.anime.ui.downloads
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,7 +42,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
-import com.ansu.anime.core.haptics.softClickable
 import com.ansu.anime.core.model.MediaOrigin
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.SEpisode
@@ -57,7 +57,7 @@ import com.ansu.anime.ui.theme.AnsuColors
 fun DownloadsScreen(container: AppContainer, navController: NavHostController) {
     val items by container.downloads.items.collectAsStateWithLifecycle()
     Scaffold(
-        containerColor = AnsuColors.Background,
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
@@ -129,7 +129,7 @@ private fun DownloadCard(item: DownloadItem, onPlay: () -> Unit, onDelete: () ->
     val status = item.status
     val playable = status.phase == DownloadPhase.Completed
     FrostedGlassCard(
-        modifier = Modifier.fillMaxWidth().then(if (playable) Modifier.softClickable(onClick = onPlay) else Modifier),
+        modifier = Modifier.fillMaxWidth().then(if (playable) Modifier.clickable(onClick = onPlay) else Modifier),
         shape = RoundedCornerShape(16.dp),
         tintAlpha = 0.4f,
     ) {

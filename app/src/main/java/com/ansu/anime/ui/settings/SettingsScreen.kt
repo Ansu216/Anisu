@@ -27,7 +27,6 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material3.Button
@@ -50,7 +49,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
-import com.ansu.anime.core.haptics.Haptics
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.GlassToggleRow
 import com.ansu.anime.ui.components.FrostedGlassCard
@@ -67,7 +65,6 @@ import com.ansu.anime.ui.theme.AnsuColors
 fun SettingsScreen(container: AppContainer, navController: NavHostController) {
     val viewer by container.aniListRepository.viewer.collectAsStateWithLifecycle()
     val isLoggedIn by container.aniListRepository.isLoggedIn.collectAsStateWithLifecycle()
-    val hapticsEnabled by container.appearancePrefs.hapticsEnabled.collectAsStateWithLifecycle()
     val notificationsEnabled by container.notificationPrefs.enabled.collectAsStateWithLifecycle()
     val notifyWatching by container.notificationPrefs.newEpisodes.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -134,20 +131,6 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                     checked = notifyWatching && notificationsEnabled,
                     onCheckedChange = { container.notificationPrefs.setNewEpisodes(it) },
                     enabled = notificationsEnabled,
-                    showDivider = false,
-                )
-            }
-
-            SettingsGroup(title = "Haptics") {
-                GlassToggleRow(
-                    icon = Icons.Filled.Vibration,
-                    title = "Haptic Feedback",
-                    description = "Soft vibration on taps, switches and holds",
-                    checked = hapticsEnabled,
-                    onCheckedChange = { on ->
-                        container.appearancePrefs.setHapticsEnabled(on)
-                        if (on) Haptics.tick()
-                    },
                     showDivider = false,
                 )
             }

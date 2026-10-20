@@ -1,6 +1,5 @@
 package com.ansu.anime.ui.home
 
-import com.ansu.anime.core.haptics.softClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -109,15 +108,14 @@ fun HomeScreen(
     var actionTarget by remember { mutableStateOf<ContinueWatchingActionTarget?>(null) }
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
-            containerColor = AnsuColors.Background,
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
             bottomBar = { AppBottomBarReserve() },
         ) { padding ->
             if (state.isLoading && trending.isEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(top = padding.calculateTopPadding())
-                        .background(AnsuColors.Background),
+                        .padding(top = padding.calculateTopPadding()),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     CircularProgressIndicator(color = AnsuColors.Accent, modifier = Modifier.padding(top = 80.dp))
@@ -129,8 +127,7 @@ fun HomeScreen(
                 // No top padding: the hero banner runs behind the status bar, edge to edge.
                 modifier = Modifier
                     .fillMaxSize()
-                    .backdropSource(backdrop)
-                    .background(AnsuColors.Background),
+                    .backdropSource(backdrop),
                 // Content runs behind the floating bar; the padding lets the last row scroll clear of it.
                 contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 24.dp),
             ) {
@@ -432,7 +429,7 @@ private fun TopPickCard(anime: SAnime, onClick: () -> Unit, modifier: Modifier =
             .posterTransitionOrigin(anime.posterUrl, 12.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(AnsuColors.BackgroundElevated)
-            .softClickable(onClick = onClick),
+            .clickable(onClick = onClick),
     ) {
         AsyncImage(
             model = anime.posterUrl,

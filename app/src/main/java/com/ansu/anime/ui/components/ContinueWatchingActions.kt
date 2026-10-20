@@ -1,6 +1,5 @@
 package com.ansu.anime.ui.components
 
-import com.ansu.anime.core.haptics.Haptics
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -256,7 +255,6 @@ fun ContinueWatchingActionOverlay(
     val dust = remember { buildDust(AnsuColors.Accent) }
 
     LaunchedEffect(Unit) {
-        Haptics.hold()
         launch { bg.animateTo(1f, tween(320, easing = FastOutSlowInEasing)) }
         launch { open.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = 330f)) }
         launch {
@@ -285,7 +283,6 @@ fun ContinueWatchingActionOverlay(
 
             // Cut one: steep, then cut two: shallow. Each is a bright head racing along the line with a tail
             // that catches up a moment later, so the streak looks like a blade passing.
-            Haptics.soft()
             launch {
                 pulse.snapTo(0f)
                 pulse.animateTo(1f, tween(45))
@@ -295,7 +292,6 @@ fun ContinueWatchingActionOverlay(
             slashAHead.animateTo(1f, tween(110, easing = LinearEasing))
             delay(70)
 
-            Haptics.soft()
             launch {
                 pulse.snapTo(0f)
                 pulse.animateTo(1f, tween(45))
