@@ -35,11 +35,18 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class AniListApi(
     private val client: OkHttpClient,
     private val authManager: AniListAuthManager,
+    /** Called whenever AniList really answers (never for cached data), so an "AniList is down" notice can clear. */
+    private val onNetworkSuccess: () -> Unit = {},
     /** Read on every response, so a change in Settings applies to the next request. */
     private val titleLanguage: () -> TitleLanguage = { TitleLanguage.ROMAJI },
 ) {
     private val endpoint = "https://graphql.anilist.co"
     private val json = Json { ignoreUnknownKeys = true }
+
+    /** The cheapest real request AniList can answer; used to find out whether it is back up. Never cached. */
+    suspend fun ping() {
+        execute("query { Page(page: 1, perPage: 1) { media(id: 1) { id } } }", emptyMap())
+    }
 
     suspend fun getViewer(): AniListViewer? {
         val query = """
@@ -542,6 +549,42 @@ class AniListApi(
         )
     }
 
+    /**
+     * [getAiringInfo] for many shows in one request (up to 50 per request), keyed by AniList id. A show AniList does
+     * not know is simply missing from the map. Used by the repository, which gathers the single lookups the home
+     * screen makes (one per Continue Watching card) into one of these.
+     */
+    suspend fun getAiringInfoBatch(ids: Collection<Int>): Map<Int, AniListAiringInfo> {
+        val gql = """
+            query (${'$'}ids: [Int]) {
+              Page(page: 1, perPage: 50) {
+                media(id_in: ${'$'}ids, type: ANIME) {
+                  id
+                  status
+                  episodes
+                  nextAiringEpisode { episode airingAt }
+                }
+              }
+            }
+        """.trimIndent()
+        val result = HashMap<Int, AniListAiringInfo>()
+        ids.distinct().chunked(50).forEach { chunk ->
+            val data = execute(gql, mapOf("ids" to chunk), cacheTtlMs = AIRING_TTL_MS) ?: return@forEach
+            data["Page"]?.jsonObject?.get("media")?.jsonArray.orEmpty().forEach { element ->
+                val obj = element.jsonObject
+                val id = (obj["id"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull() ?: return@forEach
+                val next = obj["nextAiringEpisode"] as? JsonObject
+                result[id] = AniListAiringInfo(
+                    status = (obj["status"] as? JsonPrimitive)?.contentOrNull,
+                    episodes = (obj["episodes"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull(),
+                    nextEpisode = (next?.get("episode") as? JsonPrimitive)?.contentOrNull?.toIntOrNull(),
+                    nextAiringAt = (next?.get("airingAt") as? JsonPrimitive)?.contentOrNull?.toLongOrNull(),
+                )
+            }
+        }
+        return result
+    }
+
     suspend fun getMediaDetails(mediaId: Int): AniListMediaDetails? {
         val gql = """
             query (${'$'}id: Int) {
@@ -1003,7 +1046,10 @@ class AniListApi(
             val text = response.body.string()
             val root = runCatching { json.parseToJsonElement(text) as? JsonObject }.getOrNull()
             val data = root?.get("data") as? JsonObject
-            if (response.isSuccessful && data != null) return data
+            if (response.isSuccessful && data != null) {
+                onNetworkSuccess()
+                return data
+            }
 
             // AniList reports GraphQL failures as {"errors":[{"message":"...","status":404}]}.
             val firstError = (root?.get("errors") as? JsonArray)?.firstOrNull() as? JsonObject

@@ -41,6 +41,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.compose.rememberNavController
 import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.data.update.UpdateCheckResult
+import com.ansu.anime.ui.components.ApiOutageOverlay
 import com.ansu.anime.ui.components.UpdateBanner
 import com.ansu.anime.ui.navigation.AnsuNavGraph
 import com.ansu.anime.ui.navigation.Dest
@@ -135,9 +136,16 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // While AniList looks down the outage card says so; a snackbar for the same thing would repeat it.
+                val outage by container.apiErrorHandler.outage.collectAsStateWithLifecycle()
+                LaunchedEffect(outage != null) {
+                    if (outage != null) snackbarHostState.currentSnackbarData?.dismiss()
+                }
+
                 // API failures reported by ApiErrorHandler surface here, above whichever screen is open.
                 LaunchedEffect(Unit) {
                     container.apiErrorHandler.events.collect { error ->
+                        if (container.apiErrorHandler.outage.value != null) return@collect
                         snackbarHostState.currentSnackbarData?.dismiss()
                         snackbarHostState.showSnackbar(error.userMessage)
                     }
@@ -165,6 +173,15 @@ class MainActivity : ComponentActivity() {
                                     .padding(start = 12.dp, end = 12.dp, top = 8.dp),
                             )
                         }
+
+                        ApiOutageOverlay(
+                            outage = outage,
+                            onRetry = { container.aniListRepository.checkReachable() },
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .statusBarsPadding()
+                                .padding(start = 12.dp, end = 12.dp, top = if (showUpdateBanner) 84.dp else 8.dp),
+                        )
 
                         SnackbarHost(
                             hostState = snackbarHostState,

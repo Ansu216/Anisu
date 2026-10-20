@@ -153,6 +153,8 @@ class ArtworkRepository(
     private val tmdbApiKey: String = "",
     /** Where answers are kept between launches (the app's files dir); null keeps them in memory only. */
     cacheDir: File? = null,
+    /** The shared ani.zip answer; the episode details read the same one, so a title costs one request, not two. */
+    private val aniZip: AniZipSource = AniZipSource(client),
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val cache = ConcurrentHashMap<Int, AnimeArtwork>()
@@ -176,6 +178,7 @@ class ArtworkRepository(
     /** Forgets every logo and backdrop answer, in memory and on disk, so the next page asks again. */
     fun clearCache() {
         cache.clear()
+        aniZip.clear()
         dir?.listFiles()?.forEach { it.delete() }
     }
 
@@ -338,13 +341,7 @@ class ArtworkRepository(
     }
 
     private suspend fun fetchAniZip(anilistId: Int): AnimeArtwork = withContext(Dispatchers.IO) {
-        val request = Request.Builder().url("https://api.ani.zip/mappings?anilist_id=$anilistId").build()
-        val text = http.newCall(request).execute().use { response ->
-            // ani.zip answers 404 for shows it has no mapping for; that is "no data", not a failure.
-            if (response.code == 404) return@use ""
-            if (!response.isSuccessful) throw httpApiException(response.code, response.header("Retry-After")?.toLongOrNull(), null)
-            response.body.string()
-        }
+        val text = aniZip.get(anilistId)
         if (text.isBlank()) return@withContext AnimeArtwork()
         val images = json.parseToJsonElement(text).jsonObject["images"] as? JsonArray
             ?: return@withContext AnimeArtwork()

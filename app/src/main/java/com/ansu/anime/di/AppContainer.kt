@@ -61,7 +61,7 @@ class AppContainer(context: Context) {
     val searchHistory: com.ansu.anime.data.prefs.SearchHistoryPrefs = com.ansu.anime.data.prefs.SearchHistoryPrefs(appContext)
     val searchSession: com.ansu.anime.ui.search.SearchSession = com.ansu.anime.ui.search.SearchSession()
 
-    val aniListApi: AniListApi = AniListApi(okHttpClient, aniListAuthManager) { appearancePrefs.titleLanguage.value }
+    val aniListApi: AniListApi = AniListApi(okHttpClient, aniListAuthManager, onNetworkSuccess = { apiErrorHandler.reportServiceUp() }) { appearancePrefs.titleLanguage.value }
     val aniListRepository: AniListRepository = AniListRepository(aniListApi, aniListAuthManager, apiErrorHandler)
 
     val aniSkipRepository: com.ansu.anime.data.repository.AniSkipRepository =
@@ -83,9 +83,11 @@ class AppContainer(context: Context) {
 
     val catalogRepository: CatalogRepository = CatalogRepository(extensionManager, aniListRepository)
 
-    val episodeMetadataRepository: EpisodeMetadataRepository = EpisodeMetadataRepository(okHttpClient, aniListRepository, apiErrorHandler)
+    /** One ani.zip client shared by the artwork and the episode details, so a title is asked about once. */
+    val aniZipSource: com.ansu.anime.data.repository.AniZipSource = com.ansu.anime.data.repository.AniZipSource(okHttpClient)
+    val episodeMetadataRepository: EpisodeMetadataRepository = EpisodeMetadataRepository(okHttpClient, aniListRepository, apiErrorHandler, aniZipSource)
 
-    val artworkRepository: ArtworkRepository = ArtworkRepository(okHttpClient, apiErrorHandler, com.ansu.anime.BuildConfig.TMDB_API_KEY, appContext.filesDir)
+    val artworkRepository: ArtworkRepository = ArtworkRepository(okHttpClient, apiErrorHandler, com.ansu.anime.BuildConfig.TMDB_API_KEY, appContext.filesDir, aniZipSource)
 
     val selectionHolder: SelectionHolder = SelectionHolder()
 

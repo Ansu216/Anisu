@@ -307,13 +307,17 @@ fun ContinueWatchingThumbnail(
     }
     val overlayCard = info is ResumeCardInfo.NextUp || info is ResumeCardInfo.Countdown
     Box(modifier = modifier.background(AnsuColors.BackgroundElevated)) {
-        AsyncImage(
-            model = request,
-            contentDescription = entry.title,
-            contentScale = ContentScale.Crop,
-            onError = { if (episodeThumb != null) thumbFailed = true },
-            modifier = Modifier.fillMaxSize(),
-        )
+        if (url.isNullOrBlank()) {
+            NoArtGradient(seed = entry.title)
+        } else {
+            AsyncImage(
+                model = request,
+                contentDescription = entry.title,
+                contentScale = ContentScale.Crop,
+                onError = { if (episodeThumb != null) thumbFailed = true },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -532,9 +536,14 @@ fun HeroCarousel(
         }
     }
 
-    LaunchedEffect(shown, logoFor, posterFor) {
-        shown.forEach { anime ->
-            val id = anime.anilistId ?: return@forEach
+    // Art is looked up lazily: the slide on screen plus the one before and the one after it (the carousel
+    // loops, so the slide before the first is the last). Asking for all eight at once cost up to 24 requests
+    // the moment Home opened, most for slides nobody had reached yet; now each swipe asks for one new slide.
+    // A lookup the effect restarts away from just continues inside the repository, so nothing is lost.
+    LaunchedEffect(shown, logoFor, posterFor, activeIndex) {
+        for (step in -1..1) {
+            val anime = shown[Math.floorMod(activeIndex + step, shown.size)]
+            val id = anime.anilistId ?: continue
             if (!posters.containsKey(id)) launch { posters[id] = posterFor(anime) }
             if (!logos.containsKey(id)) launch { logos[id] = logoFor(id) }
         }
@@ -654,20 +663,32 @@ private fun HeroSlide(
         Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
             // AniList's own portrait cover (extraLarge); the banner is only a fallback.
             // Slightly oversized and shifted against the swipe, so the art trails the page (parallax).
-            AsyncImage(
-                model = imageModel,
-                contentDescription = anime.title,
-                contentScale = ContentScale.Crop,
-                colorFilter = HeroBrightness,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(AnsuColors.BackgroundElevated)
-                    .graphicsLayer {
+            if (heroImage.isNullOrBlank()) {
+                // No artwork yet: the gradient design instead of an empty box (same parallax as a picture).
+                NoArtGradient(
+                    seed = anime.anilistId?.toString() ?: anime.title,
+                    modifier = Modifier.graphicsLayer {
                         scaleX = 1.16f
                         scaleY = 1.16f
                         translationX = offset * size.width * 0.07f
                     },
-            )
+                )
+            } else {
+                AsyncImage(
+                    model = imageModel,
+                    contentDescription = anime.title,
+                    contentScale = ContentScale.Crop,
+                    colorFilter = HeroBrightness,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(AnsuColors.BackgroundElevated)
+                        .graphicsLayer {
+                            scaleX = 1.16f
+                            scaleY = 1.16f
+                            translationX = offset * size.width * 0.07f
+                        },
+                )
+            }
         }
         // Fade into the page colour: the banner melts into "Continue Watching" below.
         Box(

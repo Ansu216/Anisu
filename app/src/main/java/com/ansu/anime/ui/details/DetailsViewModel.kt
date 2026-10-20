@@ -87,8 +87,7 @@ class DetailsViewModel(
             }
             current.anilistId?.let { id ->
                 viewModelScope.launch {
-                    val titles = listOf(current.title) + aniListRepository.getAllTitles(id).take(6)
-                    val trailers = trailerRepository.getAllTrailers(aniListRepository.getMalId(id), titles)
+                    val trailers = trailerRepository.getAllTrailers(aniListRepository.getMalId(id))
                     _uiState.value = _uiState.value.copy(trailers = trailers)
                 }
             }

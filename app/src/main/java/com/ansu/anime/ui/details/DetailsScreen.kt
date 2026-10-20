@@ -197,10 +197,9 @@ fun DetailsScreen(
                         hasPrequel = details?.hasPrequel == true,
                         entryBanner = details?.bannerUrl ?: anime?.bannerUrl,
                         // English: the Western-release poster ani.zip has, if any; Romaji: AniList's own (Japanese key art) cover.
-                        poster = when (titleLanguage) {
-                            TitleLanguage.ENGLISH -> state.artwork.posterUrl ?: anime?.posterUrl ?: details?.posterUrl
-                            TitleLanguage.ROMAJI -> anime?.posterUrl ?: details?.posterUrl
-                        },
+                        // The poster is not used as a last resort: a portrait cover crops badly in this wide frame,
+                        // so a title with no wide picture gets the gradient design instead.
+                        poster = null,
                         artwork = state.artwork,
                     ),
                     logoUrl = state.artwork.logoFor(titleLanguage),
@@ -483,12 +482,17 @@ fun DetailsScreen(
 private fun DetailsHero(title: String, imageUrl: String?, logoUrl: String?, onBack: () -> Unit) {
     // Taller than the art's 16:9 so the fade has room; the banner melts into the page like the home hero.
     Box(modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f)) {
-        AsyncImage(
-            model = imageUrl,
-            contentDescription = title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize().background(AnsuColors.BackgroundElevated),
-        )
+        if (imageUrl.isNullOrBlank()) {
+            // No banner yet (an unreleased title, say): the gradient design, with nothing written on it.
+            com.ansu.anime.ui.components.NoArtGradient(seed = title)
+        } else {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().background(AnsuColors.BackgroundElevated),
+            )
+        }
         // Long, eased fade into the page background (no hard bottom edge), same colour the home hero ends in.
         Box(
             modifier = Modifier.fillMaxSize().background(

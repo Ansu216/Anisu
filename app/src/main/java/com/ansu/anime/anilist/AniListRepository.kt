@@ -2,6 +2,9 @@ package com.ansu.anime.anilist
 
 import com.ansu.anime.core.net.ApiErrorHandler
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -41,9 +44,14 @@ class AniListRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            errors.report(what, e, quiet)
+            errors.report(what, e, quiet, tracksOutage = true)
             fallback
         }
+
+    /** Asks AniList for the smallest possible answer: once it replies, the "AniList is down" card goes away by itself. */
+    suspend fun checkReachable() {
+        guarded("Checking AniList", Unit, quiet = true) { api.ping() }
+    }
 
     init {
         scope.launch { refreshViewer() }
@@ -184,9 +192,54 @@ class AniListRepository(
 
     suspend fun getAllTitles(mediaId: Int): List<String> = guarded("Loading alternate titles", emptyList<String>(), quiet = true) { api.getAllTitles(mediaId) }
 
-    /** Null when the request failed, so callers can tell "no data" from "nothing airing". */
-    suspend fun getAiringInfo(mediaId: Int): AniListAiringInfo? =
-        guarded<AniListAiringInfo?>("Loading airing info", null, quiet = true) { api.getAiringInfo(mediaId) }
+    private class CachedAiring(val info: AniListAiringInfo, val at: Long)
+
+    private val airingCache = java.util.concurrent.ConcurrentHashMap<Int, CachedAiring>()
+    private val airingLock = Mutex()
+    private val airingQueue = LinkedHashMap<Int, CompletableDeferred<AniListAiringInfo?>>()
+    private var airingFlushScheduled = false
+
+    /**
+     * Null when the request failed, so callers can tell "no data" from "nothing airing".
+     *
+     * Lookups made within a few milliseconds of each other are sent as ONE request (the home screen asks once
+     * per Continue Watching card, all at the same moment), and an answer is reused for [AIRING_TTL_MS]. Only the
+     * request that actually goes out reports a failure, so ten waiting cards are one failed call, not ten.
+     */
+    suspend fun getAiringInfo(mediaId: Int): AniListAiringInfo? {
+        airingCache[mediaId]?.takeIf { System.currentTimeMillis() - it.at <= AIRING_TTL_MS }?.let { return it.info }
+        val waiter = airingLock.withLock {
+            val pending = airingQueue.getOrPut(mediaId) { CompletableDeferred() }
+            if (!airingFlushScheduled) {
+                airingFlushScheduled = true
+                scope.launch {
+                    delay(AIRING_BATCH_WINDOW_MS)
+                    flushAiring()
+                }
+            }
+            pending
+        }
+        return waiter.await()
+    }
+
+    private suspend fun flushAiring() {
+        val batch = airingLock.withLock {
+            LinkedHashMap(airingQueue).also {
+                airingQueue.clear()
+                airingFlushScheduled = false
+            }
+        }
+        if (batch.isEmpty()) return
+        val answer = guarded<Map<Int, AniListAiringInfo>?>("Loading airing info", null, quiet = true) {
+            api.getAiringInfoBatch(batch.keys)
+        }
+        val now = System.currentTimeMillis()
+        batch.forEach { (id, waiter) ->
+            val info = answer?.get(id)
+            if (info != null) airingCache[id] = CachedAiring(info, now)
+            waiter.complete(info)
+        }
+    }
 
     suspend fun getStreamingEpisodes(mediaId: Int) = guarded("Loading episode titles", emptyList(), quiet = true) { api.getStreamingEpisodes(mediaId) }
 
@@ -261,3 +314,7 @@ class AniListRepository(
 
 /** How often the warmed lists are fetched again; shorter than the API cache's two-minute lifetime. */
 private const val LIST_REFRESH_MS = 90_000L
+
+/** How long single airing lookups are gathered into one request, and how long an answer is reused. */
+private const val AIRING_BATCH_WINDOW_MS = 40L
+private const val AIRING_TTL_MS = 5 * 60_000L

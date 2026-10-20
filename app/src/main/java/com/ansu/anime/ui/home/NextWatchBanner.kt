@@ -143,12 +143,17 @@ private fun NextWatchCard(
             .background(AnsuColors.BackgroundElevated)
             .clickable(onClick = onClick),
     ) {
-        AsyncImage(
-            model = pick.anime.bannerUrl ?: pick.anime.posterUrl,
-            contentDescription = pick.anime.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
+        val pickImage = pick.anime.bannerUrl ?: pick.anime.posterUrl
+        if (pickImage.isNullOrBlank()) {
+            com.ansu.anime.ui.components.NoArtGradient(seed = pick.anime.anilistId?.toString() ?: pick.anime.title)
+        } else {
+            AsyncImage(
+                model = pickImage,
+                contentDescription = pick.anime.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         // Darkens the top (the title) and the bottom (the reason) so both stay readable on any picture.
         Box(
             modifier = Modifier

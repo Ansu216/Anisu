@@ -94,11 +94,8 @@ fun HomeScreen(
         }
     }
     val trending = state.feed(AniListFeed.TRENDING_NOW).items
-    // Start the logo / poster lookups for the whole carousel as soon as it is known, a few at a time, so
-    // every slide (and its details page) finds its art already cached.
-    LaunchedEffect(trending) {
-        container.artworkRepository.prefetch(trending.mapNotNull { it.anilistId })
-    }
+    // Logo / poster lookups are made by the carousel itself, a slide ahead of the one on screen (see HeroCarousel),
+    // not for all eight slides up front. A details page asks for its own title's art when it opens.
     // Every way into a title goes through here, so one tap line is logged instead of five.
     val selectAnime: (SAnime) -> Unit = { anime ->
         container.diagnostics.log(LogCategory.CLICK, "Anime opened: ${anime.title}")
@@ -354,13 +351,11 @@ private fun FeedShelf(
         ShelfHeader(row.feed.title)
         if (row.items.isEmpty()) {
             if (row.loadFailed) {
-                Text(
-                    text = "Couldn't load. Tap to retry.",
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier
-                        .padding(horizontal = 20.dp)
-                        .height(195.dp)
-                        .clickable(onClick = onLoadMore),
+                com.ansu.anime.ui.components.ErrorGlassCard(
+                    title = "Couldn't load this row",
+                    message = "Check your connection and try again.",
+                    onRetry = onLoadMore,
+                    modifier = Modifier.padding(horizontal = 20.dp),
                 )
             } else {
                 Row(

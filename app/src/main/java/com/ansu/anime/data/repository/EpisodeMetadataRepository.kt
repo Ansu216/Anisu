@@ -36,6 +36,8 @@ class EpisodeMetadataRepository(
     private val client: OkHttpClient,
     private val aniList: AniListRepository,
     private val errors: ApiErrorHandler,
+    /** The shared ani.zip answer; the artwork reads the same one, so a title costs one request, not two. */
+    private val aniZip: AniZipSource = AniZipSource(client),
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -45,6 +47,7 @@ class EpisodeMetadataRepository(
     /** Forgets every episode title, thumbnail and synopsis, so the next page asks again. */
     fun clearCache() {
         metaCache.clear()
+        aniZip.clear()
     }
 
     suspend fun getEpisodeMeta(anilistId: Int): Map<Int, EpisodeMeta> {
@@ -90,13 +93,7 @@ class EpisodeMetadataRepository(
     }
 
     private suspend fun fetchAniZip(anilistId: Int): Map<Int, EpisodeMeta> = withContext(Dispatchers.IO) {
-        val request = Request.Builder().url("https://api.ani.zip/mappings?anilist_id=$anilistId").build()
-        val text = client.newCall(request).execute().use { response ->
-            // ani.zip answers 404 for shows it has no mapping for; that is "no data", not a failure.
-            if (response.code == 404) return@use ""
-            if (!response.isSuccessful) throw httpApiException(response.code, response.header("Retry-After")?.toLongOrNull(), null)
-            response.body.string()
-        }
+        val text = aniZip.get(anilistId)
         if (text.isBlank()) return@withContext emptyMap()
         val episodes = json.parseToJsonElement(text).jsonObject["episodes"] as? JsonObject
             ?: return@withContext emptyMap()

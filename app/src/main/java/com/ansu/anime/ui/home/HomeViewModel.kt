@@ -101,6 +101,9 @@ class HomeViewModel(
         viewModelScope.launch {
             // Re-read whenever the account changes or a heart is toggled on the device.
             combine(aniListRepository.isLoggedIn, localListRepository.favourites) { loggedIn, local -> loggedIn to local }
+                // Signed in, the hearts are AniList's: a change in the device's own list says nothing new, so it
+                // must not ask AniList for every favourite again.
+                .distinctUntilChanged { old, new -> old.first && new.first }
                 .collectLatest { (loggedIn, local) ->
                     _favouriteIds.value =
                         if (loggedIn) aniListRepository.getLikedIds() else local.map { it.id }.toSet()

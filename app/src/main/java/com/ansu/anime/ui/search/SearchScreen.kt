@@ -362,12 +362,16 @@ fun SearchScreen(
                         strokeWidth = 2.dp,
                         modifier = Modifier.align(Alignment.Center).size(28.dp),
                     )
-                    failed -> MessageState(
-                        title = "Couldn't load results",
-                        body = "Check your connection and try again.",
-                        actionLabel = "Retry",
-                        onAction = { retryTick += 1 },
-                    )
+                    failed -> Box(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        com.ansu.anime.ui.components.ErrorGlassCard(
+                            title = "Couldn't load results",
+                            message = "Check your connection and try again.",
+                            onRetry = { retryTick += 1 },
+                        )
+                    }
                     results.isEmpty() -> MessageState(
                         title = "No results found",
                         body = "Try a different title or loosen some filters.",
