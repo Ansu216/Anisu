@@ -305,7 +305,7 @@ fun SearchScreen(
         onAnimeSelected(anime)
     }
 
-    Scaffold(bottomBar = { AppBottomBarReserve() }) { padding ->
+    Scaffold(containerColor = Color.Transparent, bottomBar = { AppBottomBarReserve() }) { padding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -414,6 +414,7 @@ fun SearchScreen(
 
           if (panelVisible) {
               SearchPanel(
+                  panelBackgroundStyle = container.appearancePrefs.backgroundStyle.collectAsStateWithLifecycle().value,
                   expand = { expand.value },
                   barBounds = { barBounds },
                   areaBounds = { areaBounds },
@@ -630,6 +631,7 @@ private fun SearchPanel(
     onRemove: (String) -> Unit,
     onClearAll: () -> Unit,
     onOpen: (SAnime) -> Unit,
+    panelBackgroundStyle: com.ansu.anime.data.prefs.BackgroundStyle,
 ) {
     val typing = filter.isNotEmpty()
     // While something is typed, only the earlier searches that match it are shown, the newest few.
@@ -661,6 +663,8 @@ private fun SearchPanel(
             // Taps on the empty part of the panel must not reach the results underneath.
             .pointerInput(Unit) { detectTapGestures { } },
     ) {
+        // The panel covers the results with solid colour, so the animated background is drawn inside it too.
+        com.ansu.anime.ui.components.BackgroundAnimation(style = panelBackgroundStyle)
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()

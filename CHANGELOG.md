@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every change updates the `## [Unreleased]` section **in the same commit** as
 
 ### Added
+- **Sakura accent colour**, a soft cherry-blossom pink. Text on light accents is now dark so it stays readable.
+- **Three new background animations:** Cherry blossom (drifting petals), Snowfall, and Halloween (pumpkins, bats and ghosts). The animation picker scrolls to fit them.
 - **Background animation** (Appearance > Background > Background Animation): None, Circles, Triangles or Material shapes drift slowly behind the screens. They are drawn behind everything, so posters, cards and sheets stay fully opaque and the shapes only show in the empty space. Off by default; the loop pauses when the app is in the background.
 - **Autoplay switch in the player.** A YouTube-style pill in the player's top bar (landscape and portrait); when on, the next episode starts when one ends. Hide Next And Previous in Settings > Player and streaming removes those two buttons from the controls, and the play and seek buttons spread out to fill the gap.
 
@@ -34,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **The "Buffering..." screen no longer stays up while the episode is playing.** The starting screen could be raised again after playback had already begun, and nothing cleared it, so the sound played behind a frozen buffering screen. It now clears as soon as the player is ready and playing, and re-selecting the source that is already playing no longer brings it back.
+- **The blur is even across the whole screen.** The frosted areas (pop-up menus, bottom bar) only blurred where a poster or card was, so they looked like blotches. The blurred copy now includes the page colour underneath.
+- **The autoplay switch lines up with the lock icon** in the player's top bar.
+- **The background animation now shows on the Search and Details pages** as well.
+- **The account banner extends to the top of the screen** instead of leaving a black strip under the status bar.
 
 - **Posters at the sides and corners no longer shift when the details page opens from them.** The opening animation started from the poster's visible rectangle (boundsInRoot), which is cut off where a poster is partly outside the screen or its list, so those posters gave a smaller, offset starting point. It now starts from the poster's full position and size. The same rectangle also sizes the poster picture drawn inside the window: for edge and corner posters it differed from the size the poster was loaded at, so the picture missed the image cache and was decoded again just as the animation started, which made it lag. The poster picture inside the window is also no longer dropped once the page is open and composed again on the first frame of the close, which delayed the start of the close. **Constraint:** the starting rectangle may extend past the screen edge, exactly as the poster does.
 - **Automatic source mode no longer gives up on the first source.** When the stream that started failed or never got ready, the player is meant to move on to the next listed source, but it looked the playing stream up in the Sources list by its resolved copy while the list held the unresolved entry, so it found nothing and stopped with an error (the log showed 'did not get ready in 25s' and then nothing). The lookup now follows the entry that was selected, and a failed server's other qualities are skipped so the next server is reached sooner. A source that arrived after the failure was also never tried, because the 'an earlier stream failed' flag was read after being cleared; it is now read first. **Constraint:** a stream picked by hand is still reported, not swapped.

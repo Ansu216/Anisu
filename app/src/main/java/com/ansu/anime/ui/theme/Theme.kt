@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -44,7 +45,7 @@ object AnsuColors {
     val AccentSoft: Color get() = accentState.copy(alpha = 0.16f)
 
     /** Text and icons drawn on top of the accent: dark on the original white, white on every other colour. */
-    val OnAccent: Color get() = if (accentState == Color.White) Background else Color.White
+    val OnAccent: Color get() = if (accentState.luminance() > 0.5f) Background else Color.White
 
     fun setAccent(color: Color) {
         accentState = color

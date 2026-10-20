@@ -14,6 +14,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -72,7 +73,8 @@ fun BackgroundAnimation(
         val t = frameNanos.longValue / 1_000_000_000f * speed
         val density = this.density
         for (item in items) {
-            val x = wrap(item.x + item.vx * t) * size.width
+            // Falling things (petals, snow, ghosts) also sway side to side as they go.
+            val x = wrap(item.x + item.vx * t + item.sway * sin(t * 0.6f + item.phase)) * size.width
             val y = wrap(item.y + item.vy * t) * size.height
             val radius = item.sizeDp * density / 2f
             val angle = item.rot + item.spin * t
@@ -98,6 +100,9 @@ fun BackgroundAnimation(
                             drawUnit(paths[item.kind % paths.size], r, accent, item.alpha, strokeAlpha = 0f, density = density)
                         }
                     }
+                    BackgroundStyle.SAKURA -> drawPetal(paths[0], r, item, t)
+                    BackgroundStyle.SNOW -> drawSnow(r, item, angle, density)
+                    BackgroundStyle.HALLOWEEN -> drawHalloween(paths, r, item, angle, t)
                     BackgroundStyle.NONE -> Unit
                 }
             }
@@ -124,6 +129,8 @@ private class Item(
     val x: Float, val y: Float, val vx: Float, val vy: Float,
     val sizeDp: Float, val rot: Float, val spin: Float, val phase: Float,
     val alpha: Float, val kind: Int,
+    /** Side-to-side sway as a fraction of the screen width (0 = none). */
+    val sway: Float = 0f,
 )
 
 private const val PILL = 99
@@ -133,6 +140,9 @@ private fun makeItems(style: BackgroundStyle): List<Item> {
         when (style) {
             BackgroundStyle.CIRCLES -> 11
             BackgroundStyle.TRIANGLES -> 23
+            BackgroundStyle.SAKURA -> 51
+            BackgroundStyle.SNOW -> 67
+            BackgroundStyle.HALLOWEEN -> 83
             else -> 37
         },
     )
@@ -154,6 +164,51 @@ private fun makeItems(style: BackgroundStyle): List<Item> {
                 sizeDp = between(60f, 170f), rot = between(0f, 360f), spin = between(4f, 14f) * sign(),
                 phase = between(0f, 6.28f), alpha = between(0.03f, 0.055f), kind = 0,
             )
+        }
+        BackgroundStyle.SAKURA -> List(22) { i ->
+            Item(
+                x = rnd.nextFloat(), y = rnd.nextFloat(),
+                vx = between(0.004f, 0.012f), vy = between(0.018f, 0.04f),
+                sizeDp = between(20f, 42f), rot = between(0f, 360f), spin = between(15f, 45f) * sign(),
+                phase = between(0f, 6.28f), alpha = between(0.45f, 0.75f), kind = i % 3,
+                sway = 0.025f,
+            )
+        }
+        BackgroundStyle.SNOW -> List(34) { i ->
+            val flake = i % 4 == 0
+            Item(
+                x = rnd.nextFloat(), y = rnd.nextFloat(),
+                vx = between(-0.004f, 0.004f), vy = between(0.02f, 0.05f),
+                sizeDp = if (flake) between(16f, 34f) else between(4f, 9f),
+                rot = between(0f, 360f), spin = if (flake) between(5f, 18f) * sign() else 0f,
+                phase = between(0f, 6.28f), alpha = if (flake) between(0.3f, 0.5f) else between(0.35f, 0.7f),
+                kind = if (flake) 1 else 0, sway = 0.02f,
+            )
+        }
+        BackgroundStyle.HALLOWEEN -> List(12) { i ->
+            when (i % 3) {
+                // Pumpkins hover and tilt a little.
+                0 -> Item(
+                    x = rnd.nextFloat(), y = rnd.nextFloat(),
+                    vx = between(-0.004f, 0.004f), vy = between(-0.012f, -0.004f),
+                    sizeDp = between(70f, 110f), rot = between(-14f, 14f), spin = 0f,
+                    phase = between(0f, 6.28f), alpha = 1f, kind = 0, sway = 0.01f,
+                )
+                // Bats cross the screen, flapping.
+                1 -> Item(
+                    x = rnd.nextFloat(), y = rnd.nextFloat(),
+                    vx = between(0.012f, 0.03f) * sign(), vy = between(-0.004f, 0.004f),
+                    sizeDp = between(50f, 90f), rot = 0f, spin = 0f,
+                    phase = between(0f, 6.28f), alpha = 1f, kind = 1, sway = 0.012f,
+                )
+                // Ghosts drift upward and wobble.
+                else -> Item(
+                    x = rnd.nextFloat(), y = rnd.nextFloat(),
+                    vx = between(-0.004f, 0.004f), vy = between(-0.015f, -0.006f),
+                    sizeDp = between(60f, 100f), rot = 0f, spin = 0f,
+                    phase = between(0f, 6.28f), alpha = 1f, kind = 2, sway = 0.03f,
+                )
+            }
         }
         else -> List(14) { i ->
             Item(
@@ -186,7 +241,123 @@ private fun unitPaths(style: BackgroundStyle): List<Path> = when (style) {
         polar { 0.86f + 0.14f * cos(12f * it) },        // burst: twelve gentle points
         polar { 0.78f + 0.22f * abs(cos(2.5f * it)) },  // pebble: lumpy and organic
     )
+    BackgroundStyle.SAKURA -> listOf(
+        // A petal with the little notch at its tip.
+        Path().apply {
+            moveTo(0f, 0.9f)
+            cubicTo(-0.55f, 0.55f, -0.95f, -0.2f, -0.55f, -0.8f)
+            quadraticBezierTo(-0.25f, -1.0f, 0f, -0.7f)
+            quadraticBezierTo(0.25f, -1.0f, 0.55f, -0.8f)
+            cubicTo(0.95f, -0.2f, 0.55f, 0.55f, 0f, 0.9f)
+            close()
+        },
+    )
+    BackgroundStyle.HALLOWEEN -> listOf(
+        // 0: bat
+        Path().apply {
+            moveTo(0f, -0.3f)
+            lineTo(0.12f, -0.6f); lineTo(0.2f, -0.28f)
+            cubicTo(0.5f, -0.55f, 0.85f, -0.5f, 1.0f, -0.2f)
+            quadraticBezierTo(0.85f, -0.05f, 0.7f, 0.1f)
+            quadraticBezierTo(0.62f, -0.05f, 0.5f, 0.15f)
+            quadraticBezierTo(0.42f, 0.0f, 0.25f, 0.3f)
+            quadraticBezierTo(0.1f, 0.5f, 0f, 0.55f)
+            quadraticBezierTo(-0.1f, 0.5f, -0.25f, 0.3f)
+            quadraticBezierTo(-0.42f, 0.0f, -0.5f, 0.15f)
+            quadraticBezierTo(-0.62f, -0.05f, -0.7f, 0.1f)
+            quadraticBezierTo(-0.85f, -0.05f, -1.0f, -0.2f)
+            cubicTo(-0.85f, -0.5f, -0.5f, -0.55f, -0.2f, -0.28f)
+            lineTo(-0.12f, -0.6f)
+            close()
+        },
+        // 1: ghost
+        Path().apply {
+            moveTo(-0.7f, 0.8f)
+            lineTo(-0.7f, -0.2f)
+            cubicTo(-0.7f, -0.95f, 0.7f, -0.95f, 0.7f, -0.2f)
+            lineTo(0.7f, 0.8f)
+            quadraticBezierTo(0.47f, 0.55f, 0.23f, 0.8f)
+            quadraticBezierTo(0f, 0.55f, -0.23f, 0.8f)
+            quadraticBezierTo(-0.47f, 0.55f, -0.7f, 0.8f)
+            close()
+        },
+        // 2: jack-o'-lantern face (eyes, nose, jagged mouth)
+        Path().apply {
+            moveTo(-0.55f, -0.1f); lineTo(-0.2f, -0.1f); lineTo(-0.38f, -0.42f); close()
+            moveTo(0.2f, -0.1f); lineTo(0.55f, -0.1f); lineTo(0.38f, -0.42f); close()
+            moveTo(0f, 0.02f); lineTo(-0.1f, 0.18f); lineTo(0.1f, 0.18f); close()
+            moveTo(-0.6f, 0.3f); lineTo(-0.35f, 0.2f); lineTo(-0.2f, 0.4f); lineTo(0f, 0.25f)
+            lineTo(0.2f, 0.4f); lineTo(0.35f, 0.2f); lineTo(0.6f, 0.3f)
+            lineTo(0.4f, 0.6f); lineTo(0f, 0.7f); lineTo(-0.4f, 0.6f); close()
+        },
+    )
     else -> emptyList()
+}
+
+// ---- Cherry blossom, snow and Halloween ----
+// These keep their own colours (pink, white, orange/purple) instead of following the accent, because the look is the point.
+
+private val PetalColors = listOf(Color(0xFFF7B9D0), Color(0xFFF2A0BF), Color(0xFFE57BA3))
+private val SnowColor = Color(0xFFEAF3FF)
+// Halloween shapes are solid and dim (pre-blended against the dark page), so overlapping parts never add up brighter.
+private val PumpkinOuter = Color(0xFF7A3A0C)
+private val PumpkinCentre = Color(0xFF9A4A10)
+private val PumpkinStem = Color(0xFF2E5A24)
+private val BatColor = Color(0xFF4B3578)
+private val GhostColor = Color(0xFF3F4252)
+
+/** A petal that spins and tumbles (its width squeezes and opens like it is turning in the air). */
+private fun DrawScope.drawPetal(path: Path, r: Float, item: Item, t: Float) {
+    val tumble = 0.25f + 0.75f * abs(cos(t * 0.9f + item.phase))
+    rotate(item.rot + item.spin * t, Offset.Zero) {
+        scale(r * tumble, r, Offset.Zero) {
+            drawPath(path, PetalColors[item.kind % PetalColors.size].copy(alpha = item.alpha))
+        }
+    }
+}
+
+/** Round flakes are plain dots; the bigger ones are six-armed crystals with small side branches. */
+private fun DrawScope.drawSnow(r: Float, item: Item, angle: Float, density: Float) {
+    if (item.kind == 0) {
+        drawCircle(SnowColor.copy(alpha = item.alpha), radius = r)
+        return
+    }
+    val color = SnowColor.copy(alpha = item.alpha)
+    val stroke = 1.3f * density
+    rotate(angle, Offset.Zero) {
+        for (i in 0 until 6) {
+            rotate(i * 60f, Offset.Zero) {
+                drawLine(color, Offset.Zero, Offset(0f, -r), strokeWidth = stroke, cap = StrokeCap.Round)
+                drawLine(color, Offset(0f, -r * 0.55f), Offset(-r * 0.24f, -r * 0.8f), strokeWidth = stroke, cap = StrokeCap.Round)
+                drawLine(color, Offset(0f, -r * 0.55f), Offset(r * 0.24f, -r * 0.8f), strokeWidth = stroke, cap = StrokeCap.Round)
+            }
+        }
+    }
+}
+
+private fun DrawScope.drawHalloween(paths: List<Path>, r: Float, item: Item, angle: Float, t: Float) {
+    when (item.kind) {
+        0 -> rotate(angle, Offset.Zero) {
+            scale(r, r, Offset.Zero) {
+                drawOval(PumpkinOuter, topLeft = Offset(-1f, -0.75f), size = Size(1.1f, 1.5f))
+                drawOval(PumpkinOuter, topLeft = Offset(-0.1f, -0.75f), size = Size(1.1f, 1.5f))
+                drawOval(PumpkinCentre, topLeft = Offset(-0.55f, -0.85f), size = Size(1.1f, 1.7f))
+                drawRoundRect(PumpkinStem, topLeft = Offset(-0.1f, -1.1f), size = Size(0.2f, 0.3f), cornerRadius = CornerRadius(0.06f))
+                drawPath(paths[2], AnsuColors.Background)
+            }
+        }
+        1 -> {
+            // Wings beat: the bat squashes and stretches vertically.
+            val flap = 0.7f + 0.3f * cos(t * 4f + item.phase)
+            scale(r, r * flap, Offset.Zero) { drawPath(paths[0], BatColor) }
+        }
+        else -> scale(r, r, Offset.Zero) {
+            drawPath(paths[1], GhostColor)
+            drawOval(AnsuColors.Background, topLeft = Offset(-0.36f, -0.3f), size = Size(0.16f, 0.26f))
+            drawOval(AnsuColors.Background, topLeft = Offset(0.2f, -0.3f), size = Size(0.16f, 0.26f))
+            drawOval(AnsuColors.Background, topLeft = Offset(-0.1f, 0.12f), size = Size(0.2f, 0.26f))
+        }
+    }
 }
 
 /** A closed curve r(theta), scaled so its farthest point sits at radius 1. */

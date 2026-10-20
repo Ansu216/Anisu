@@ -179,7 +179,10 @@ fun DetailsScreen(
         anime?.let { container.diagnostics.log(LogCategory.CLICK, "Details opened: ${it.title}") }
     }
 
+    val detailsBackgroundStyle by container.appearancePrefs.backgroundStyle.collectAsStateWithLifecycle()
     Box(modifier = Modifier.fillMaxSize().background(AnsuColors.Background)) {
+        // Same animation as the rest of the app (it is driven by the frame clock, so it lines up with the one behind).
+        com.ansu.anime.ui.components.BackgroundAnimation(style = detailsBackgroundStyle)
         LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
             item {
                 // Art of this exact entry: a first season keeps the series backdrop, while later seasons,

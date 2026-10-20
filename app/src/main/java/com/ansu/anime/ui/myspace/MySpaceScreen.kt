@@ -39,6 +39,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -167,7 +168,7 @@ fun MySpaceScreen(
     ) { padding ->
         // The background sits inside the recorded layer: without it the layer is transparent wherever no card is
         // drawn, so the nav bar had nothing opaque to blur on this screen.
-        Column(modifier = Modifier.fillMaxSize().backdropSource(backdrop).padding(top = padding.calculateTopPadding())) {
+        Column(modifier = Modifier.fillMaxSize().backdropSource(backdrop)) {
             ProfileBanner(
                 name = viewer?.name,
                 avatarUrl = viewer?.avatarUrl,
@@ -271,7 +272,9 @@ fun MySpaceScreen(
  */
 @Composable
 private fun ProfileBanner(name: String?, avatarUrl: String?, bannerUrl: String?, isLoggedIn: Boolean, onConnect: () -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().height(150.dp)) {
+    // The banner runs under the status bar (edge to edge), so it grows by the bar's height instead of leaving a black strip.
+    val statusBarHeight = androidx.compose.foundation.layout.WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    Box(modifier = Modifier.fillMaxWidth().height(150.dp + statusBarHeight)) {
         if (bannerUrl != null) {
             AsyncImage(model = bannerUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         } else {

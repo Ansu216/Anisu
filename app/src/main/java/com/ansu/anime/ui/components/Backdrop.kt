@@ -71,7 +71,13 @@ fun Modifier.backdropSource(state: BackdropState): Modifier {
     return this
         .onGloballyPositioned { source.coordinates = it }
         .drawWithContent {
-            source.layer.record { this@drawWithContent.drawContent() }
+            // The screens are see-through (the animated background sits behind them), so the recording gets the
+            // page colour underneath. Without it the blur only had pixels where a poster or card was, which is why
+            // the frosted areas looked like blotches around single posters instead of an even haze.
+            source.layer.record {
+                drawRect(com.ansu.anime.ui.theme.AnsuColors.Background)
+                this@drawWithContent.drawContent()
+            }
             drawLayer(source.layer)
         }
 }

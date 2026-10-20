@@ -202,11 +202,15 @@ fun PlayerControlsOverlay(
                     )
                 }
             }
-            AutoplayToggle(
-                checked = actions.autoplayNext,
-                onCheckedChange = actions.onAutoplayNext,
-                modifier = Modifier.padding(horizontal = 8.dp).align(Alignment.CenterVertically),
-            )
+            // The lock and back buttons are 48dp touch targets; the toggle is centred on that same height so it
+            // lines up with the lock icon instead of sitting at the top of the row.
+            Box(modifier = Modifier.height(48.dp), contentAlignment = Alignment.Center) {
+                AutoplayToggle(
+                    checked = actions.autoplayNext,
+                    onCheckedChange = actions.onAutoplayNext,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                )
+            }
             IconButton(onClick = actions.onLock) {
                 Icon(Icons.Rounded.Lock, contentDescription = "Lock controls", tint = Color.White, modifier = Modifier.size(26.dp))
             }

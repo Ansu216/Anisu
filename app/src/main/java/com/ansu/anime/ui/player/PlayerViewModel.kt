@@ -398,6 +398,7 @@ class PlayerViewModel(
                 val stale = state == Player.STATE_READY && _uiState.value.error?.contains("is not responding") == true
                 _uiState.value = _uiState.value.copy(
                     isBuffering = state == Player.STATE_BUFFERING,
+                    isStarting = if (state == Player.STATE_READY && player.isPlaying) false else _uiState.value.isStarting,
                     error = if (stale) null else _uiState.value.error,
                 )
             }
@@ -824,7 +825,12 @@ class PlayerViewModel(
         source.sourceId?.let { id ->
             sessionSource = _uiState.value.anime?.anilistId to com.ansu.anime.data.repository.LastPlayedSource(id, source.serverName, source.label)
         }
-        _uiState.value = _uiState.value.copy(selectedSource = source, isStarting = showStartingScreen || _uiState.value.isStarting)
+        // Already playing this very source (a re-select after it started): nothing is starting, so don't raise the screen.
+        val alreadyPlaying = player.isPlaying && player.playbackState == Player.STATE_READY && _uiState.value.selectedSource?.url == source.url
+        _uiState.value = _uiState.value.copy(
+            selectedSource = source,
+            isStarting = if (alreadyPlaying) false else (showStartingScreen || _uiState.value.isStarting),
+        )
         // Switching source (or falling back to the next one) carries on from where the video is now.
         if (player.mediaItemCount > 0 && player.currentPosition > 2_000L) startPositionMs = player.currentPosition
 
@@ -1270,7 +1276,14 @@ class PlayerViewModel(
             while (true) {
                 delay(1000)
                 val duration = player.duration.coerceAtLeast(0)
-                _uiState.value = _uiState.value.copy(positionMs = player.currentPosition, durationMs = duration)
+                // Safety net: if the stream is playing (audio is coming out) the buffering screen must not stay up,
+                // even when the first-frame / is-playing callback fired before the screen was flagged as starting.
+                val reallyPlaying = player.isPlaying && player.playbackState == Player.STATE_READY
+                _uiState.value = _uiState.value.copy(
+                    positionMs = player.currentPosition,
+                    durationMs = duration,
+                    isStarting = if (reallyPlaying) false else _uiState.value.isStarting,
+                )
 
                 val anime = _uiState.value.anime
                 val episode = _uiState.value.episode

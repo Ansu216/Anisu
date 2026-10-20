@@ -282,7 +282,10 @@ enum class BackgroundStyle(val key: String, val label: String) {
     NONE("none", "None"),
     CIRCLES("circles", "Circles"),
     TRIANGLES("triangles", "Triangles"),
-    SHAPES("shapes", "Material shapes");
+    SHAPES("shapes", "Material shapes"),
+    SAKURA("sakura", "Cherry blossom"),
+    SNOW("snow", "Snowfall"),
+    HALLOWEEN("halloween", "Halloween");
 
     companion object {
         fun fromKey(key: String?): BackgroundStyle = entries.firstOrNull { it.key == key } ?: NONE
@@ -320,7 +323,9 @@ enum class AccentPalette(val key: String, val label: String, val color: Color) {
     CYAN("cyan", "Cyan", Color(0xFF0E9FB5)),
     TEAL("teal", "Teal", Color(0xFF138F86)),
     BROWN("brown", "Brown", Color(0xFFA0643C)),
-    SLATE("slate", "Slate", Color(0xFF6B7A99));
+    SLATE("slate", "Slate", Color(0xFF6B7A99)),
+    // A soft cherry-blossom pink. It is light, so text on it switches to dark (see AnsuColors.OnAccent).
+    SAKURA("sakura", "Sakura", Color(0xFFF6B3CB));
 
     companion object {
         fun fromKey(key: String?): AccentPalette = entries.firstOrNull { it.key == key } ?: WHITE
