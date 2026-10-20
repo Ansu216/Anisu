@@ -138,12 +138,12 @@ private fun NextWatchCard(
             }
             // Tapping a card opens its details with black bars growing out of the card's top and bottom edges
             // until the screen is covered (not the poster-window morph the other cards use).
-            .posterTransitionOrigin(posterUrl = pick.anime.bannerUrl ?: pick.anime.posterUrl, cornerRadius = 20.dp, bars = true)
+            .posterTransitionOrigin(posterUrl = pick.anime.bannerUrl, cornerRadius = 20.dp, bars = true)
             .clip(shape)
             .background(AnsuColors.BackgroundElevated)
             .clickable(onClick = onClick),
     ) {
-        val pickImage = pick.anime.bannerUrl ?: pick.anime.posterUrl
+        val pickImage = pick.anime.bannerUrl
         if (pickImage.isNullOrBlank()) {
             com.ansu.anime.ui.components.NoArtGradient(seed = pick.anime.anilistId?.toString() ?: pick.anime.title)
         } else {

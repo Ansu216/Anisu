@@ -297,7 +297,8 @@ fun ContinueWatchingThumbnail(
     // a memory-cache entry and the twin appears on its first frame instead of loading in.
     val context = LocalContext.current
     // A finished episode with a next one out shows that episode's own thumbnail, like a "Next Up" tile.
-    val banner = entry.bannerUrl ?: entry.posterUrl
+    // The show's wide banner; with none, the gradient design (a portrait poster crops badly in this wide card).
+    val banner = entry.bannerUrl
     val episodeThumb = (info as? ResumeCardInfo.NextUp)?.thumbnailUrl?.takeIf { it.isNotBlank() }
     // If the episode thumbnail is missing or fails to load, the show's horizontal banner is used instead.
     var thumbFailed by remember(episodeThumb) { mutableStateOf(false) }

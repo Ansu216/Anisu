@@ -73,7 +73,7 @@ fun ErrorGlassCard(
     FrostedGlassCard(
         modifier = modifier.fillMaxWidth(),
         shape = shape,
-        tintAlpha = 0.55f,
+        tintAlpha = 0.85f,
         blurRadius = blurRadius,
     ) {
         // Red wash fading out downwards, so the card reads as an error without turning into a red box.
