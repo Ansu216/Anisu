@@ -48,6 +48,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -55,6 +56,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
@@ -84,6 +88,7 @@ import com.ansu.anime.data.repository.AnimeArtwork
 import com.ansu.anime.di.AppContainer
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+import kotlin.math.pow
 
 private enum class PlayerSheet { SOURCES, SUBS, AUDIO, EPISODES, SETTINGS }
 
@@ -154,6 +159,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     val subtitleBgColor by container.playerPrefs.subtitleBgColor.collectAsStateWithLifecycle()
     val subtitleBgOpacity by container.playerPrefs.subtitleBgOpacity.collectAsStateWithLifecycle()
     val subtitleRoundedBg by container.playerPrefs.subtitleRoundedBg.collectAsStateWithLifecycle()
+    val subtitleAutoScale by container.playerPrefs.subtitleAutoScale.collectAsStateWithLifecycle()
     val pauseScreenEnabled by container.playerPrefs.pauseScreen.collectAsStateWithLifecycle()
     val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
     var locked by remember { mutableStateOf(false) }
@@ -277,12 +283,15 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     }
 
     // Pause screen: once the video has sat paused for a moment (and nothing else is open over it), the controls
-    // leave and the picture dims under the title being watched. A tap on it resumes; anything that restarts
-    // playback, a seek or an opened panel puts the timer back to zero.
+    // leave and the picture dims under the title being watched. Touching the screen only dismisses it; anything that restarts
+    // playback, a seek, an opened panel or any touch puts the timer back to zero. A touch on the pause screen only
+    // takes it away (and shows the controls); it never starts the video, the play button does.
     val resting = !state.isPlaying && !state.isBuffering && !state.isLoadingSources && state.error == null && state.durationMs > 0L
     val pauseEligible = pauseScreenEnabled && resting && panel == null && sheet == null && !locked && !inPip
     var pauseIdle by remember { mutableStateOf(false) }
-    LaunchedEffect(pauseEligible, state.positionMs) {
+    // Counts touches anywhere on the player (see the root layout): every one puts the pause screen's timer back to zero.
+    var pauseTouchTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(pauseEligible, state.positionMs, pauseTouchTick) {
         pauseIdle = false
         if (pauseEligible) {
             delay(PAUSE_SCREEN_DELAY_MS)
@@ -300,7 +309,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     val pausedInfo = remember(state.anime, state.episode, pausedArtwork, titleLanguage) {
         buildPausedInfo(state.anime, state.episode, pausedArtwork, titleLanguage)
     }
-    val resumeFromPause = { if (!state.isPlaying) viewModel.togglePlayPause() }
+    // Touching the pause screen brings the controls up instead of resuming; the timer restarts from the touch.
+    val onPauseScreenTouch = { if (!state.showControls) viewModel.toggleControls() }
     // The buffering screen: shown from the moment a stream is chosen until its first picture is out.
     val startingArtwork by produceState<AnimeArtwork?>(initialValue = null, anilistIdForArt) {
         value = anilistIdForArt?.let { container.artworkRepository.get(it) }
@@ -377,7 +387,21 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     val ambientOn = ambientMode && !isLandscape && !inPip
     val ambientColors = rememberAmbientColors(portraitPlayerView, ambientOn, state.isPlaying, state.episode?.id)
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            // Watches every touch without taking it from anything below (initial pass, nothing consumed): each press
+            // and release puts the pause screen's timer back to zero.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.type == PointerEventType.Press || event.type == PointerEventType.Release) pauseTouchTick++
+                    }
+                }
+            },
+    ) {
         if (isLandscape) {
             PlayerSurface(
                 modifier = Modifier.fillMaxSize(),
@@ -398,6 +422,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 subtitleBgColor = subtitleBgColor,
                 subtitleBgOpacity = subtitleBgOpacity,
                 subtitleRoundedBg = subtitleRoundedBg,
+                subtitleAutoScale = subtitleAutoScale,
                 panelWidth = panelWidth,
                 panelProgress = { panelProgress.value },
             ) {
@@ -448,6 +473,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     subtitleBgColor = subtitleBgColor,
                     subtitleBgOpacity = subtitleBgOpacity,
                     subtitleRoundedBg = subtitleRoundedBg,
+                    subtitleAutoScale = subtitleAutoScale,
                     onPlayerView = { portraitPlayerView = it },
                 ) {
                     if (inPip) {
@@ -466,7 +492,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                         )
                     }
                 }
-                PausedOverlay(visible = showPauseScreen, info = pausedInfo, onResume = resumeFromPause, compact = true)
+                PausedOverlay(visible = showPauseScreen, info = pausedInfo, onTouch = onPauseScreenTouch, compact = true)
                 StartingScreen(
                     visible = showStarting,
                     backdropUrl = startingBackdrop,
@@ -487,7 +513,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         }
 
         if (isLandscape) {
-            PausedOverlay(visible = showPauseScreen, info = pausedInfo, onResume = resumeFromPause)
+            PausedOverlay(visible = showPauseScreen, info = pausedInfo, onTouch = onPauseScreenTouch)
             StartingScreen(
                 visible = showStarting,
                 backdropUrl = startingBackdrop,
@@ -613,6 +639,15 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     }
 }
 
+/** The height (dp) of the video picture at which the chosen subtitle size is used as it is: a phone held sideways. */
+private const val SUBTITLE_REFERENCE_HEIGHT_DP = 380f
+
+/** How strongly subtitles follow the picture size; below 1 keeps small pictures (portrait) from getting tiny text. */
+private const val SUBTITLE_SCALE_CURVE = 0.8
+
+private const val SUBTITLE_MIN_SCALE = 0.5f
+private const val SUBTITLE_MAX_SCALE = 1.6f
+
 /** The video, the tap-to-toggle layer, loading/error/buffering states, and the controls [overlay] on top. */
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
@@ -635,6 +670,8 @@ private fun PlayerSurface(
     subtitleBgColor: Int = 0xFF000000.toInt(),
     subtitleBgOpacity: Int = 50,
     subtitleRoundedBg: Boolean = true,
+    /** True: the subtitle text grows and shrinks with the size of the video picture on screen. */
+    subtitleAutoScale: Boolean = true,
     /** Width of the side panel that slides in from the right; 0 for layouts that have none. */
     panelWidth: Dp = 0.dp,
     /** 0 = panel closed, 1 = open. Read inside layout/graphics blocks only, so animating it never recomposes. */
@@ -688,7 +725,41 @@ private fun PlayerSurface(
             // bottom padding. So the chosen height is written into each text cue: its bottom edge sits at that
             // fraction of the video height above the bottom.
             var subtitleAreaHeightPx by remember { mutableIntStateOf(0) }
-            val subtitleTextSizePx = with(androidx.compose.ui.platform.LocalDensity.current) { subtitleSize.sp.toPx() }
+            var subtitleAreaWidthPx by remember { mutableIntStateOf(0) }
+            // The video's shape, kept up to date as the stream reports it, to work out how big the picture is on screen.
+            var videoAspect by remember { mutableFloatStateOf(16f / 9f) }
+            DisposableEffect(viewModel.player) {
+                val videoPlayer = viewModel.player
+                fun update(size: androidx.media3.common.VideoSize) {
+                    if (size.width > 0 && size.height > 0) videoAspect = size.width * size.pixelWidthHeightRatio / size.height
+                }
+                update(videoPlayer.videoSize)
+                val listener = object : androidx.media3.common.Player.Listener {
+                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) = update(videoSize)
+                }
+                videoPlayer.addListener(listener)
+                onDispose { videoPlayer.removeListener(listener) }
+            }
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            // The text size the person chose is for a phone held sideways. With scaling on, it follows the height of
+            // the picture actually shown (small in the portrait player, bigger on a large screen), softened a little
+            // so portrait subtitles stay readable. Letterbox bars do not count: only the picture does.
+            val shownPictureHeightPx = if (subtitleAreaWidthPx > 0 && subtitleAreaHeightPx > 0) {
+                if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT) {
+                    minOf(subtitleAreaHeightPx.toFloat(), subtitleAreaWidthPx / videoAspect)
+                } else {
+                    subtitleAreaHeightPx.toFloat()
+                }
+            } else {
+                0f
+            }
+            val subtitleScale = if (subtitleAutoScale && shownPictureHeightPx > 0f) {
+                val ratio = (shownPictureHeightPx / density.density) / SUBTITLE_REFERENCE_HEIGHT_DP
+                ratio.toDouble().pow(SUBTITLE_SCALE_CURVE).toFloat().coerceIn(SUBTITLE_MIN_SCALE, SUBTITLE_MAX_SCALE)
+            } else {
+                1f
+            }
+            val subtitleTextSizePx = with(density) { subtitleSize.sp.toPx() } * subtitleScale
             val subtitleBackground = subtitleBackgroundArgb(subtitleBgColor, subtitleBgOpacity)
             val placedCues = remember(cues, subtitleHeight, subtitleTextSizePx, subtitleAreaHeightPx, subtitleBackground, subtitleRoundedBg) {
                 // The background is drawn by the cues themselves (rounded, one bar per line), not by the view's square one.
@@ -720,13 +791,16 @@ private fun PlayerSurface(
                             subtitleTypeface,
                         ),
                     )
-                    view.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSize.toFloat())
+                    view.setFixedTextSize(TypedValue.COMPLEX_UNIT_PX, subtitleTextSizePx)
                     view.setBottomPaddingFraction(0f)
                     view.setCues(placedCues)
                 },
                 modifier = Modifier
                     .fillMaxSize()
-                    .onSizeChanged { subtitleAreaHeightPx = it.height },
+                    .onSizeChanged {
+                        subtitleAreaHeightPx = it.height
+                        subtitleAreaWidthPx = it.width
+                    },
             )
         }
 

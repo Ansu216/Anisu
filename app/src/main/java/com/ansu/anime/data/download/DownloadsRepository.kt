@@ -1,6 +1,10 @@
 package com.ansu.anime.data.download
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.media3.common.C
@@ -17,12 +21,14 @@ import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.NoOpCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadHelper
 import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
+import androidx.media3.exoplayer.scheduler.Requirements
 import com.ansu.anime.anilist.AniListRepository
 import com.ansu.anime.core.diagnostics.Diagnostics
 import com.ansu.anime.core.diagnostics.LogCategory
@@ -53,6 +59,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
@@ -86,6 +94,8 @@ class DownloadsRepository(
     private val playerPrefs: PlayerPrefs,
     private val okHttpClient: OkHttpClient,
     private val diagnostics: Diagnostics?,
+    /** The shared streaming client (HTTP/2, pooled connections); the stock HTTP source is used when it is null. */
+    private val streamClient: OkHttpClient? = null,
 ) {
     private val appContext = context.applicationContext
 
@@ -111,10 +121,73 @@ class DownloadsRepository(
      */
     private val media3States = MutableStateFlow<Map<String, DownloadStatus>>(emptyMap())
 
-    /** Every download, newest first, with where it stands. */
-    val items: StateFlow<List<DownloadItem>> = combine(entries, preparing, media3States) { saved, prep, states ->
-        saved.sortedByDescending { it.createdAt }.map { entry ->
-            DownloadItem(entry, prep[entry.id] ?: states[entry.id] ?: DownloadStatus(DownloadPhase.Queued))
+    /** Prepared downloads waiting for a free slot, in the order they will start. Only touched on the main thread. */
+    private val waitingIds = MutableStateFlow<List<String>>(emptyList())
+    private val pendingRequests = LinkedHashMap<String, DownloadRequest>()
+
+    /** Downloads handed to Media3 that have not finished or failed yet: they are what holds the download slots. */
+    private val startedIds = HashSet<String>()
+
+    /** Notes on downloads that failed and are being tried again ("Retrying in 15 s (try 2 of 3)"). */
+    private val retryNotes = MutableStateFlow<Map<String, String>>(emptyMap())
+
+    private val userPaused = MutableStateFlow(prefs.getBoolean(KEY_PAUSED, false))
+    private val batteryLow = MutableStateFlow(false)
+
+    /** Whether the whole queue is on hold, and why: Pause all, or a low battery with that setting on. */
+    val pauseState: StateFlow<PauseState> = combine(userPaused, batteryLow, playerPrefs.downloadPauseLowBattery) { user, low, guard ->
+        when {
+            user -> PauseState.User
+            guard && low -> PauseState.Battery
+            else -> PauseState.None
+        }
+    }.stateIn(scope, SharingStarted.Eagerly, if (userPaused.value) PauseState.User else PauseState.None)
+
+    private val listedItems = combine(entries, preparing, media3States, waitingIds, retryNotes) { saved, prep, states, waiting, notes ->
+        val all = saved.map { entry ->
+            val place = waiting.indexOf(entry.id).let { if (it >= 0) it + 1 else 0 }
+            val status = prep[entry.id] ?: when {
+                place > 0 -> DownloadStatus(DownloadPhase.Queued, message = "Waiting in the queue · #$place", queuePosition = place)
+                else -> {
+                    val media = states[entry.id]
+                    val note = notes[entry.id]
+                    when {
+                        media == null -> DownloadStatus(DownloadPhase.Queued)
+                        media.phase == DownloadPhase.Failed && note != null -> DownloadStatus(DownloadPhase.Queued, media.percent, media.bytes, note)
+                        media.phase == DownloadPhase.Failed -> media.copy(retryable = true)
+                        else -> media
+                    }
+                }
+            }
+            DownloadItem(entry, if (status.phase == DownloadPhase.Failed) status.copy(retryable = true) else status)
+        }
+        // What is running or waiting comes first, in the order it will go; finished episodes follow, newest first.
+        fun rank(item: DownloadItem): Int = when {
+            item.status.phase == DownloadPhase.Downloading -> 0
+            item.status.phase == DownloadPhase.Queued && item.status.queuePosition == 0 -> 1
+            item.status.phase == DownloadPhase.Queued -> 1_000 + item.status.queuePosition
+            item.status.phase == DownloadPhase.Preparing -> 100_000
+            item.status.phase == DownloadPhase.Failed -> 200_000
+            else -> 300_000
+        }
+        val (done, active) = all.partition { it.status.phase == DownloadPhase.Completed }
+        active.sortedWith(compareBy({ rank(it) }, { it.entry.createdAt })) + done.sortedByDescending { it.entry.createdAt }
+    }
+
+    /** Every download with where it stands: running and waiting ones in queue order, then the finished ones. */
+    val items: StateFlow<List<DownloadItem>> = combine(listedItems, pauseState) { list, pause ->
+        if (pause == PauseState.None) {
+            list
+        } else {
+            val why = if (pause == PauseState.Battery) "Paused: battery is low" else "Paused"
+            list.map { item ->
+                val phase = item.status.phase
+                if (phase == DownloadPhase.Downloading || (phase == DownloadPhase.Queued && item.status.queuePosition == 0)) {
+                    item.copy(status = item.status.copy(phase = DownloadPhase.Queued, message = why))
+                } else {
+                    item
+                }
+            }
         }
     }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
@@ -146,7 +219,8 @@ class DownloadsRepository(
     private val upstreamFactory: DataSource.Factory = ResolvingDataSource.Factory(
         androidx.media3.datasource.DefaultDataSource.Factory(
             appContext,
-            DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true),
+            // The shared OkHttp client: HTTP/2 and pooled connections make many small segment requests much cheaper.
+            streamClient?.let { OkHttpDataSource.Factory(it) } ?: DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true),
         ),
         ResolvingDataSource.Resolver { spec ->
             val scheme = spec.uri.scheme?.lowercase()
@@ -167,28 +241,49 @@ class DownloadsRepository(
 
     private val listener = object : DownloadManager.Listener {
         override fun onDownloadChanged(downloadManager: DownloadManager, download: Download, finalException: Exception?) {
+            val id = download.request.id
             if (download.state == Download.STATE_FAILED) {
-                describeFailure(finalException)?.let { failureMessages[download.request.id] = it }
+                describeFailure(finalException)?.let { failureMessages[id] = it }
             } else {
-                failureMessages.remove(download.request.id)
+                failureMessages.remove(id)
             }
-            media3States.value = media3States.value + (download.request.id to download.toStatus())
-            if (download.state == Download.STATE_FAILED) {
-                diagnostics?.log(LogCategory.PLAYBACK, "Download failed (${download.failureReason}): ${download.request.id} ${finalException?.message.orEmpty()}")
+            media3States.value = media3States.value + (id to download.toStatus())
+            when (download.state) {
+                Download.STATE_COMPLETED -> {
+                    startedIds.remove(id)
+                    autoAttempts.remove(id)
+                    retryContexts.remove(id)
+                    retryNotes.value = retryNotes.value - id
+                }
+                Download.STATE_FAILED -> {
+                    startedIds.remove(id)
+                    diagnostics?.log(LogCategory.PLAYBACK, "Download failed (${download.failureReason}): $id ${finalException?.message.orEmpty()}")
+                    scheduleRetry(download, finalException)
+                }
+                else -> if (retryNotes.value.containsKey(id)) retryNotes.value = retryNotes.value - id
             }
             startProgressPolling()
+            // A slot may have freed up: the next waiting download starts. Done from here (not through the service) so the
+            // manager is never idle in between and the download service keeps running in the background.
+            pump(fromListener = true)
         }
 
         override fun onDownloadRemoved(downloadManager: DownloadManager, download: Download) {
             media3States.value = media3States.value - download.request.id
+            startedIds.remove(download.request.id)
+            pump(fromListener = true)
         }
     }
 
     /** One download manager for the whole app; the [AnisuDownloadService] hosts it so downloads outlive the screen. */
     val downloadManager: DownloadManager by lazy {
-        DownloadManager(appContext, databaseProvider, cache, dataSourceFactory, Executors.newFixedThreadPool(2)).also {
-            // One at a time: the request headers are looked up per host, and a single queue keeps them unambiguous.
-            it.maxParallelDownloads = 1
+        // The executor is what splits one episode into parallel parts: an HLS playlist's segments are fetched on
+        // these threads, several at a time. With two threads (as before) an episode crawled at two segments at once.
+        DownloadManager(appContext, databaseProvider, cache, dataSourceFactory, Executors.newFixedThreadPool(SEGMENT_THREADS)).also {
+            // Request headers are looked up per host, so episodes from different sources can download side by side.
+            it.maxParallelDownloads = playerPrefs.downloadParallel.value
+            it.minRetryCount = MIN_RETRY_COUNT
+            it.requirements = requirementsFor(playerPrefs.downloadWifiOnly.value)
             it.addListener(listener)
         }
     }
@@ -222,8 +317,11 @@ class DownloadsRepository(
                 }.getOrDefault(emptyList())
             }
             media3States.value = media3States.value + saved.associate { it.request.id to it.toStatus() }
+            startedIds += saved.filter { it.state == Download.STATE_QUEUED || it.state == Download.STATE_DOWNLOADING || it.state == Download.STATE_RESTARTING }.map { it.request.id }
             if (saved.any { it.state == Download.STATE_QUEUED || it.state == Download.STATE_DOWNLOADING }) startProgressPolling()
         }
+        watchSettings()
+        watchBattery()
     }
 
     // ---- the public API ------------------------------------------------------------------------------------
@@ -233,12 +331,23 @@ class DownloadsRepository(
      * With [chosen] (a stream picked in the source picker) exactly that stream is downloaded; without it the stream
      * the player would start with is found and used.
      */
-    fun enqueue(anime: SAnime, episode: SEpisode, chosen: PlayableSource? = null, siblings: List<PlayableSource> = emptyList()) {
+    fun enqueue(
+        anime: SAnime,
+        episode: SEpisode,
+        chosen: PlayableSource? = null,
+        siblings: List<PlayableSource> = emptyList(),
+        /** Picture quality for this download only (360..1080, or [PlayerPrefs.QUALITY_ANY]); null follows the setting. */
+        quality: Int? = null,
+    ) {
         val anilistId = anime.anilistId ?: anime.id.toIntOrNull() ?: return
         val id = downloadKey(anilistId, episode.episodeNumber)
         val existing = items.value.firstOrNull { it.entry.id == id }
         if (existing != null && existing.status.phase != DownloadPhase.Failed) return
         if (existing != null) remove(id)
+
+        // What a retry needs to ask the source for a fresh link later (kept while the app is open).
+        retryContexts[id] = RetryContext(anime, episode, chosen, siblings, quality)
+        autoAttempts.remove(id)
 
         val stub = DownloadEntry(
             id = id,
@@ -257,27 +366,269 @@ class DownloadsRepository(
         DownloadNotifications.preparing(appContext, stub, startText)
         scope.launch {
             try {
-                val prepared = withContext(Dispatchers.IO) { prepare(stub, anime, episode, chosen, siblings) { text ->
-                    setPreparing(stub.id, DownloadStatus(DownloadPhase.Preparing, message = text))
-                    DownloadNotifications.preparing(appContext, stub, text)
-                } }
+                // Several episodes queued at once (Download next N) look their streams up two at a time, not all together.
+                val prepared = withContext(Dispatchers.IO) {
+                    prepareGate.withPermit {
+                        prepare(stub, anime, episode, chosen, siblings, quality) { text ->
+                            setPreparing(stub.id, DownloadStatus(DownloadPhase.Preparing, message = text))
+                            DownloadNotifications.preparing(appContext, stub, text)
+                        }
+                    }
+                }
+                // Deleted while it was being prepared: nothing to start.
+                if (entryFor(id) == null) {
+                    DownloadNotifications.clearPreparing(appContext, id)
+                    setPreparing(id, null)
+                    return@launch
+                }
                 saveEntry(prepared.first)
                 DownloadNotifications.clearPreparing(appContext, id)
-                try {
-                    DownloadService.sendAddDownload(appContext, AnisuDownloadService::class.java, prepared.second, false)
-                } catch (e: Exception) {
-                    // The service could not be started (app in the background): the manager still downloads while the app lives.
-                    downloadManager.addDownload(prepared.second, Download.STOP_REASON_NONE)
-                }
                 setPreparing(id, null)
-                startProgressPolling()
+                queue(prepared.second)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
                 diagnostics?.log(LogCategory.PLAYBACK, "Download of ${anime.title} E${episode.episodeNumber} failed to start: ${e::class.simpleName}: ${e.message}", e)
                 DownloadNotifications.clearPreparing(appContext, id)
                 DownloadNotifications.failed(appContext, stub, e.message)
-                setPreparing(id, DownloadStatus(DownloadPhase.Failed, message = e.message ?: "Could not start the download"))
+                setPreparing(id, DownloadStatus(DownloadPhase.Failed, message = e.message ?: "Could not start the download", retryable = true))
+            }
+        }
+    }
+
+    /** Queues [episodes] of [anime] one after the other (the "Download next N" button). Episodes already saved are skipped. */
+    fun enqueueMany(anime: SAnime, episodes: List<SEpisode>, quality: Int? = null) {
+        episodes.forEach { enqueue(anime, it, null, emptyList(), quality) }
+    }
+
+    // ---- the waiting queue ---------------------------------------------------------------------------------
+
+    /** Puts a prepared download at the back of the queue; it starts when a download slot is free. */
+    private fun queue(request: DownloadRequest) {
+        pendingRequests[request.id] = request
+        waitingIds.value = waitingIds.value.filter { it != request.id } + request.id
+        pump(fromListener = false)
+    }
+
+    /** Puts a download at the front of the queue (a retry goes before everything that is still waiting). */
+    private fun requeue(request: DownloadRequest) {
+        startedIds.remove(request.id)
+        pendingRequests[request.id] = request
+        waitingIds.value = listOf(request.id) + waitingIds.value.filter { it != request.id }
+        pump(fromListener = false)
+    }
+
+    /** Hands waiting downloads to the manager while there are free slots, and not at all while the queue is paused. */
+    private fun pump(fromListener: Boolean) {
+        if (pauseState.value != PauseState.None) return
+        var slots = playerPrefs.downloadParallel.value - startedIds.size
+        while (slots > 0 && waitingIds.value.isNotEmpty()) {
+            val id = waitingIds.value.first()
+            waitingIds.value = waitingIds.value.drop(1)
+            val request = pendingRequests.remove(id) ?: continue
+            startedIds += id
+            if (fromListener || downloadManager.currentDownloads.isNotEmpty()) {
+                // The service is already running (or just was): add straight to the manager.
+                downloadManager.addDownload(request)
+            } else {
+                try {
+                    DownloadService.sendAddDownload(appContext, AnisuDownloadService::class.java, request, false)
+                } catch (e: Exception) {
+                    // The service could not be started (app in the background): the manager still downloads while the app lives.
+                    downloadManager.addDownload(request, Download.STOP_REASON_NONE)
+                }
+            }
+            slots--
+        }
+        startProgressPolling()
+    }
+
+    /** Moves a waiting download one place earlier in the queue. */
+    fun moveUp(id: String) {
+        val list = waitingIds.value.toMutableList()
+        val i = list.indexOf(id)
+        if (i > 0) {
+            java.util.Collections.swap(list, i, i - 1)
+            waitingIds.value = list
+        }
+    }
+
+    /** Moves a waiting download one place later in the queue. */
+    fun moveDown(id: String) {
+        val list = waitingIds.value.toMutableList()
+        val i = list.indexOf(id)
+        if (i >= 0 && i < list.lastIndex) {
+            java.util.Collections.swap(list, i, i + 1)
+            waitingIds.value = list
+        }
+    }
+
+    /** Makes a waiting download the next one to start. */
+    fun moveToTop(id: String) {
+        if (id in waitingIds.value) waitingIds.value = listOf(id) + waitingIds.value.filter { it != id }
+    }
+
+    /** Pause all / Resume all. A low battery can hold the queue as well; see [pauseState]. */
+    fun setPausedAll(paused: Boolean) {
+        userPaused.value = paused
+        prefs.edit().putBoolean(KEY_PAUSED, paused).apply()
+    }
+
+    private var appliedPause = false
+
+    private fun applyPause() {
+        val paused = pauseState.value != PauseState.None
+        if (paused == appliedPause) return
+        appliedPause = paused
+        if (paused) {
+            downloadManager.pauseDownloads()
+        } else {
+            try {
+                DownloadService.sendResumeDownloads(appContext, AnisuDownloadService::class.java, false)
+            } catch (e: Exception) {
+                downloadManager.resumeDownloads()
+            }
+            pump(fromListener = false)
+        }
+    }
+
+    private fun requirementsFor(wifiOnly: Boolean): Requirements =
+        Requirements(if (wifiOnly) Requirements.NETWORK_UNMETERED else Requirements.NETWORK)
+
+    /** Applies the download settings now and whenever they change. */
+    private fun watchSettings() {
+        scope.launch { playerPrefs.downloadWifiOnly.collect { downloadManager.requirements = requirementsFor(it) } }
+        scope.launch {
+            playerPrefs.downloadParallel.collect {
+                downloadManager.maxParallelDownloads = it
+                pump(fromListener = false)
+            }
+        }
+        scope.launch { pauseState.collect { applyPause() } }
+    }
+
+    /** Follows the battery level, so the "pause on low battery" setting can hold the queue. */
+    private fun watchBattery() {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) = updateBattery(intent)
+        }
+        updateBattery(appContext.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED)))
+    }
+
+    private fun updateBattery(intent: Intent?) {
+        if (intent == null) return
+        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+        val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+        val percent = if (level >= 0 && scale > 0) level * 100 / scale else 100
+        batteryLow.value = percent <= LOW_BATTERY_PERCENT && !charging
+    }
+
+    // ---- retrying ------------------------------------------------------------------------------------------
+
+    private data class RetryContext(
+        val anime: SAnime,
+        val episode: SEpisode,
+        val chosen: PlayableSource?,
+        val siblings: List<PlayableSource>,
+        val quality: Int?,
+    )
+
+    private val retryContexts = ConcurrentHashMap<String, RetryContext>()
+    private val autoAttempts = ConcurrentHashMap<String, Int>()
+
+    /** The HTTP status a failure came from, or null when it was not an HTTP error (timeout, reset connection...). */
+    private fun httpCodeOf(error: Throwable?): Int? {
+        var cause: Throwable? = error
+        while (cause != null) {
+            if (cause is HttpDataSource.InvalidResponseCodeException) return cause.responseCode
+            val next = cause.cause
+            cause = if (next === cause) null else next
+        }
+        return null
+    }
+
+    /** True while a failed download is waiting for its next automatic try (the service then skips the failure notification). */
+    fun isRetrying(id: String): Boolean = retryNotes.value.containsKey(id)
+
+    /**
+     * A download failed: it is tried again after a growing pause (5 s, 15 s, 45 s). A refused or missing link (401, 403,
+     * 404, 410) is the usual sign of an expired address, so a fresh one is asked for from the source; a busy or broken
+     * server (429, 5xx) and plain network trouble try the same link again, which keeps the part already saved.
+     */
+    private fun scheduleRetry(download: Download, error: Exception?) {
+        val id = download.request.id
+        if (entryFor(id) == null) return
+        val tries = autoAttempts[id] ?: 0
+        if (tries >= RETRY_BACKOFF_MS.size) {
+            retryNotes.value = retryNotes.value - id
+            return
+        }
+        val code = httpCodeOf(error)
+        val freshLink = code == 401 || code == 403 || code == 404 || code == 410
+        val waitMs = RETRY_BACKOFF_MS[tries]
+        autoAttempts[id] = tries + 1
+        retryNotes.value = retryNotes.value + (id to "Retrying in ${waitMs / 1000} s (try ${tries + 1} of ${RETRY_BACKOFF_MS.size})…")
+        diagnostics?.log(LogCategory.PLAYBACK, "Download $id: retry ${tries + 1} in ${waitMs / 1000} s (${code?.let { "HTTP $it" } ?: error?.let { it::class.simpleName } ?: "unknown"}, ${if (freshLink) "fresh link" else "same link"})")
+        scope.launch {
+            delay(waitMs)
+            if (entryFor(id) == null) return@launch
+            if (freshLink && retryContexts.containsKey(id)) {
+                retryNotes.value = retryNotes.value - id
+                reResolve(id)
+            } else {
+                retryNotes.value = retryNotes.value - id
+                requeue(download.request)
+            }
+        }
+    }
+
+    /** Asks the source for a fresh link to the same episode and queues it in front; what was already saved is kept when the path matches. */
+    private fun reResolve(id: String) {
+        val context = retryContexts[id] ?: return
+        val entry = entryFor(id) ?: return
+        setPreparing(id, DownloadStatus(DownloadPhase.Preparing, message = "Getting a fresh link…"))
+        scope.launch {
+            try {
+                val prepared = withContext(Dispatchers.IO) {
+                    prepareGate.withPermit {
+                        prepare(entry, context.anime, context.episode, context.chosen, context.siblings, context.quality) { text ->
+                            setPreparing(id, DownloadStatus(DownloadPhase.Preparing, message = text))
+                        }
+                    }
+                }
+                if (entryFor(id) == null) {
+                    setPreparing(id, null)
+                    return@launch
+                }
+                saveEntry(prepared.first)
+                setPreparing(id, null)
+                requeue(prepared.second)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                diagnostics?.log(LogCategory.PLAYBACK, "Download $id: could not get a fresh link: ${e::class.simpleName}: ${e.message}", e)
+                setPreparing(id, DownloadStatus(DownloadPhase.Failed, message = e.message ?: "Could not get a fresh link", retryable = true))
+            }
+        }
+    }
+
+    /** The Retry button: starts a failed download again, asking the source for a fresh link when it can. */
+    fun retry(id: String) {
+        autoAttempts.remove(id)
+        retryNotes.value = retryNotes.value - id
+        if (retryContexts.containsKey(id)) {
+            reResolve(id)
+            return
+        }
+        // After the app was restarted the show is no longer known here, so the saved request is simply started again.
+        scope.launch {
+            val saved = withContext(Dispatchers.IO) { runCatching { downloadManager.downloadIndex.getDownload(id) }.getOrNull() }
+            if (saved != null) {
+                requeue(saved.request)
+            } else {
+                setPreparing(id, DownloadStatus(DownloadPhase.Failed, message = "Delete this download and start it again from the episode.", retryable = false))
             }
         }
     }
@@ -291,8 +642,15 @@ class DownloadsRepository(
         runCatching { downloadManager.removeDownload(id) }
         media3States.value = media3States.value - id
         setPreparing(id, null)
+        waitingIds.value = waitingIds.value.filter { it != id }
+        pendingRequests.remove(id)
+        startedIds.remove(id)
+        retryContexts.remove(id)
+        autoAttempts.remove(id)
+        retryNotes.value = retryNotes.value - id
         entries.value = entries.value.filterNot { it.id == id }
         persist()
+        pump(fromListener = false)
     }
 
     /** What the player needs to play a finished download: its stream (only the downloaded tracks) and local subtitles. */
@@ -313,15 +671,31 @@ class DownloadsRepository(
 
     // ---- preparing a download ------------------------------------------------------------------------------
 
+    /** At most two episodes look up their stream at a time. */
+    private val prepareGate = Semaphore(2)
+
+    /**
+     * The quality a download is aimed at: the one chosen for this download, else the Downloads quality setting, else
+     * the streaming quality. Returns a value from [PlayerPrefs.QUALITY_OPTIONS] (0 = Any).
+     */
+    private fun qualityFor(choice: Int?): Int =
+        choice ?: playerPrefs.downloadQuality.value.takeIf { it > 0 } ?: playerPrefs.preferredQuality.value
+
+    /** The tallest picture a download may keep; "Any" keeps up to 1080p, as before. */
+    private fun heightFor(quality: Int): Int = quality.takeIf { it != PlayerPrefs.QUALITY_ANY } ?: 1080
+
+
     private suspend fun prepare(
         stub: DownloadEntry,
         anime: SAnime,
         episode: SEpisode,
         chosen: PlayableSource?,
         siblings: List<PlayableSource>,
+        qualityChoice: Int?,
         onStage: (String) -> Unit,
     ): Pair<DownloadEntry, DownloadRequest> {
-        val found = (if (chosen != null) resolveChosen(chosen) else findBestVideo(anime, episode)) ?: throw IOException(if (chosen != null) "The stream you picked did not respond. Try another source." else "No playable source found for this episode")
+        val quality = qualityFor(qualityChoice)
+        val found = (if (chosen != null) resolveChosen(chosen) else findBestVideo(anime, episode, quality)) ?: throw IOException(if (chosen != null) "The stream you picked did not respond. Try another source." else "No playable source found for this episode")
         val label = found.label
         val sourceId = found.sourceId
         val pool = if (chosen != null) siblings else found.pool
@@ -351,7 +725,7 @@ class DownloadsRepository(
         diagnostics?.log(LogCategory.PLAYBACK, "Download: ${anime.title} E${episode.episodeNumber} from $label, ${subtitles.size} subtitle file(s)")
 
         onStage("Reading the stream…")
-        val request = stepTimeout(REQUEST_TIMEOUT_MS, "Reading the stream") { buildRequest(stub.id, video.url, mime, video.headers) }
+        val request = stepTimeout(REQUEST_TIMEOUT_MS, "Reading the stream") { buildRequest(stub.id, video.url, mime, video.headers, heightFor(quality)) }
         val entry = stub.copy(
             sourceId = sourceId,
             sourceLabel = label,
@@ -461,7 +835,7 @@ class DownloadsRepository(
     }
 
     /** Asks every source that has the episode and picks the stream the player would start with. */
-    private suspend fun findBestVideo(anime: SAnime, episode: SEpisode): Found? {
+    private suspend fun findBestVideo(anime: SAnime, episode: SEpisode, quality: Int): Found? {
         val origin = anime.origin as? MediaOrigin.Extension ?: return null
         // An episode that came without its alternates (Continue Watching) is matched in every source first.
         val enriched = if (episode.alternates.isEmpty() && episode.id.isNotBlank()) {
@@ -500,7 +874,7 @@ class DownloadsRepository(
         var attempts = 0
         while (pool.isNotEmpty() && attempts < MAX_RESOLVE_ATTEMPTS) {
             attempts++
-            val chosen = pickStart(pool, null, playerPrefs.preferredQuality.value, playerPrefs.preferredLanguage.value) ?: pool.first()
+            val chosen = pickStart(pool, null, quality, playerPrefs.preferredLanguage.value) ?: pool.first()
             pool.remove(chosen)
             val ready: PlayableSource? = chosen.resolve?.let { pending ->
                 try {
@@ -625,13 +999,13 @@ class DownloadsRepository(
      * the picture quality is chosen from it, and the download starts from there. This is the path that works when the
      * player's own reader cannot get through a source.
      */
-    private suspend fun buildRequest(id: String, url: String, mime: String?, headers: Map<String, String>): DownloadRequest {
+    private suspend fun buildRequest(id: String, url: String, mime: String?, headers: Map<String, String>, wantedHeight: Int): DownloadRequest {
         val adaptive = mime == MimeTypes.APPLICATION_M3U8 || mime == MimeTypes.APPLICATION_MPD
-        if (!adaptive) return readWithHelper(id, url, mime)
+        if (!adaptive) return readWithHelper(id, url, mime, wantedHeight)
 
         var helperError: Throwable? = null
         try {
-            return stepTimeout(HELPER_TIMEOUT_MS, "Reading the stream") { readWithHelper(id, url, mime) }
+            return stepTimeout(HELPER_TIMEOUT_MS, "Reading the stream") { readWithHelper(id, url, mime, wantedHeight) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
@@ -641,7 +1015,7 @@ class DownloadsRepository(
         val reason = describeFailure(helperError) ?: "Could not read the stream: ${helperError?.message ?: helperError?.let { it::class.simpleName }}"
         if (mime != MimeTypes.APPLICATION_M3U8) throw IOException(reason, helperError)
         return try {
-            readHlsPlaylist(id, url, headers)
+            readHlsPlaylist(id, url, headers, wantedHeight)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
@@ -651,7 +1025,7 @@ class DownloadsRepository(
     }
 
     /** Reads an HLS playlist with a plain request, picks the quality, and returns the request for it. */
-    private suspend fun readHlsPlaylist(id: String, url: String, headers: Map<String, String>): DownloadRequest {
+    private suspend fun readHlsPlaylist(id: String, url: String, headers: Map<String, String>, wanted: Int): DownloadRequest {
         // Some hosts (the Vidstream ones) can take 10 s or more to answer the playlist request, so this read is
         // patient and tries twice: a slow answer is not a dead source.
         val text = withContext(Dispatchers.IO) {
@@ -708,7 +1082,6 @@ class DownloadsRepository(
             return hls.build()
         }
 
-        val wanted = playerPrefs.preferredQuality.value.takeIf { it != PlayerPrefs.QUALITY_ANY } ?: 1080
         val withHeight = variants.filter { it.height > 0 }.sortedBy { it.height }
         val chosen = if (withHeight.isNotEmpty()) {
             withHeight.lastOrNull { it.height <= wanted } ?: withHeight.first()
@@ -718,7 +1091,7 @@ class DownloadsRepository(
         return DownloadRequest.Builder(id, Uri.parse(chosen.uri)).setMimeType(MimeTypes.APPLICATION_M3U8).build()
     }
 
-    private suspend fun readWithHelper(id: String, url: String, mime: String?): DownloadRequest {
+    private suspend fun readWithHelper(id: String, url: String, mime: String?, wantedHeight: Int): DownloadRequest {
         val adaptive = mime == MimeTypes.APPLICATION_M3U8 || mime == MimeTypes.APPLICATION_MPD
         if (!adaptive) {
             return DownloadRequest.Builder(id, Uri.parse(url)).apply { mime?.let { setMimeType(it) } }.build()
@@ -735,7 +1108,7 @@ class DownloadsRepository(
                         "onPrepared" -> if (!finished) {
                             finished = true
                             try {
-                                selectTracks(helper)
+                                selectTracks(helper, wantedHeight)
                                 val request = helper.getDownloadRequest(id, null)
                                 helper.release()
                                 cont.resume(request)
@@ -767,9 +1140,8 @@ class DownloadsRepository(
     }
 
     /** One video track near the preferred quality, plus every audio and subtitle track. */
-    private fun selectTracks(helper: DownloadHelper) {
+    private fun selectTracks(helper: DownloadHelper, wanted: Int) {
         if (helper.periodCount == 0) return
-        val wanted = playerPrefs.preferredQuality.value.takeIf { it != PlayerPrefs.QUALITY_ANY } ?: 1080
         val tracks = helper.getTracks(0)
         helper.clearTrackSelections(0)
         val allTypes = listOf(C.TRACK_TYPE_VIDEO, C.TRACK_TYPE_AUDIO, C.TRACK_TYPE_TEXT)
@@ -898,5 +1270,18 @@ class DownloadsRepository(
         const val HELPER_TIMEOUT_MS = 20_000L
         const val REQUEST_TIMEOUT_MS = 110_000L
         const val MAX_RESOLVE_ATTEMPTS = 5
+        const val KEY_PAUSED = "paused_all"
+
+        /** Threads that fetch the parts (segments) of the downloads in parallel. */
+        const val SEGMENT_THREADS = 10
+
+        /** Media3 tries a failing download this many times itself before it reports the failure. */
+        const val MIN_RETRY_COUNT = 6
+
+        /** Pause before each automatic retry after Media3 gave up: three tries, each waiting longer. */
+        val RETRY_BACKOFF_MS = longArrayOf(5_000L, 15_000L, 45_000L)
+
+        /** The battery level (percent) at or under which "pause on low battery" holds the queue, when not charging. */
+        const val LOW_BATTERY_PERCENT = 15
     }
 }

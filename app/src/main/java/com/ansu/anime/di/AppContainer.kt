@@ -45,6 +45,22 @@ class AppContainer(context: Context) {
         .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
         .build()
 
+    /**
+     * The client every video byte goes through (playback, pre-loading and downloads). Media3 used to open its own
+     * plain HTTP connection per request; sharing one OkHttp client gives HTTP/2, connection reuse across segments
+     * and a larger connection pool, which is what keeps HLS segment fetches from stalling on a new handshake each time.
+     * The request logger is left out: it would log every segment.
+     */
+    val streamClient: OkHttpClient = okHttpClient.newBuilder()
+        .apply { interceptors().clear() }
+        .connectionPool(okhttp3.ConnectionPool(16, 5, java.util.concurrent.TimeUnit.MINUTES))
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
+
     val database: AppDatabase = AppDatabase.build(appContext)
 
     val extensionManager: ExtensionManager = ExtensionManager(appContext)
@@ -124,7 +140,7 @@ class AppContainer(context: Context) {
         com.ansu.anime.data.backup.BackupManager(appContext, backupPrefs)
 
     /** Shared on-disk media cache, read by the player and filled ahead of time by [prefetcher]. */
-    val mediaCache: com.ansu.anime.data.player.MediaCache = com.ansu.anime.data.player.MediaCache(appContext)
+    val mediaCache: com.ansu.anime.data.player.MediaCache = com.ansu.anime.data.player.MediaCache(appContext, streamClient)
 
     /** Warms the last-watched episode into the media cache when the app opens. */
     val prefetcher: com.ansu.anime.data.player.Prefetcher = com.ansu.anime.data.player.Prefetcher(
@@ -135,6 +151,7 @@ class AppContainer(context: Context) {
         mediaCache,
         playerPrefs,
         diagnostics,
+        streamClient,
     )
 
     /** Episode downloads for offline viewing (video plus every subtitle file the source offers). */
@@ -145,6 +162,7 @@ class AppContainer(context: Context) {
         playerPrefs,
         okHttpClient,
         diagnostics,
+        streamClient,
     )
 
     init {

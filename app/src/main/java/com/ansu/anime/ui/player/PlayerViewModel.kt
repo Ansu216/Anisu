@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.net.Uri
 import androidx.media3.common.C
+import com.ansu.anime.extension.StreamFailures
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
@@ -52,6 +53,9 @@ data class PlayableSource(
     /** The server (hoster) inside the extension, e.g. "HD-1"; the Sources list shows it next to [extensionName]. */
     val serverName: String? = null,
 )
+
+/** How many other streams are opened next to the best one when sources are raced. */
+private const val MAX_RACE_RIVALS = 2
 
 /** How long a picked source may take to resolve before the next one is tried. */
 private const val RESOLVE_TIMEOUT_MS = 30_000L
@@ -304,8 +308,12 @@ class PlayerViewModel(
     private fun nextAfter(list: List<PlayableSource>, index: Int): PlayableSource? {
         if (index !in 0 until list.lastIndex) return null
         val failed = list[index]
+        StreamFailures.mark(failed.sourceId, failed.serverName)
         val tail = list.subList(index + 1, list.size)
-        return tail.firstOrNull { it.sourceId != failed.sourceId || it.serverName != failed.serverName } ?: tail.first()
+        // Servers that failed a moment ago (on this episode or an earlier one) are tried last.
+        val healthy = tail.filterNot { StreamFailures.isRecentlyFailed(it.sourceId, it.serverName) }
+        val pool = healthy.ifEmpty { tail }
+        return pool.firstOrNull { it.sourceId != failed.sourceId || it.serverName != failed.serverName } ?: pool.first()
     }
 
     /** The one subtitle track to keep when all of them together broke playback: English if there is one, else the first. */
@@ -391,7 +399,10 @@ class PlayerViewModel(
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) startWatchdog?.cancel()
+                if (state == Player.STATE_READY) {
+                    startWatchdog?.cancel()
+                    _uiState.value.selectedSource?.let { StreamFailures.clear(it.sourceId, it.serverName) }
+                }
                 if (state == Player.STATE_ENDED && playerPrefs?.autoplayNext?.value != false && !backgrounded) {
                     nextEpisode()?.let { playEpisode(it) }
                 }
@@ -849,34 +860,111 @@ class PlayerViewModel(
      */
     private suspend fun resolveForPlayback(source: PlayableSource): PlayableSource? {
         val pending = source.resolve ?: return source
-        val resolved = try {
-            kotlinx.coroutines.withTimeoutOrNull(RESOLVE_TIMEOUT_MS) { pending() }
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            diagnostics?.log(LogCategory.PLAYBACK, "Resolving '${source.label}' failed: ${e::class.simpleName}: ${e.message}", e)
-            null
+        // An automatic pick opens the best few candidates at once and plays whichever answers first; a stream the
+        // person picked by hand is resolved on its own.
+        val rivals = if (!userPicked && playerPrefs?.raceSources?.value != false) raceRivals(source) else emptyList()
+        var origin = source
+        val resolved: PlayableSource? = if (rivals.isEmpty()) {
+            try {
+                kotlinx.coroutines.withTimeoutOrNull(RESOLVE_TIMEOUT_MS) { pending() }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                diagnostics?.log(LogCategory.PLAYBACK, "Resolving '${source.label}' failed: ${e::class.simpleName}: ${e.message}", e)
+                null
+            }
+        } else {
+            diagnostics?.log(LogCategory.PLAYBACK, "Racing ${rivals.size + 1} sources: ${(listOf(source) + rivals).joinToString { it.label }}")
+            val won = raceResolve(source, rivals)
+            if (won != null) origin = won.first
+            won?.second
         }
         if (resolved == null || resolved.url.isBlank()) {
             diagnostics?.log(LogCategory.PLAYBACK, "'${source.label}' could not be resolved")
+            (listOf(source) + rivals).forEach { StreamFailures.mark(it.sourceId, it.serverName) }
             val list = _uiState.value.sources
             val next = nextAfter(list, list.indexOf(source))
             if (next != null) { userPicked = false; selectSource(next) }
             else _uiState.value = _uiState.value.copy(error = "Could not open '${source.label}'")
             return null
         }
+        if (origin !== source) {
+            diagnostics?.log(LogCategory.PLAYBACK, "'${origin.label}' answered first and plays")
+            listedSelection = origin
+            origin.sourceId?.let { id ->
+                sessionSource = _uiState.value.anime?.anilistId to com.ansu.anime.data.repository.LastPlayedSource(id, origin.serverName, origin.label)
+            }
+        }
         // The resolved video replaces the listed one, so picking it again is instant. It keeps the extension and
         // server names of the listed one, so its card in the Sources list does not change when it is picked.
         val kept = resolved.copy(
-            sourceId = source.sourceId ?: resolved.sourceId,
-            extensionName = source.extensionName ?: resolved.extensionName,
-            serverName = source.serverName ?: resolved.serverName,
+            sourceId = origin.sourceId ?: resolved.sourceId,
+            extensionName = origin.extensionName ?: resolved.extensionName,
+            serverName = origin.serverName ?: resolved.serverName,
         )
         _uiState.value = _uiState.value.copy(
-            sources = _uiState.value.sources.map { if (it == source) kept else it },
+            sources = _uiState.value.sources.map { if (it == origin) kept else it },
             selectedSource = kept,
         )
         return kept
+    }
+
+    /**
+     * Up to two more streams worth opening alongside [source]: not yet resolved, on another server, in the same
+     * language, at least as close to the preferred quality, and not one that failed a moment ago.
+     */
+    private fun raceRivals(source: PlayableSource): List<PlayableSource> {
+        val language = playerPrefs?.preferredLanguage?.value ?: com.ansu.anime.data.prefs.PlayerPrefs.LANGUAGE_SUB
+        val quality = playerPrefs?.preferredQuality?.value ?: com.ansu.anime.data.prefs.PlayerPrefs.DEFAULT_QUALITY
+        val anyQuality = quality == com.ansu.anime.data.prefs.PlayerPrefs.QUALITY_ANY
+        val ownMiss = source.qualityMiss(quality)
+        return _uiState.value.sources
+            .asSequence()
+            .filter { it !== source && it.resolve != null && it.url.isBlank() }
+            .filter { it.sourceId != source.sourceId || it.serverName != source.serverName }
+            .filter { it.languageMiss(language) == source.languageMiss(language) }
+            .filter { anyQuality || it.qualityMiss(quality) <= ownMiss }
+            .filterNot { StreamFailures.isRecentlyFailed(it.sourceId, it.serverName) }
+            .distinctBy { it.sourceId to it.serverName }
+            .take(MAX_RACE_RIVALS)
+            .toList()
+    }
+
+    /**
+     * Resolves [primary] and [rivals] at the same time. The first one to give a playable link wins and the rest are
+     * cancelled; null when none of them did. They run outside this coroutine's scope on purpose: an extension that
+     * blocks on the network cannot be interrupted, and waiting for it would hold the winner back.
+     */
+    private suspend fun raceResolve(
+        primary: PlayableSource,
+        rivals: List<PlayableSource>,
+    ): Pair<PlayableSource, PlayableSource>? {
+        val entries = listOf(primary) + rivals
+        val winner = kotlinx.coroutines.CompletableDeferred<Pair<PlayableSource, PlayableSource>?>()
+        val remaining = java.util.concurrent.atomic.AtomicInteger(entries.size)
+        val jobs = entries.map { candidate ->
+            viewModelScope.launch(Dispatchers.IO) {
+                val result = try {
+                    kotlinx.coroutines.withTimeoutOrNull(RESOLVE_TIMEOUT_MS) { candidate.resolve?.invoke() }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    diagnostics?.log(LogCategory.PLAYBACK, "Resolving '${candidate.label}' failed: ${e::class.simpleName}: ${e.message}")
+                    null
+                }
+                if (result != null && result.url.isNotBlank()) {
+                    winner.complete(candidate to result)
+                } else {
+                    StreamFailures.mark(candidate.sourceId, candidate.serverName)
+                    if (remaining.decrementAndGet() == 0) winner.complete(null)
+                }
+            }
+        }
+        return try {
+            winner.await()
+        } finally {
+            jobs.forEach { it.cancel() }
+        }
     }
 
     private val probeClient: okhttp3.OkHttpClient by lazy {
@@ -960,7 +1048,7 @@ class PlayerViewModel(
                 player.setMediaItem(item, positionMs)
             } else {
                 // Extension sites usually insist on a Referer/User-Agent; send what the source asked for.
-                val upstream = DefaultHttpDataSource.Factory()
+                val upstream = mediaCache?.upstreamWithHeaders(source.headers) ?: DefaultHttpDataSource.Factory()
                     .setAllowCrossProtocolRedirects(true)
                     .setConnectTimeoutMs(15_000)
                     .setReadTimeoutMs(15_000)

@@ -34,7 +34,14 @@ data class DownloadStatus(
     val percent: Float = 0f,
     val bytes: Long = 0L,
     val message: String? = null,
+    /** 1-based place in the waiting queue (the order downloads will start in); 0 when it is not waiting there. */
+    val queuePosition: Int = 0,
+    /** True for a failed download that the Retry button can start again. */
+    val retryable: Boolean = false,
 )
+
+/** Why the whole download queue is on hold, if it is. */
+enum class PauseState { None, User, Battery }
 
 data class DownloadItem(val entry: DownloadEntry, val status: DownloadStatus)
 

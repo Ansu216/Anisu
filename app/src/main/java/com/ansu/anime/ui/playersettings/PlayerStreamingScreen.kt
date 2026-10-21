@@ -103,6 +103,12 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val subBgColor by prefs.subtitleBgColor.collectAsStateWithLifecycle()
     val subBgOpacity by prefs.subtitleBgOpacity.collectAsStateWithLifecycle()
     val subRoundedBg by prefs.subtitleRoundedBg.collectAsStateWithLifecycle()
+    val subAutoScale by prefs.subtitleAutoScale.collectAsStateWithLifecycle()
+    val raceSources by prefs.raceSources.collectAsStateWithLifecycle()
+    val downloadWifiOnly by prefs.downloadWifiOnly.collectAsStateWithLifecycle()
+    val downloadLowBattery by prefs.downloadPauseLowBattery.collectAsStateWithLifecycle()
+    val downloadParallel by prefs.downloadParallel.collectAsStateWithLifecycle()
+    val downloadQuality by prefs.downloadQuality.collectAsStateWithLifecycle()
 
     // The page scrolls; the source list asks it to scroll further while a row is dragged to its edge.
     val scrollState = rememberScrollState()
@@ -189,6 +195,12 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                     checked = autoSourcePick,
                     onCheckedChange = { prefs.setAutoSourcePick(it) },
                 )
+                GlassToggleRow(
+                    title = "Faster Start",
+                    description = "When a stream is picked for you, the best few sources are opened at once and whichever answers first plays. Slower or broken ones are dropped",
+                    checked = raceSources,
+                    onCheckedChange = prefs::setRaceSources,
+                )
                 GlassContentRow(
                     title = "Preferred Quality",
                     description = "Playback starts on the closest stream to this resolution. Any starts the first stream that answers, in your language, so it begins sooner",
@@ -270,6 +282,65 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                 )
             }
 
+            GlassGroupLabel("Downloads")
+            GlassGroup {
+                GlassToggleRow(
+                    title = "Wi-Fi Only",
+                    description = "Downloads wait for Wi-Fi and never use mobile data",
+                    checked = downloadWifiOnly,
+                    onCheckedChange = prefs::setDownloadWifiOnly,
+                )
+                GlassToggleRow(
+                    title = "Pause On Low Battery",
+                    description = "Downloads pause when the battery is low and the phone is not charging, and carry on afterwards",
+                    checked = downloadLowBattery,
+                    onCheckedChange = prefs::setDownloadPauseLowBattery,
+                )
+                GlassContentRow(
+                    title = "Downloads At Once",
+                    description = "How many episodes download at the same time. Each one also fetches several parts of itself in parallel",
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        PlayerPrefs.DOWNLOAD_PARALLEL_RANGE.forEach { count ->
+                            FilterChip(
+                                selected = downloadParallel == count,
+                                onClick = { prefs.setDownloadParallel(count) },
+                                label = { Text("$count", maxLines = 1, softWrap = false) },
+                            )
+                        }
+                    }
+                }
+                GlassContentRow(
+                    title = "Download Quality",
+                    description = "Ask lets you choose for every download. A lower quality is a smaller, faster download",
+                    showDivider = false,
+                ) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        PlayerPrefs.DOWNLOAD_QUALITY_OPTIONS.forEach { option ->
+                            FilterChip(
+                                selected = downloadQuality == option,
+                                onClick = { prefs.setDownloadQuality(option) },
+                                label = {
+                                    Text(
+                                        when (option) {
+                                            PlayerPrefs.DOWNLOAD_QUALITY_ASK -> "Ask"
+                                            PlayerPrefs.DOWNLOAD_QUALITY_SAME -> "Same as streaming"
+                                            else -> "${option}p"
+                                        },
+                                        maxLines = 1,
+                                        softWrap = false,
+                                    )
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
             GlassGroupLabel("Subtitles")
             GlassGroup {
                 GlassContentRow(
@@ -298,6 +369,12 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                     description = "Soft bars behind each line. Off gives a plain box",
                     checked = subRoundedBg,
                     onCheckedChange = prefs::setSubtitleRoundedBg,
+                )
+                GlassToggleRow(
+                    title = "Scale With Video",
+                    description = "Subtitles grow and shrink with the picture: smaller in the portrait player, larger when the video is big. Text Size below is the size on a phone held sideways",
+                    checked = subAutoScale,
+                    onCheckedChange = prefs::setSubtitleAutoScale,
                 )
                 GlassSliderRow(
                     title = "Text Size",

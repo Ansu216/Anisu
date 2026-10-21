@@ -6,7 +6,6 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.ansu.anime.anilist.AniListRepository
@@ -48,6 +47,7 @@ class Prefetcher(
     private val mediaCache: MediaCache,
     private val playerPrefs: PlayerPrefs,
     private val diagnostics: Diagnostics?,
+    private val streamClient: okhttp3.OkHttpClient? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -124,7 +124,7 @@ class Prefetcher(
 
     /** Buffers [TARGET_AHEAD_MS] of [video] into the cache through a silent, temporary player. */
     private suspend fun buffer(video: Video, startMs: Long) {
-        val upstream = DefaultHttpDataSource.Factory().setDefaultRequestProperties(video.headers)
+        val upstream = mediaCache.upstreamWithHeaders(video.headers)
         val player = ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(mediaCache.dataSourceFactory(upstream)))
             .build()

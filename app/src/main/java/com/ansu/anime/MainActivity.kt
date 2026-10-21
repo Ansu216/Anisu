@@ -101,6 +101,8 @@ class MainActivity : ComponentActivity() {
                 // the same on every nightly and would keep the banner hidden for good.
                 var dismissedBuild by rememberSaveable { mutableStateOf<String?>(null) }
                 val showUpdateBanner = update != null && update.buildId != dismissedBuild
+                // The start-up animation plays once per launch; turning the phone does not play it again.
+                var showStartup by rememberSaveable { mutableStateOf(true) }
 
                 // The in-app banner is a heads-up: it hides itself after four seconds so it never
                 // stays pinned over the screen. Dismissing it by hand does the same thing earlier.
@@ -193,6 +195,11 @@ class MainActivity : ComponentActivity() {
 
                         // Last, so it sits above everything: the notifications panel covers the whole window.
                         com.ansu.anime.ui.components.NotificationInboxOverlay()
+
+                        // Above everything, the app loads underneath it.
+                        if (showStartup) {
+                            com.ansu.anime.ui.components.StartupAnimation(onFinished = { showStartup = false })
+                        }
                     }
                 }
             }

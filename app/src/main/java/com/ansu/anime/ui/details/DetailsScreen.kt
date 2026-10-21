@@ -139,6 +139,8 @@ fun DetailsScreen(
     var selectedPerson by remember { mutableStateOf<PersonDetail?>(null) }
     var playingTrailer by remember { mutableStateOf<com.ansu.anime.data.repository.Trailer?>(null) }
     var showComments by remember { mutableStateOf(false) }
+    // The download options dialog: asks for the picture quality of one episode, or for how many episodes to queue.
+    var downloadDialog by remember { mutableStateOf<DownloadDialogTarget?>(null) }
     var selectedGroup by remember(anime?.id) { mutableIntStateOf(0) }
     // Only the first few episodes of a group show until "More episodes" is tapped; reset per show and per group.
     var episodesExpanded by remember(anime?.id, selectedGroup) { mutableStateOf(false) }
@@ -319,6 +321,9 @@ fun DetailsScreen(
                         )
                     }
                 } else {
+                    item(key = "download-next") {
+                        DownloadNextRow(onClick = { downloadDialog = DownloadDialogTarget(null) })
+                    }
                     val groups = episodes.chunked(EPISODE_GROUP_SIZE)
                     val groupIndex = selectedGroup.coerceIn(0, groups.lastIndex)
                     // Nothing to switch between when none of the episodes can be played yet.
@@ -358,8 +363,12 @@ fun DetailsScreen(
                                             com.ansu.anime.data.download.DownloadPhase.Downloading ->
                                                 android.widget.Toast.makeText(appContext, "Already downloading", android.widget.Toast.LENGTH_SHORT).show()
                                             else -> {
-                                                container.downloads.enqueue(show, episode)
-                                                android.widget.Toast.makeText(appContext, "Download started", android.widget.Toast.LENGTH_SHORT).show()
+                                                if (container.playerPrefs.downloadQuality.value == com.ansu.anime.data.prefs.PlayerPrefs.DOWNLOAD_QUALITY_ASK) {
+                                                    downloadDialog = DownloadDialogTarget(episode)
+                                                } else {
+                                                    container.downloads.enqueue(show, episode)
+                                                    android.widget.Toast.makeText(appContext, "Download started", android.widget.Toast.LENGTH_SHORT).show()
+                                                }
                                             }
                                         }
                                     }
@@ -468,6 +477,46 @@ fun DetailsScreen(
         )
     }
 
+    downloadDialog?.let { target ->
+        DownloadOptionsDialog(
+            bulk = target.episode == null,
+            defaultQuality = container.playerPrefs.preferredQuality.value,
+            onDismiss = { downloadDialog = null },
+            onConfirm = { quality, count ->
+                downloadDialog = null
+                val show = anime
+                if (show != null) {
+                    val single = target.episode
+                    if (single != null) {
+                        container.downloads.enqueue(show, single, quality = quality)
+                        android.widget.Toast.makeText(appContext, "Download started", android.widget.Toast.LENGTH_SHORT).show()
+                    } else {
+                        // From the episode the main button plays onwards, skipping what is already saved or on its way.
+                        val playable = episodes.filter { it.id !in upcomingIds }.sortedBy { it.episodeNumber }
+                        val from = playTarget?.episode?.episodeNumber ?: playable.firstOrNull()?.episodeNumber ?: 0f
+                        val busy = setOf(
+                            com.ansu.anime.data.download.DownloadPhase.Completed,
+                            com.ansu.anime.data.download.DownloadPhase.Preparing,
+                            com.ansu.anime.data.download.DownloadPhase.Queued,
+                            com.ansu.anime.data.download.DownloadPhase.Downloading,
+                        )
+                        val open = playable.filter { it.episodeNumber >= from }.filter { ep ->
+                            val key = show.anilistId?.let { com.ansu.anime.data.download.downloadKey(it, ep.episodeNumber) }
+                            val phase = key?.let { downloadStatuses[it]?.phase }
+                            phase == null || phase !in busy
+                        }
+                        val chosen = if (count > 0) open.take(count) else open
+                        if (chosen.isEmpty()) {
+                            android.widget.Toast.makeText(appContext, "Nothing left to download", android.widget.Toast.LENGTH_SHORT).show()
+                        } else {
+                            container.downloads.enqueueMany(show, chosen, quality)
+                            android.widget.Toast.makeText(appContext, "Downloading ${chosen.size} episode${if (chosen.size == 1) "" else "s"}", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            },
+        )
+    }
     playingTrailer?.let { trailer ->
         TrailerSheet(trailer = trailer, trailerRepository = container.trailerRepository, onDismiss = { playingTrailer = null })
     }
@@ -1070,3 +1119,94 @@ private fun AniListMedia.toSAnime(): SAnime = SAnime(
     altTitles = altTitles,
     origin = MediaOrigin.Extension(sourceId = 1L, urlPath = id.toString()),
 )
+
+
+/** What the download dialog is for: one episode (a quality choice) or, with no episode, the "next N" batch. */
+private class DownloadDialogTarget(val episode: SEpisode?)
+
+/** The button above the episode list that queues the next few episodes at once. */
+@Composable
+private fun DownloadNextRow(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .padding(start = 20.dp, end = 20.dp, bottom = 12.dp)
+            .clip(RoundedCornerShape(50))
+            .background(AnsuColors.AccentSoft)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Download, contentDescription = null, tint = AnsuColors.Accent, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text("Download next episodes", color = AnsuColors.TextPrimary, fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
+    }
+}
+
+/** A row of choices where one is selected (used for the episode count and the picture quality). */
+@Composable
+private fun <T> OptionPills(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(options.size) { index ->
+            val (value, label) = options[index]
+            val isSelected = value == selected
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(if (isSelected) AnsuColors.Accent else AnsuColors.AccentSoft)
+                    .clickable { onSelect(value) }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    text = label,
+                    color = if (isSelected) androidx.compose.ui.graphics.Color.White else AnsuColors.TextPrimary,
+                    fontSize = 13.sp,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Asks how to download: the picture quality (Any, 1080p ... 360p; a smaller picture is a smaller, faster download)
+ * and, for the batch, how many of the next episodes. [bulk] adds the count and a "Default" quality that follows the setting.
+ */
+@Composable
+private fun DownloadOptionsDialog(
+    bulk: Boolean,
+    defaultQuality: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (quality: Int?, count: Int) -> Unit,
+) {
+    var count by remember { mutableIntStateOf(3) }
+    var quality by remember { mutableStateOf<Int?>(if (bulk) null else defaultQuality) }
+    val qualityOptions: List<Pair<Int?, String>> =
+        (if (bulk) listOf<Pair<Int?, String>>(null to "Default") else emptyList()) +
+            listOf<Pair<Int?, String>>(0 to "Any", 1080 to "1080p", 720 to "720p", 480 to "480p", 360 to "360p")
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = AnsuColors.BackgroundElevated,
+        title = {
+            Text(if (bulk) "Download next episodes" else "Download quality", color = AnsuColors.TextPrimary)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (bulk) {
+                    Text("How many, from the episode you are on", color = AnsuColors.TextSecondary, fontSize = 13.sp)
+                    OptionPills(listOf(1 to "1", 3 to "3", 5 to "5", 10 to "10", 0 to "All"), count) { count = it }
+                }
+                Text("Quality", color = AnsuColors.TextSecondary, fontSize = 13.sp)
+                OptionPills(qualityOptions, quality) { quality = it }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = { onConfirm(quality, count) }) {
+                Text("Download", color = AnsuColors.Accent)
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text("Cancel", color = AnsuColors.TextSecondary)
+            }
+        },
+    )
+}

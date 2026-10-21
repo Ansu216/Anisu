@@ -94,10 +94,14 @@ class AnisuDownloadService : DownloadService(
     // Finished and failed episodes get their own notification: the running one goes away with the service.
     private val resultListener = object : DownloadManager.Listener {
         override fun onDownloadChanged(downloadManager: DownloadManager, download: Download, finalException: Exception?) {
-            val entry = (application as AnsuApp).container.downloads.entryFor(download.request.id) ?: return
+            val repository = (application as AnsuApp).container.downloads
+            val entry = repository.entryFor(download.request.id) ?: return
             when (download.state) {
                 Download.STATE_COMPLETED -> DownloadNotifications.completed(this@AnisuDownloadService, entry)
-                Download.STATE_FAILED -> DownloadNotifications.failed(this@AnisuDownloadService, entry, (application as AnsuApp).container.downloads.describeFailure(finalException) ?: finalException?.message)
+                // A failure that is about to be retried automatically is not worth a notification yet.
+                Download.STATE_FAILED -> if (!repository.isRetrying(download.request.id)) {
+                    DownloadNotifications.failed(this@AnisuDownloadService, entry, repository.describeFailure(finalException) ?: finalException?.message)
+                }
             }
         }
     }

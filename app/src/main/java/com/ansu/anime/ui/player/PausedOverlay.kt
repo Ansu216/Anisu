@@ -53,7 +53,8 @@ data class PausedInfo(
 /**
  * The pause screen, in the style of Nuvio: the frozen video stays visible, dimmed, and the paused title is
  * written over it at the bottom left — "You're watching", the show's logo, the episode number, the episode
- * name and its synopsis. It fades in while the text rises a little into place, and a tap on it resumes the video.
+ * name and its synopsis. It fades in while the text rises a little into place. A touch on it never resumes the video:
+ * it only takes the screen away ([onTouch] shows the controls), and the screen comes back after the usual pause.
  *
  * [compact] is for the portrait layout, where the video is a small 16:9 box and everything is drawn smaller.
  */
@@ -61,7 +62,7 @@ data class PausedInfo(
 fun PausedOverlay(
     visible: Boolean,
     info: PausedInfo,
-    onResume: () -> Unit,
+    onTouch: () -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
 ) {
@@ -86,7 +87,7 @@ fun PausedOverlay(
             .fillMaxSize()
             .graphicsLayer { alpha = fade }
             // Taps must not fall through to the gesture layer below while the screen is up.
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onResume),
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onTouch),
     ) {
         // Dims the whole picture a little, darker on the left where the words sit, and darker again at the bottom.
         Box(

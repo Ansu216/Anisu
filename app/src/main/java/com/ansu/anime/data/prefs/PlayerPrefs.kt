@@ -285,6 +285,70 @@ class PlayerPrefs(context: Context) {
         return if (index >= 0) index else list.size
     }
 
+    private val _subtitleAutoScale = MutableStateFlow(prefs.getBoolean(KEY_SUBTITLE_AUTO_SCALE, true))
+
+    /** True: subtitle text grows and shrinks with the video picture (small in the portrait player, large in fullscreen). */
+    val subtitleAutoScale: StateFlow<Boolean> = _subtitleAutoScale
+
+    fun setSubtitleAutoScale(value: Boolean) {
+        _subtitleAutoScale.value = value
+        prefs.edit().putBoolean(KEY_SUBTITLE_AUTO_SCALE, value).apply()
+    }
+
+    private val _raceSources = MutableStateFlow(prefs.getBoolean(KEY_RACE_SOURCES, true))
+
+    /** True: when a stream has to be picked automatically, the best few are opened at once and the first to answer plays. */
+    val raceSources: StateFlow<Boolean> = _raceSources
+
+    fun setRaceSources(value: Boolean) {
+        _raceSources.value = value
+        prefs.edit().putBoolean(KEY_RACE_SOURCES, value).apply()
+    }
+
+    private val _downloadWifiOnly = MutableStateFlow(prefs.getBoolean(KEY_DOWNLOAD_WIFI_ONLY, false))
+
+    /** True: downloads wait for an unmetered (Wi-Fi) connection. */
+    val downloadWifiOnly: StateFlow<Boolean> = _downloadWifiOnly
+
+    fun setDownloadWifiOnly(value: Boolean) {
+        _downloadWifiOnly.value = value
+        prefs.edit().putBoolean(KEY_DOWNLOAD_WIFI_ONLY, value).apply()
+    }
+
+    private val _downloadPauseLowBattery = MutableStateFlow(prefs.getBoolean(KEY_DOWNLOAD_LOW_BATTERY, false))
+
+    /** True: downloads pause while the battery is low and the phone is not charging, and carry on after. */
+    val downloadPauseLowBattery: StateFlow<Boolean> = _downloadPauseLowBattery
+
+    fun setDownloadPauseLowBattery(value: Boolean) {
+        _downloadPauseLowBattery.value = value
+        prefs.edit().putBoolean(KEY_DOWNLOAD_LOW_BATTERY, value).apply()
+    }
+
+    private val _downloadParallel = MutableStateFlow(prefs.getInt(KEY_DOWNLOAD_PARALLEL, DEFAULT_DOWNLOAD_PARALLEL).coerceIn(DOWNLOAD_PARALLEL_RANGE))
+
+    /** How many episodes download at the same time. */
+    val downloadParallel: StateFlow<Int> = _downloadParallel
+
+    fun setDownloadParallel(value: Int) {
+        val clean = value.coerceIn(DOWNLOAD_PARALLEL_RANGE)
+        _downloadParallel.value = clean
+        prefs.edit().putInt(KEY_DOWNLOAD_PARALLEL, clean).apply()
+    }
+
+    private val _downloadQuality = MutableStateFlow(
+        prefs.getInt(KEY_DOWNLOAD_QUALITY, DOWNLOAD_QUALITY_SAME).let { if (it in DOWNLOAD_QUALITY_OPTIONS) it else DOWNLOAD_QUALITY_SAME },
+    )
+
+    /** Picture quality of a download: [DOWNLOAD_QUALITY_ASK] asks every time, [DOWNLOAD_QUALITY_SAME] follows the streaming quality. */
+    val downloadQuality: StateFlow<Int> = _downloadQuality
+
+    fun setDownloadQuality(value: Int) {
+        if (value !in DOWNLOAD_QUALITY_OPTIONS) return
+        _downloadQuality.value = value
+        prefs.edit().putInt(KEY_DOWNLOAD_QUALITY, value).apply()
+    }
+
     companion object {
         private const val KEY_AUTOPLAY_NEXT = "autoplay_next"
         private const val KEY_HIDE_EPISODE_BUTTONS = "hide_episode_buttons"
@@ -306,6 +370,17 @@ class PlayerPrefs(context: Context) {
         const val DEFAULT_SUBTITLE_ROUNDED_BG = true
         const val DEFAULT_SKIP_SECONDS = 15 // the buttons were fixed at 15s before this was a setting
 
+        const val DOWNLOAD_QUALITY_ASK = -1
+        const val DOWNLOAD_QUALITY_SAME = -2
+        val DOWNLOAD_QUALITY_OPTIONS = listOf(DOWNLOAD_QUALITY_ASK, DOWNLOAD_QUALITY_SAME, 1080, 720, 480, 360)
+        val DOWNLOAD_PARALLEL_RANGE = 1..3
+        const val DEFAULT_DOWNLOAD_PARALLEL = 2
+        private const val KEY_SUBTITLE_AUTO_SCALE = "subtitle_auto_scale"
+        private const val KEY_RACE_SOURCES = "race_sources"
+        private const val KEY_DOWNLOAD_WIFI_ONLY = "download_wifi_only"
+        private const val KEY_DOWNLOAD_LOW_BATTERY = "download_pause_low_battery"
+        private const val KEY_DOWNLOAD_PARALLEL = "download_parallel"
+        private const val KEY_DOWNLOAD_QUALITY = "download_quality"
         private const val KEY_DOUBLE_TAP = "double_tap_seek"
         private const val KEY_SWIPE_SEEK = "swipe_seek"
         private const val KEY_BRIGHTNESS = "brightness_gesture"

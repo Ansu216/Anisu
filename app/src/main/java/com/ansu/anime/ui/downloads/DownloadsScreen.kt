@@ -22,6 +22,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +53,7 @@ import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.SEpisode
 import com.ansu.anime.data.download.DownloadItem
 import com.ansu.anime.data.download.DownloadPhase
+import com.ansu.anime.data.download.PauseState
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.navigation.Dest
@@ -56,6 +63,11 @@ import com.ansu.anime.ui.theme.AnsuColors
 @Composable
 fun DownloadsScreen(container: AppContainer, navController: NavHostController) {
     val items by container.downloads.items.collectAsStateWithLifecycle()
+    val pause by container.downloads.pauseState.collectAsStateWithLifecycle()
+    // Pause all / Resume all only make sense while something is running or waiting.
+    val hasQueue = items.any { it.status.phase != DownloadPhase.Completed && it.status.phase != DownloadPhase.Failed }
+    // How many waiting downloads there are, to know which arrows to show.
+    val waitingCount = items.count { it.status.queuePosition > 0 }
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
@@ -72,6 +84,18 @@ fun DownloadsScreen(container: AppContainer, navController: NavHostController) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    if (hasQueue || pause == PauseState.User) {
+                        val paused = pause != PauseState.None
+                        IconButton(onClick = { container.downloads.setPausedAll(pause != PauseState.User) }) {
+                            Icon(
+                                imageVector = if (pause == PauseState.User) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                                contentDescription = if (pause == PauseState.User) "Resume all downloads" else "Pause all downloads",
+                                tint = if (paused) AnsuColors.Accent else AnsuColors.TextSecondary,
+                            )
+                        }
+                    }
+                },
             )
         },
     ) { padding ->
@@ -82,6 +106,14 @@ fun DownloadsScreen(container: AppContainer, navController: NavHostController) {
                 color = AnsuColors.TextSecondary,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
             )
+            if (pause == PauseState.Battery) {
+                Text(
+                    text = "Downloads are paused because the battery is low. They carry on when it is charging or has recovered.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AnsuColors.Accent,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
+                )
+            }
             if (items.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 48.dp), contentAlignment = Alignment.TopCenter) {
                     Text(
@@ -115,6 +147,11 @@ fun DownloadsScreen(container: AppContainer, navController: NavHostController) {
                                 navController.navigate(Dest.PLAYER)
                             },
                             onDelete = { container.downloads.remove(item.entry.id) },
+                            onRetry = { container.downloads.retry(item.entry.id) },
+                            onMoveUp = { container.downloads.moveUp(item.entry.id) },
+                            onMoveDown = { container.downloads.moveDown(item.entry.id) },
+                            onMoveToTop = { container.downloads.moveToTop(item.entry.id) },
+                            waitingCount = waitingCount,
                         )
                     }
                 }
@@ -124,7 +161,16 @@ fun DownloadsScreen(container: AppContainer, navController: NavHostController) {
 }
 
 @Composable
-private fun DownloadCard(item: DownloadItem, onPlay: () -> Unit, onDelete: () -> Unit) {
+private fun DownloadCard(
+    item: DownloadItem,
+    onPlay: () -> Unit,
+    onDelete: () -> Unit,
+    onRetry: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onMoveToTop: () -> Unit,
+    waitingCount: Int,
+) {
     val entry = item.entry
     val status = item.status
     val playable = status.phase == DownloadPhase.Completed
@@ -160,6 +206,25 @@ private fun DownloadCard(item: DownloadItem, onPlay: () -> Unit, onDelete: () ->
                 }
                 StatusLine(status.phase, status.percent, status.bytes, status.message)
             }
+            // Waiting downloads can be put in a different order; the arrows move one place, the bar jumps to the front.
+            if (status.queuePosition > 0) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    IconButton(onClick = onMoveToTop, enabled = status.queuePosition > 1, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Filled.VerticalAlignTop, contentDescription = "Download next", tint = if (status.queuePosition > 1) AnsuColors.TextSecondary else AnsuColors.TextTertiary, modifier = Modifier.size(18.dp))
+                    }
+                    IconButton(onClick = onMoveUp, enabled = status.queuePosition > 1, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Move up", tint = if (status.queuePosition > 1) AnsuColors.TextSecondary else AnsuColors.TextTertiary)
+                    }
+                    IconButton(onClick = onMoveDown, enabled = status.queuePosition < waitingCount, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Move down", tint = if (status.queuePosition < waitingCount) AnsuColors.TextSecondary else AnsuColors.TextTertiary)
+                    }
+                }
+            }
+            if (status.retryable) {
+                IconButton(onClick = onRetry) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Try again", tint = AnsuColors.Accent)
+                }
+            }
             IconButton(onClick = onDelete) {
                 Icon(Icons.Filled.Delete, contentDescription = "Delete download", tint = AnsuColors.TextSecondary)
             }
@@ -171,10 +236,10 @@ private fun DownloadCard(item: DownloadItem, onPlay: () -> Unit, onDelete: () ->
 private fun StatusLine(phase: DownloadPhase, percent: Float, bytes: Long, message: String?) {
     val text = when (phase) {
         DownloadPhase.Preparing -> message ?: "Finding the best stream…"
-        DownloadPhase.Queued -> "Waiting to download"
+        DownloadPhase.Queued -> message ?: "Waiting to download"
         DownloadPhase.Downloading -> if (percent >= 0f) "Downloading ${percent.toInt()}% · ${formatSize(bytes)}" else "Downloading · ${formatSize(bytes)}"
         DownloadPhase.Completed -> "Ready to watch offline · ${formatSize(bytes)}"
-        DownloadPhase.Failed -> message ?: "The download failed. Delete it and try again."
+        DownloadPhase.Failed -> message ?: "The download failed. Try again or delete it."
     }
     Text(
         text = text,
