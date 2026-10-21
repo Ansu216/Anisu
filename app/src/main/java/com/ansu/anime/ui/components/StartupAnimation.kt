@@ -115,7 +115,7 @@ fun StartupAnimation(onFinished: () -> Unit, modifier: Modifier = Modifier) {
                     .height(LogoHeight)
                     .aspectRatio(LOGO_ASPECT)
                     // The bottom of the A is the line the letters stand on.
-                    .alignBy { it.height }
+                    .alignBy { it.measuredHeight }
                     .graphicsLayer {
                         alpha = logoAlpha.value
                         scaleX = logoScale.value
