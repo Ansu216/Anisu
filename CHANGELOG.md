@@ -35,6 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-10-22
+
+### Added
+- **Screens open without a connection.** Every answer AniList gives is now also kept on the device (in `files/anilist-cache`, one small file per request, at most 300 answers, dropped after 7 days), not only in memory for as long as the app runs. Home, search, the details page and the lists therefore still open with the last content they had when the phone is offline or AniList cannot be reached at all, and a small "Showing saved data · no connection" bar says so until a request works again. The bar disappears by itself the moment AniList answers. **Constraint:** a saved answer is only used for a request the app would cache anyway (feeds, details, search, lists); a mutation is never replayed from the cache.
+- **Logging can be turned off.** Settings › System has a "Keep logs" switch. It is on by default; switched off, nothing new is written to the device (a crash is still recorded so the next launch can say what ended the last one), and the choice survives a restart. The in-memory session log is cleared when it is switched off.
+- **Old log entries delete themselves.** At every launch, lines older than 7 days are removed from both diagnostics files, together with their stack traces, so the report never carries weeks of history.
+
+### Changed
+- **The details page asks AniList once instead of twice.** The page used to fetch the full details and then, in parallel, a second small query only to learn the MyAnimeList id (for the trailers row) and the show's other titles (for the source search). Both now come with the details answer itself (`idMal` plus the synonyms it already carried), so opening a show no longer spends a request — or the 350 ms gap between requests — on data the page already had. The page also writes one log line with the elapsed time and how many AniList requests the session has sent, so the cost of opening it can be read from an exported report.
+
 ## [0.5.4] - 2026-10-22
 
 ### Fixed

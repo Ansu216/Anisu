@@ -59,6 +59,7 @@ class DetailsViewModel(
     private val localListRepository: LocalListRepository,
     private val artworkRepository: ArtworkRepository,
     private val trailerRepository: TrailerRepository,
+    private val diagnostics: com.ansu.anime.core.diagnostics.Diagnostics,
     selectionHolder: SelectionHolder,
 ) : ViewModel() {
 
@@ -85,12 +86,7 @@ class DetailsViewModel(
                     _uiState.value = _uiState.value.copy(artwork = artwork, artworkLoaded = true)
                 }
             }
-            current.anilistId?.let { id ->
-                viewModelScope.launch {
-                    val trailers = trailerRepository.getAllTrailers(aniListRepository.getMalId(id))
-                    _uiState.value = _uiState.value.copy(trailers = trailers)
-                }
-            }
+            val openedAt = android.os.SystemClock.elapsedRealtime()
             // Each piece is published the moment it arrives instead of waiting for the slowest one (the
             // cross-source episode search), so the header, synopsis and stats show up straight away.
             viewModelScope.launch {
@@ -115,12 +111,25 @@ class DetailsViewModel(
                 // Sources are asked only when an episode is played (the player matches them then); a quiet
                 // warm-up below makes that match quick. When AniList cannot say how many episodes there are,
                 // the sources' own lists are used as before.
+                // The details answer also carries the MAL id and every title, so this page no longer spends a
+                // second request on getMediaCore just to fill the trailers row or the title search.
+                val malId = details?.malId
+                    ?: current.anilistId?.let { id -> runCatching { aniListRepository.getMalId(id) }.getOrNull() }
+                if (malId != null) {
+                    val trailers = runCatching { trailerRepository.getAllTrailers(malId) }.getOrDefault(emptyList())
+                    _uiState.value = _uiState.value.copy(trailers = trailers)
+                }
+                diagnostics.log(
+                    com.ansu.anime.core.diagnostics.LogCategory.APP,
+                    "Details \"${details?.title ?: current.title}\" opened in ${android.os.SystemClock.elapsedRealtime() - openedAt} ms — " +
+                        aniListRepository.requestSummary(),
+                )
                 if (current.anilistId != null) {
                     val fromAniList = aniListEpisodes(current, details)
                     if (fromAniList.isNotEmpty()) {
                         rawEpisodes = fromAniList
                         publishEpisodes(current, finished = true)
-                        warmSourceMatches(current)
+                        warmSourceMatches(current, details?.titles.orEmpty())
                     } else {
                         loadSourceEpisodes(current)
                     }
@@ -135,12 +144,13 @@ class DetailsViewModel(
         aniListEpisodePlaceholders(current, details, episodeMeta)
 
     /** Quietly matches the installed sources in the background, so playing an episode finds its streams quickly. */
-    private fun warmSourceMatches(current: SAnime) {
+    private fun warmSourceMatches(current: SAnime, titles: List<String>) {
         viewModelScope.launch {
             runCatching {
                 extensionManager.findEpisodesByTitle(
                     current,
-                    extraTitlesProvider = { current.anilistId?.let { id -> aniListRepository.getAllTitles(id) }.orEmpty() },
+                    // The titles came with the details answer; asking for them again was a second AniList request.
+                    extraTitlesProvider = { titles },
                 )
             }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
         }

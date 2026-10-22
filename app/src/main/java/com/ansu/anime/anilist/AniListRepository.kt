@@ -297,6 +297,9 @@ class AniListRepository(
     /** Full CornCastle-style details: stats, characters, staff, related shows. Public data - works logged out too. */
     suspend fun getMediaDetails(mediaId: Int): AniListMediaDetails? = guarded<AniListMediaDetails?>("Loading title details", null) { api.getMediaDetails(mediaId) }
 
+    /** How many AniList requests this session sent and how many answers came from a cache; for the diagnostics log. */
+    fun requestSummary(): String = api.requestSummary()
+
     suspend fun toggleFavourite(mediaId: Int): Boolean {
         if (!authManager.isLoggedIn) return false
         return guarded("Updating your favourites", false) { api.toggleFavourite(mediaId) }

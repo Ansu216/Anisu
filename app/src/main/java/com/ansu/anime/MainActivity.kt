@@ -173,6 +173,17 @@ class MainActivity : ComponentActivity() {
                             AnsuNavGraph(container = container, navController = navController)
                         }
 
+                        // The content on screen came from the disk cache: say so until a request works again.
+                        val savedDataAt by container.aniListApi.savedDataAt.collectAsStateWithLifecycle()
+                        if (savedDataAt != null) {
+                            com.ansu.anime.ui.components.SavedDataNotice(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .statusBarsPadding()
+                                    .padding(start = 12.dp, end = 12.dp, top = if (showUpdateBanner) 84.dp else 8.dp),
+                            )
+                        }
+
                         if (showUpdateBanner) {
                             UpdateBanner(
                                 state = updateState,

@@ -84,7 +84,13 @@ class AppContainer(context: Context) {
     val searchHistory: com.ansu.anime.data.prefs.SearchHistoryPrefs = com.ansu.anime.data.prefs.SearchHistoryPrefs(appContext)
     val searchSession: com.ansu.anime.ui.search.SearchSession = com.ansu.anime.ui.search.SearchSession()
 
-    val aniListApi: AniListApi = AniListApi(okHttpClient, aniListAuthManager, onNetworkSuccess = { apiErrorHandler.reportServiceUp() }) { appearancePrefs.titleLanguage.value }
+    val aniListApi: AniListApi = AniListApi(
+        okHttpClient,
+        aniListAuthManager,
+        // Answers are kept between launches too, so a screen still opens with no connection.
+        cacheDir = java.io.File(appContext.filesDir, "anilist-cache"),
+        onNetworkSuccess = { apiErrorHandler.reportServiceUp() },
+    ) { appearancePrefs.titleLanguage.value }
     val aniListRepository: AniListRepository = AniListRepository(aniListApi, aniListAuthManager, apiErrorHandler)
 
     val aniSkipRepository: com.ansu.anime.data.repository.AniSkipRepository =

@@ -119,7 +119,7 @@ fun DetailsScreen(
     val viewModel: DetailsViewModel = viewModel(
         factory = viewModelFactory {
             initializer {
-                DetailsViewModel(container.extensionManager, container.aniListRepository, container.episodeMetadataRepository, container.localListRepository, container.artworkRepository, container.trailerRepository, container.selectionHolder)
+                DetailsViewModel(container.extensionManager, container.aniListRepository, container.episodeMetadataRepository, container.localListRepository, container.artworkRepository, container.trailerRepository, container.diagnostics, container.selectionHolder)
             }
         },
     )

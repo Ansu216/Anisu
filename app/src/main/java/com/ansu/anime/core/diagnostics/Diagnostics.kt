@@ -57,12 +57,34 @@ class Diagnostics(private val context: Context) {
 
     private val buffer = ArrayDeque<DiagnosticEntry>()
 
+    /** The person's choice to keep logs, kept across launches; on unless they turn it off. */
+    private val prefs = appContext.getSharedPreferences("diagnostics", Context.MODE_PRIVATE)
+
+    init {
+        // A log kept for ever is a privacy problem and a file that only grows: old entries go at launch.
+        runCatching { writer.execute { pruneOldEntries() } }
+    }
+
     // A fresh formatter per use: SimpleDateFormat is not thread-safe and this class is written to
     // from the single writer thread, the main thread and the crash handler at the same time.
     private fun timestampFormat() = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
 
     @Volatile
-    var enabled: Boolean = true
+    private var enabledState: Boolean = prefs.getBoolean(KEY_ENABLED, true)
+
+    /**
+     * Whether anything is written at all. On by default, and the choice survives a restart. A crash is still
+     * recorded with this off, so the next launch can say what ended the last one.
+     */
+    val enabled: Boolean get() = enabledState
+
+    /** Turns logging on or off at any time; nothing is written while it is off. */
+    fun setEnabled(enabled: Boolean) {
+        if (enabledState == enabled) return
+        enabledState = enabled
+        runCatching { prefs.edit().putBoolean(KEY_ENABLED, enabled).apply() }
+        if (enabled) log(LogCategory.APP, "Diagnostics logging turned on") else synchronized(buffer) { buffer.clear() }
+    }
 
     /** Set once the crash handler is installed, so the export can say a crash was captured. */
     @Volatile
@@ -207,6 +229,31 @@ class Diagnostics(private val context: Context) {
         }
     }
 
+    /** Drops every entry older than [RETENTION_DAYS] from both files, together with its stack trace. */
+    private fun pruneOldEntries() {
+        runCatching {
+            val cutoff = System.currentTimeMillis() - RETENTION_DAYS * 24L * 60L * 60L * 1000L
+            listOf(logFile, rotatedFile).forEach { file ->
+                if (!file.exists()) return@forEach
+                val kept = ArrayList<String>()
+                file.forEachLine { line ->
+                    val at = parseTimestamp(line)
+                    when {
+                        // A line without a timestamp is a stack-trace line: keep it with its entry, drop it with its entry.
+                        at == null -> if (kept.isNotEmpty()) kept.add(line)
+                        at >= cutoff -> kept.add(line)
+                    }
+                }
+                file.writeText(kept.joinToString("\n"))
+            }
+        }
+    }
+
+    private fun parseTimestamp(line: String): Long? {
+        if (line.length < TIMESTAMP_LENGTH) return null
+        return runCatching { timestampFormat().parse(line.substring(0, TIMESTAMP_LENGTH))?.time }.getOrNull()
+    }
+
     private fun formatEntry(entry: DiagnosticEntry, error: Throwable?): String {
         val builder = StringBuilder()
         builder.append(timestampFormat().format(Date(entry.millis)))
@@ -222,6 +269,9 @@ class Diagnostics(private val context: Context) {
     }
 
     private companion object {
+        const val KEY_ENABLED = "enabled"
+        const val RETENTION_DAYS = 7L
+        const val TIMESTAMP_LENGTH = 23
         const val MAX_BUFFER = 1500
         const val MAX_FILE_BYTES = 512L * 1024L
         const val MAX_EXPORT_CHARS = 200_000

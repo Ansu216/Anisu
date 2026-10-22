@@ -21,11 +21,15 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Talks to https://graphql.anilist.co directly with hand-written queries.
@@ -35,6 +39,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class AniListApi(
     private val client: OkHttpClient,
     private val authManager: AniListAuthManager,
+    /** Where the answers are kept between launches, so a screen still opens offline. Null keeps them in memory only. */
+    private val cacheDir: File? = null,
     /** Called whenever AniList really answers (never for cached data), so an "AniList is down" notice can clear. */
     private val onNetworkSuccess: () -> Unit = {},
     /** Read on every response, so a change in Settings applies to the next request. */
@@ -42,6 +48,27 @@ class AniListApi(
 ) {
     private val endpoint = "https://graphql.anilist.co"
     private val json = Json { ignoreUnknownKeys = true }
+
+    /** The answers of the last runs, on disk; the cache below only lives as long as the process. */
+    private val diskCache = AniListDiskCache(cacheDir)
+
+    private val _savedDataAt = MutableStateFlow<Long?>(null)
+
+    /**
+     * When the content on screen came from the disk instead of AniList, or null when it came from the network.
+     * The app shows a small "showing saved data" notice while this is set and clears it once a request works.
+     */
+    val savedDataAt: StateFlow<Long?> = _savedDataAt
+
+    private val networkRequests = AtomicInteger()
+    private val cachedAnswers = AtomicInteger()
+
+    /** While a request is failing for want of a connection, the cache answers the others directly. */
+    @Volatile
+    private var offlineUntil = 0L
+
+    /** How many requests this session actually sent, and how many answers came from a cache. For the logs. */
+    fun requestSummary(): String = "${networkRequests.get()} AniList requests, ${cachedAnswers.get()} from cache"
 
     /** The cheapest real request AniList can answer; used to find out whether it is back up. Never cached. */
     suspend fun ping() {
@@ -628,6 +655,7 @@ class AniListApi(
             query (${'$'}id: Int) {
               Media(id: ${'$'}id, type: ANIME) {
                 id
+                idMal
                 title { romaji english }
                 synonyms
                 coverImage { extraLarge }
@@ -948,15 +976,54 @@ class AniListApi(
     ): JsonObject? {
         if (cacheTtlMs <= 0L) return executeUncached(query, variables, idempotent, anonymous)
         // The signed-in user is part of the key, so logging in or out never shows the other account's data.
-        val key = "${authManager.accessToken.value.orEmpty().hashCode()}|$query|${variables.entries.joinToString(",")}"
-        freshCached(key, cacheTtlMs)?.let { return it }
+        val key = "${authManager.accessToken.value.orEmpty().hashCode()}|$query|${variables.entries.joinToString(", ")}"
+        freshCached(key, cacheTtlMs)?.let {
+            cachedAnswers.incrementAndGet()
+            return it
+        }
         val lock = cacheLocks[(key.hashCode() and 0x7fffffff) % cacheLocks.size]
         // One request per key at a time: callers asking for the same thing together share its answer.
         return lock.withLock {
-            freshCached(key, cacheTtlMs)?.let { return@withLock it }
-            val data = executeUncached(query, variables, idempotent)
-            if (data != null) storeCached(key, data)
-            data
+            freshCached(key, cacheTtlMs)?.let {
+                cachedAnswers.incrementAndGet()
+                return@withLock it
+            }
+            // An answer from a previous launch, still recent enough: nothing is sent at all.
+            val onDisk = withContext(Dispatchers.IO) { diskCache.read(key) }
+            if (onDisk != null && System.currentTimeMillis() - onDisk.at <= cacheTtlMs) {
+                storeCached(key, onDisk.data)
+                cachedAnswers.incrementAndGet()
+                return@withLock onDisk.data
+            }
+            // A request just failed for want of a connection: the other screens go straight to their saved
+            // answer instead of each waiting out its own timeout first.
+            if (onDisk != null && System.currentTimeMillis() < offlineUntil) {
+                storeCached(key, onDisk.data)
+                cachedAnswers.incrementAndGet()
+                _savedDataAt.value = onDisk.at
+                return@withLock onDisk.data
+            }
+            try {
+                val data = executeUncached(query, variables, idempotent)
+                if (data != null) {
+                    storeCached(key, data)
+                    diskCache.write(key, data)
+                    // A real answer means the connection works again, so the "saved data" notice can go.
+                    offlineUntil = 0L
+                    _savedDataAt.value = null
+                }
+                data
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                // The network is gone: the last answer for this screen beats an empty page.
+                val stale = onDisk ?: withContext(Dispatchers.IO) { diskCache.read(key) }
+                offlineUntil = System.currentTimeMillis() + OFFLINE_GRACE_MS
+                if (stale == null) throw e
+                storeCached(key, stale.data)
+                cachedAnswers.incrementAndGet()
+                _savedDataAt.value = stale.at
+                stale.data
+            }
         }
     }
 
@@ -989,6 +1056,7 @@ class AniListApi(
     /** Forgets every remembered response, so the next screen asks AniList again (after a change or a manual refresh). */
     fun clearCache() {
         responseCache.clear()
+        diskCache.clear()
     }
 
     private suspend fun executeUncached(
@@ -1085,6 +1153,7 @@ class AniListApi(
     }
 
     private fun executeOnce(payload: String, anonymous: Boolean = false): JsonObject {
+        networkRequests.incrementAndGet()
         val requestBuilder = Request.Builder()
             .url(endpoint)
             .post(payload.toRequestBody("application/json".toMediaType()))
@@ -1217,6 +1286,14 @@ class AniListApi(
 
         return AniListMediaDetails(
             id = idValue,
+            malId = this["idMal"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
+            titles = (listOfNotNull(
+                (this["title"] as? JsonObject)?.get("romaji")?.jsonPrimitive?.contentOrNull,
+                (this["title"] as? JsonObject)?.get("english")?.jsonPrimitive?.contentOrNull,
+            ) + this["synonyms"]?.jsonArray.orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull })
+                .map { it.trim() }
+                .filter { it.length >= 2 }
+                .distinct(),
             title = title,
             posterUrl = this["coverImage"]?.jsonObject?.get("extraLarge")?.jsonPrimitive?.content,
             bannerUrl = this["bannerImage"]?.jsonPrimitive?.content,
@@ -1285,6 +1362,7 @@ class AniListApi(
         private const val LIST_TTL_MS = 2 * 60_000L
         private const val SCHEDULE_TTL_MS = 15 * 60_000L
         private const val MAX_CACHED_RESPONSES = 120
+        private const val OFFLINE_GRACE_MS = 30_000L
         private const val CACHE_LOCK_STRIPES = 32
         private const val MAX_LIST_CHUNKS = 6
 

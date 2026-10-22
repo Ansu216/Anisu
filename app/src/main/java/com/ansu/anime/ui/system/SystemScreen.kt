@@ -39,6 +39,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,6 +57,7 @@ import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.components.GlassGroup
 import com.ansu.anime.ui.components.GlassGroupLabel
 import com.ansu.anime.ui.components.GlassRow
+import com.ansu.anime.ui.components.GlassToggleRow
 import com.ansu.anime.ui.theme.AnsuColors
 import java.io.File
 
@@ -69,6 +71,7 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
     val context = LocalContext.current
     val diagnostics = container.diagnostics
     var refresh by remember { mutableIntStateOf(0) }
+    var loggingEnabled by remember { mutableStateOf(diagnostics.enabled) }
 
     // Save the diagnostics report to a location the user picks (Downloads, Drive, …), not only share it.
     val saveLogsLauncher = rememberLauncherForActivityResult(
@@ -118,13 +121,25 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
                 GlassGroupLabel("Diagnostics")
                 Text(
                     text = "Anisu keeps a local log of crashes, playback, taps, navigation and network " +
-                        "errors. Nothing is ever uploaded: the report is written on this device, and you " +
-                        "choose whether to share it or save it yourself.",
+                        "errors. It is on by default and can be switched off at any time; nothing is ever " +
+                        "uploaded, the report is written on this device and only you decide whether to " +
+                        "share or save it. Entries older than 7 days are deleted automatically.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = AnsuColors.TextSecondary,
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
                 )
                 GlassGroup {
+                    GlassToggleRow(
+                        icon = Icons.Filled.BugReport,
+                        title = "Keep logs",
+                        description = if (loggingEnabled) "On · entries older than 7 days are deleted" else "Off · nothing new is written",
+                        checked = loggingEnabled,
+                        onCheckedChange = { on ->
+                            diagnostics.setEnabled(on)
+                            loggingEnabled = on
+                            refresh++
+                        },
+                    )
                     GlassRow(
                         icon = Icons.Filled.FileUpload,
                         title = "Share Logs",
