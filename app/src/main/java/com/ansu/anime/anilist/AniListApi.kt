@@ -48,6 +48,15 @@ class AniListApi(
         execute("query { Page(page: 1, perPage: 1) { media(id: 1) { id } } }", emptyMap())
     }
 
+    /**
+     * The same ping with no login token. When AniList is down it often answers every request with a
+     * 401/403/odd page, which looks exactly like an expired session; a request without the token tells
+     * the two apart: it works if only the session is bad and fails if AniList itself is the problem.
+     */
+    suspend fun pingAnonymous() {
+        execute("query { Page(page: 1, perPage: 1) { media(id: 1) { id } } }", emptyMap(), anonymous = true)
+    }
+
     suspend fun getViewer(): AniListViewer? {
         val query = """
             query { Viewer { id name avatar { medium } bannerImage } }
@@ -170,6 +179,35 @@ class AniListApi(
         """.trimIndent()
         val data = execute(gql, mapOf("page" to page, "search" to query), cacheTtlMs = SEARCH_TTL_MS) ?: return emptyList()
         return data["Page"]?.jsonObject?.get("media")?.jsonArray.orEmpty().mapNotNull { it.jsonObject.toMedia() }
+    }
+
+    /**
+     * Searches several titles in as few requests as possible (one aliased `Page` per title in a single query).
+     * A source's page is matched to AniList title by title, and one request per title had to wait for the request
+     * gate's 350 ms gap each, so a twenty-title page spent seven seconds before showing anything. Missing aliases
+     * map to an empty list, and a combined query AniList rejects falls back to one search per title.
+     */
+    suspend fun searchMediaBatch(titles: List<String>, perPage: Int = 8): Map<String, List<AniListMedia>> {
+        if (titles.isEmpty()) return emptyMap()
+        val variables = LinkedHashMap<String, Any?>()
+        val fields = titles.mapIndexed { i, title ->
+            variables["s$i"] = title
+            "q$i: Page(page: 1, perPage: ${'$'}perPage) { media(type: ANIME, search: ${'$'}s$i, isAdult: false) { ...mediaFields } }"
+        }.joinToString("\n")
+        val declarations = titles.indices.joinToString(", ") { i -> "${'$'}s$i: String" }
+        val gql = "query (${'$'}perPage: Int, $declarations) {\n$fields\n}\n$MEDIA_FIELDS"
+        variables["perPage"] = perPage
+        val data: JsonObject? = try {
+            execute(gql, variables, cacheTtlMs = SEARCH_TTL_MS)
+        } catch (e: ApiException) {
+            if (e.kind != ApiErrorKind.BAD_REQUEST) throw e
+            return titles.associateWith { searchMedia(it) }
+        }
+        if (data == null) return emptyMap()
+        return titles.mapIndexed { i, title ->
+            title to (data["q$i"] as? JsonObject)?.get("media")?.jsonArray.orEmpty()
+                .mapNotNull { it.jsonObject.toMedia() }
+        }.toMap()
     }
 
     /**
@@ -906,12 +944,13 @@ class AniListApi(
         variables: Map<String, Any?>,
         idempotent: Boolean = true,
         cacheTtlMs: Long = 0L,
+        anonymous: Boolean = false,
     ): JsonObject? {
-        if (cacheTtlMs <= 0L) return executeUncached(query, variables, idempotent)
+        if (cacheTtlMs <= 0L) return executeUncached(query, variables, idempotent, anonymous)
         // The signed-in user is part of the key, so logging in or out never shows the other account's data.
         val key = "${authManager.accessToken.value.orEmpty().hashCode()}|$query|${variables.entries.joinToString(",")}"
         freshCached(key, cacheTtlMs)?.let { return it }
-        val lock = cacheLocks.getOrPut(key) { Mutex() }
+        val lock = cacheLocks[(key.hashCode() and 0x7fffffff) % cacheLocks.size]
         // One request per key at a time: callers asking for the same thing together share its answer.
         return lock.withLock {
             freshCached(key, cacheTtlMs)?.let { return@withLock it }
@@ -924,11 +963,19 @@ class AniListApi(
     private class CachedResponse(val data: JsonObject, val at: Long)
 
     private val responseCache = java.util.concurrent.ConcurrentHashMap<String, CachedResponse>()
-    private val cacheLocks = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
+
+    /**
+     * One lock per possible request, chosen by the key's hash. A map of one lock per key grew with every search
+     * ever made and never shrank; these stripes coalesce the same requests with a fixed, tiny amount of memory.
+     */
+    private val cacheLocks = Array(CACHE_LOCK_STRIPES) { Mutex() }
 
     private fun freshCached(key: String, ttlMs: Long): JsonObject? {
         val hit = responseCache[key] ?: return null
-        return if (System.currentTimeMillis() - hit.at <= ttlMs) hit.data else null
+        if (System.currentTimeMillis() - hit.at <= ttlMs) return hit.data
+        // Drop a stale answer instead of leaving it to fill the cache until the next eviction.
+        responseCache.remove(key)
+        return null
     }
 
     private fun storeCached(key: String, data: JsonObject) {
@@ -948,6 +995,7 @@ class AniListApi(
         query: String,
         variables: Map<String, Any?>,
         idempotent: Boolean = true,
+        anonymous: Boolean = false,
     ): JsonObject? = withContext(Dispatchers.IO) {
         val payload = buildString {
             append("{\"query\":")
@@ -970,7 +1018,7 @@ class AniListApi(
             )
             append("}}")
         }
-        executeWithRetry(payload, idempotent)
+        executeWithRetry(payload, idempotent, anonymous)
     }
 
     /**
@@ -1008,12 +1056,12 @@ class AniListApi(
         if (until > blockedUntil) blockedUntil = until
     }
 
-    private suspend fun executeWithRetry(payload: String, idempotent: Boolean): JsonObject {
+    private suspend fun executeWithRetry(payload: String, idempotent: Boolean, anonymous: Boolean = false): JsonObject {
         for (attempt in 1..MAX_RATE_LIMIT_ATTEMPTS) {
             try {
                 return requestPermits.withPermit {
                     awaitSlot()
-                    executeOnce(payload)
+                    executeOnce(payload, anonymous)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -1036,11 +1084,11 @@ class AniListApi(
         throw ApiException(ApiErrorKind.UNKNOWN)
     }
 
-    private fun executeOnce(payload: String): JsonObject {
+    private fun executeOnce(payload: String, anonymous: Boolean = false): JsonObject {
         val requestBuilder = Request.Builder()
             .url(endpoint)
             .post(payload.toRequestBody("application/json".toMediaType()))
-        authManager.accessToken.value?.let { token -> requestBuilder.addHeader("Authorization", "Bearer $token") }
+        if (!anonymous) authManager.accessToken.value?.let { token -> requestBuilder.addHeader("Authorization", "Bearer $token") }
 
         client.newCall(requestBuilder.build()).execute().use { response ->
             val text = response.body.string()
@@ -1237,6 +1285,7 @@ class AniListApi(
         private const val LIST_TTL_MS = 2 * 60_000L
         private const val SCHEDULE_TTL_MS = 15 * 60_000L
         private const val MAX_CACHED_RESPONSES = 120
+        private const val CACHE_LOCK_STRIPES = 32
         private const val MAX_LIST_CHUNKS = 6
 
         /** AniList relation types that belong to the same show/franchise, in display order. */

@@ -17,6 +17,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -32,6 +34,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -140,6 +143,7 @@ class MainActivity : ComponentActivity() {
 
                 // While AniList looks down the outage card says so; a snackbar for the same thing would repeat it.
                 val outage by container.apiErrorHandler.outage.collectAsStateWithLifecycle()
+                var outageShowing by remember { mutableStateOf(false) }
                 LaunchedEffect(outage != null) {
                     if (outage != null) snackbarHostState.currentSnackbarData?.dismiss()
                 }
@@ -155,7 +159,19 @@ class MainActivity : ComponentActivity() {
 
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        AnsuNavGraph(container = container, navController = navController)
+                        // The whole app blurs behind the outage card (Android 12+; older versions just dim it).
+                        val outageBlur by animateDpAsState(
+                            targetValue = if (outageShowing && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 18.dp else 0.dp,
+                            animationSpec = tween(280),
+                            label = "outageBlur",
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .then(if (outageBlur.value > 0f) Modifier.blur(outageBlur) else Modifier),
+                        ) {
+                            AnsuNavGraph(container = container, navController = navController)
+                        }
 
                         if (showUpdateBanner) {
                             UpdateBanner(
@@ -179,10 +195,8 @@ class MainActivity : ComponentActivity() {
                         ApiOutageOverlay(
                             outage = outage,
                             onRetry = { container.aniListRepository.checkReachable() },
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .statusBarsPadding()
-                                .padding(start = 12.dp, end = 12.dp, top = if (showUpdateBanner) 84.dp else 8.dp),
+                            modifier = Modifier.fillMaxSize(),
+                            onShowingChange = { outageShowing = it },
                         )
 
                         SnackbarHost(

@@ -7,6 +7,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.di.AppContainer
+import kotlinx.coroutines.launch
 
 class AnsuApp : Application(), ImageLoaderFactory {
     lateinit var container: AppContainer
@@ -27,15 +28,20 @@ class AnsuApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
-        // Keep the scheduled background update check in step with the stored preference.
-        container.updateManager.applyAutoCheck()
-        // Same for the daily automatic backup, so a fresh install gets one without a tap.
-        container.backupManager.applyAutoBackup()
-        // Release / new-episode notifications: one scheduled check, kept in step with the master switch.
-        if (container.notificationPrefs.enabled.value) {
-            com.ansu.anime.data.notify.ReleaseCheckWorker.schedule(this)
-        } else {
-            com.ansu.anime.data.notify.ReleaseCheckWorker.cancel(this)
+        // Scheduling touches WorkManager (which initializes on first use) and the disk, so it must not run before
+        // the first frame. It starts a few milliseconds later and changes nothing the person can see.
+        val notificationsOn = container.notificationPrefs.enabled.value
+        container.backgroundScope.launch {
+            // Keep the scheduled background update check in step with the stored preference.
+            container.updateManager.applyAutoCheck()
+            // Same for the daily automatic backup, so a fresh install gets one without a tap.
+            container.backupManager.applyAutoBackup()
+            // Release / new-episode notifications: one scheduled check, kept in step with the master switch.
+            if (notificationsOn) {
+                com.ansu.anime.data.notify.ReleaseCheckWorker.schedule(this@AnsuApp)
+            } else {
+                com.ansu.anime.data.notify.ReleaseCheckWorker.cancel(this@AnsuApp)
+            }
         }
         // Must be installed as early as possible so a crash at startup is captured too.
         container.diagnostics.installCrashHandler()

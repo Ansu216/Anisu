@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -148,12 +149,19 @@ fun LicensesScreen(container: AppContainer, navController: NavHostController) {
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             TopAppBar(
-                title = {},
+                title = {
+                    Text(
+                        text = "Licenses",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = AnsuColors.TextPrimary,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         },
     ) { padding ->
@@ -164,12 +172,7 @@ fun LicensesScreen(container: AppContainer, navController: NavHostController) {
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
-            Text(
-                text = "License and attribution",
-                style = MaterialTheme.typography.displayLarge,
-                color = AnsuColors.TextPrimary,
-                modifier = Modifier.padding(top = 8.dp, start = 4.dp),
-            )
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = "Anisu is made possible by these free services and open-source projects. Thank you to everyone who builds and maintains them.",
                 style = MaterialTheme.typography.bodyMedium,

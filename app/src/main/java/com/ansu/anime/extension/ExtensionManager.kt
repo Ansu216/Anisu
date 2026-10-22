@@ -125,6 +125,18 @@ class ExtensionManager(private val context: Context) {
     private var sourcesById: Map<Long, AnimeCatalogueSource> = emptyMap()
     private val builtInSources = mutableListOf<AnimeCatalogueSource>()
 
+    /**
+     * Completed by the first [reloadAll]. The scan reads every installed package and loads its code, which is far
+     * too slow for the main thread, so it runs in the background while the first screen is already composing;
+     * anything that needs a source before it finished waits here instead of seeing an empty list.
+     */
+    private val firstLoad = kotlinx.coroutines.CompletableDeferred<Unit>()
+
+    /** Waits for the background extension scan to finish. Returns at once once it has run. */
+    suspend fun awaitLoaded() {
+        if (!firstLoad.isCompleted) firstLoad.await()
+    }
+
     /** Registers a source compiled into the app itself (e.g. [DemoSource]), as opposed to a separately installed extension APK. */
     fun registerBuiltIn(source: AnimeCatalogueSource) {
         builtInSources += source
@@ -213,7 +225,15 @@ class ExtensionManager(private val context: Context) {
      * title matching or the player. One that was downloaded inside Ansu is deleted; one installed on the phone
      * itself cannot be removed silently, so it is only skipped.
      */
-    fun reloadAll(): List<InstalledExtension> {
+    @Synchronized
+    fun reloadAll(): List<InstalledExtension> = try {
+        loadAllExtensions()
+    } finally {
+        // Even a failed scan releases the waiters: they then see whatever sources did load (the built-in one).
+        firstLoad.complete(Unit)
+    }
+
+    private fun loadAllExtensions(): List<InstalledExtension> {
         val privatePackages = findPrivateExtensions()
         val privateNames = privatePackages.map { it.packageName }.toSet()
         val candidates = privatePackages.map { it to true } +

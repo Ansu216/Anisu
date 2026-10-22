@@ -1,26 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Ansu's notification small icon.
+  Anisu's notification small icon: the app's A mark, not the old ring-and-play logo.
 
   Android tints a notification icon and keeps only its alpha channel, and it draws
   it at ~24dp. The adaptive launcher foreground (`ic_launcher_foreground`) is laid
   out for a 108dp canvas with the artwork in the middle ~26% of it, so using it
   here renders the glyph at a few dp — it reads as a dot, or as nothing at all on
-  some devices. This is the same ring + play mark, drawn full-bleed for 24dp.
+  some devices. This is the same A, drawn full-bleed for 24dp: the two legs of the
+  letter and the star that sits in its counter.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- Kernel ring -->
+    <!-- The letter A: apex at the top, one stroke down to each foot. -->
     <path
         android:fillColor="#00000000"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="2"
-        android:pathData="M12,2.5 A9.5,9.5 0 1,1 11.99,2.5 Z" />
-    <!-- Play mark -->
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M12,3.4 L4.5,20.6 M12,3.4 L19.5,20.6" />
+    <!-- The star in the counter, its points reaching towards both legs. -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M10,7.5 L10,16.5 L16.5,12 Z" />
+        android:pathData="M12.9,9.1 C13.3,12.1 14.1,12.9 17.1,13.3 C14.1,13.7 13.3,14.5 12.9,17.5 C12.5,14.5 11.7,13.7 8.7,13.3 C11.7,12.9 12.5,12.1 12.9,9.1 Z" />
 </vector>

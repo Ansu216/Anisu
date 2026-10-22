@@ -22,6 +22,10 @@ import com.ansu.anime.extension.ExtensionRepo
 import com.ansu.anime.extension.SourceTester
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * A single, plainly-constructed object graph. Every dependency is created
@@ -32,6 +36,9 @@ import okhttp3.logging.HttpLoggingInterceptor
 class AppContainer(context: Context) {
 
     private val appContext = context.applicationContext
+
+    /** Work that must not hold up the first frame (scanning extensions, scheduling) runs here. */
+    val backgroundScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         com.ansu.anime.extension.EpisodeListCache.attach(appContext.cacheDir)
@@ -173,7 +180,13 @@ class AppContainer(context: Context) {
         } catch (t: Throwable) {
             android.util.Log.e("AniyomiRuntime", "Injekt setup failed", t)
         }
-        runCatching { extensionManager.reloadAll() }
+        // Scanning the installed extensions reads every package on the phone and loads their code: on a phone
+        // with a few Keiyoushi extensions that is the slowest thing in onCreate, so it runs off the main thread
+        // while the first screen composes. Everything that needs a source waits on ExtensionManager.awaitLoaded().
+        backgroundScope.launch {
+            runCatching { extensionManager.reloadAll() }
+                .onFailure { android.util.Log.e("ExtensionManager", "Extension scan failed", it) }
+        }
     }
 
     /**

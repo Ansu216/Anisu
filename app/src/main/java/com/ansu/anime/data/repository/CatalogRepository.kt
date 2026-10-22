@@ -87,17 +87,22 @@ class CatalogRepository(
         } catch (e: Throwable) {
             return null
         }
-        val matched = coroutineScope {
-            listed.animes.take(SOURCE_SEARCH_LIMIT).map { found ->
-                async {
-                    val candidates = aniList.searchPage(found.title, AniListSearchFilters(), 1)?.media.orEmpty()
-                    candidates
-                        .map { it to TitleMatcher.scoreAny(found.title, it.title, it.altTitles) }
-                        .filter { it.second >= SOURCE_MATCH_MIN }
-                        .maxByOrNull { it.second }
-                        ?.first
-                }
-            }.awaitAll()
+        // The page's titles are matched in a handful of combined AniList requests instead of one request each:
+        // the request gate spaces calls 350 ms apart, so one-by-one used to take several seconds per page.
+        val found = listed.animes.take(SOURCE_SEARCH_LIMIT)
+        val byTitle: Map<String, List<AniListMedia>> = coroutineScope {
+            found.chunked(SEARCH_BATCH_SIZE)
+                .map { chunk -> async { aniList.searchTitlesBatch(chunk.map { it.title }) } }
+                .awaitAll()
+                .flatMap { batch -> batch.entries }
+                .associate { entry -> entry.key to entry.value }
+        }
+        val matched: List<AniListMedia?> = found.map { result ->
+            byTitle[result.title].orEmpty()
+                .map { media -> media to TitleMatcher.scoreAny(result.title, media.title, media.altTitles) }
+                .filter { scored -> scored.second >= SOURCE_MATCH_MIN }
+                .maxByOrNull { scored -> scored.second }
+                ?.first
         }
         val items = matched.filterNotNull()
             .distinctBy { it.id }
@@ -118,6 +123,9 @@ class CatalogRepository(
 
         /** How close a source's title must be to an AniList title (0..1) to count as the same show. */
         const val SOURCE_MATCH_MIN = 0.85f
+
+        /** Titles per combined AniList search; keeps the query well inside AniList's complexity limit. */
+        const val SEARCH_BATCH_SIZE = 5
     }
 }
 

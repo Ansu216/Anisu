@@ -60,6 +60,10 @@ class Prefetcher(
         running = true
         scope.launch {
             try {
+                // Home's first requests and the start-up animation own the first seconds. Warming used to start
+                // with them, so a source search and a temporary ExoPlayer competed with the screen the person
+                // was looking at; starting once the app has settled costs nothing and keeps the launch smooth.
+                delay(START_DELAY_MS)
                 warmUpLastWatched()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -79,6 +83,9 @@ class Prefetcher(
 
     /** The stream to warm and the position to warm it from, or null when there is nothing to resume. */
     private suspend fun resolveResumeTarget(): Pair<Video, Long>? {
+        // The extensions are scanned in the background at launch; wait for that before looking one up, or the
+        // warm-up would find no source and silently do nothing on a cold start.
+        extensionManager.awaitLoaded()
         val entry = continueWatching.entries.first().firstOrNull() ?: return null
         val sourceId = entry.originExtensionSourceId ?: return null
         val source = extensionManager.getSource(sourceId) ?: return null
@@ -148,6 +155,8 @@ class Prefetcher(
     }
 
     private companion object {
+        /** Wait for the launch and the first screen before the warm-up starts. */
+        const val START_DELAY_MS = 4_000L
         /** How far ahead to warm; the person gets roughly a minute of playback from the cache. */
         const val TARGET_AHEAD_MS = 60_000L
         /** A cap so a slow or dead source cannot keep the temporary player alive forever. */

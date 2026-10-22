@@ -55,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -328,26 +329,35 @@ private fun ProfileBanner(name: String?, avatarUrl: String?, bannerUrl: String?,
     }
 }
 
-/** A soft two-colour gradient whose hue drifts all the way round the colour wheel every half minute. */
+/**
+ * A soft two-colour gradient whose hue drifts all the way round the colour wheel every half minute.
+ *
+ * The animated hue is read inside the draw block, never while composing: reading it here used to rebuild this
+ * composable on every frame of a 30-second loop - thousands of recompositions of the profile banner for a slow
+ * colour drift. Drawing it costs a repaint instead, and nothing above it is touched.
+ */
 @Composable
 private fun ShiftingGradient(modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "bannerGradient")
-    val hue by transition.animateFloat(
+    val hue = transition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(tween(durationMillis = 30_000, easing = LinearEasing), RepeatMode.Restart),
         label = "bannerHue",
     )
     Box(
-        modifier = modifier.background(
-            Brush.linearGradient(
-                listOf(
-                    Color.hsv(hue % 360f, 0.55f, 0.65f),
-                    Color.hsv((hue + 70f) % 360f, 0.60f, 0.55f),
-                    Color.hsv((hue + 140f) % 360f, 0.55f, 0.50f),
+        modifier = modifier.drawBehind {
+            val h = hue.value
+            drawRect(
+                Brush.linearGradient(
+                    listOf(
+                        Color.hsv(h % 360f, 0.55f, 0.65f),
+                        Color.hsv((h + 70f) % 360f, 0.60f, 0.55f),
+                        Color.hsv((h + 140f) % 360f, 0.55f, 0.50f),
+                    ),
                 ),
-            ),
-        ),
+            )
+        },
     )
 }
 

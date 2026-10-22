@@ -67,13 +67,30 @@ class ApiErrorHandler(private val diagnostics: Diagnostics? = null) {
      */
     @Synchronized
     private fun trackOutage(error: ApiException) {
-        if (error.kind in OUTAGE_KINDS) {
-            downStreak++
-            if (downStreak >= OUTAGE_STREAK) _outage.value = ApiOutage(error.kind, error.httpCode, error.message)
-        } else {
-            downStreak = 0
-            _outage.value = null
+        when {
+            error.kind in OUTAGE_KINDS -> {
+                downStreak++
+                if (downStreak >= OUTAGE_STREAK) _outage.value = ApiOutage(error.kind, error.httpCode, error.message)
+            }
+            // A 401/403, an unreadable page or a rejected request can be an expired session or a bad query,
+            // but it is also what AniList sends while it is down. It proves nothing either way here, so it
+            // neither counts nor clears; the repository checks with a token-free request ([confirmOutage]).
+            error.kind in AMBIGUOUS_KINDS -> Unit
+            else -> {
+                downStreak = 0
+                _outage.value = null
+            }
         }
+    }
+
+    /** True for failures that may be AniList being down rather than a real problem with the request. */
+    fun isAmbiguous(error: ApiException): Boolean = error.kind in AMBIGUOUS_KINDS
+
+    /** A token-free request to AniList also failed, so it really is down: show the outage card at once. */
+    @Synchronized
+    fun confirmOutage(error: ApiException) {
+        downStreak = OUTAGE_STREAK
+        _outage.value = ApiOutage(error.kind, error.httpCode, error.message)
     }
 
     /** AniList answered something: it is up, so any outage ends. */
@@ -98,6 +115,9 @@ class ApiErrorHandler(private val diagnostics: Diagnostics? = null) {
         const val REPEAT_WINDOW_MS = 10_000L
         const val RATE_LIMIT_REPEAT_WINDOW_MS = 60_000L
         const val OUTAGE_STREAK = 2
+        val AMBIGUOUS_KINDS = setOf(
+            ApiErrorKind.UNAUTHORIZED, ApiErrorKind.BAD_REQUEST, ApiErrorKind.PARSE, ApiErrorKind.UNKNOWN,
+        )
         val OUTAGE_KINDS = setOf(
             ApiErrorKind.OFFLINE, ApiErrorKind.NETWORK, ApiErrorKind.TIMEOUT,
             ApiErrorKind.SERVER, ApiErrorKind.RATE_LIMITED,

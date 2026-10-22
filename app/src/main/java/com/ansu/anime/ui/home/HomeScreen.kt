@@ -355,6 +355,7 @@ private fun FeedShelf(
                     title = "Couldn't load this row",
                     message = "Check your connection and try again.",
                     onRetry = onLoadMore,
+                    compact = true,
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )
             } else {

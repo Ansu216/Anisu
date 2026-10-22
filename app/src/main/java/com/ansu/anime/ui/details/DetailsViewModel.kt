@@ -221,6 +221,9 @@ class DetailsViewModel(
     }
 
     private suspend fun loadEpisodes(anime: SAnime, onPartial: (List<SEpisode>) -> Unit): List<SEpisode> = coroutineScope {
+        // Extensions are scanned in the background at launch, so a page opened immediately would otherwise find
+        // no source at all (the built-in one is the only source registered before the scan finishes).
+        extensionManager.awaitLoaded()
         when (val origin = anime.origin) {
             is MediaOrigin.Extension -> {
                 // Search EVERY installed source for this title (not only for AniList-only ones), so the player

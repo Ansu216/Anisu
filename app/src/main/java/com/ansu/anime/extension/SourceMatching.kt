@@ -251,6 +251,9 @@ suspend fun ExtensionManager.findEpisodesByTitle(
      */
     extraTitlesProvider: (suspend () -> List<String>)? = null,
 ): List<SEpisode> = coroutineScope {
+    // The extensions are scanned in the background at launch; waiting here means a title opened right after
+    // the first screen still finds every installed source instead of only the built-in one.
+    awaitLoaded()
     val all = allSources().filter { it.id != BUILT_IN_SOURCE_ID }
     if (all.isEmpty()) return@coroutineScope emptyList()
     val now = System.currentTimeMillis()

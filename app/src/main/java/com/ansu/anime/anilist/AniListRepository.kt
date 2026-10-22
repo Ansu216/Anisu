@@ -1,6 +1,7 @@
 package com.ansu.anime.anilist
 
 import com.ansu.anime.core.net.ApiErrorHandler
+import com.ansu.anime.core.net.toApiException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.sync.Mutex
@@ -44,9 +45,42 @@ class AniListRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            errors.report(what, e, quiet, tracksOutage = true)
+            val apiError = e.toApiException()
+            if (errors.isAmbiguous(apiError) && probeSaysDown()) {
+                errors.confirmOutage(apiError)
+            }
+            errors.report(what, apiError, quiet, tracksOutage = true)
             fallback
         }
+
+    private companion object {
+        const val PROBE_REUSE_MS = 15_000L
+    }
+
+    private var lastProbeAt = 0L
+    private var lastProbeDown = false
+    private val probeLock = kotlinx.coroutines.sync.Mutex()
+
+    /**
+     * Sends one token-free request to find out whether AniList itself is down. Several rows failing at
+     * once share one probe (the answer is reused for [PROBE_REUSE_MS]), so an outage costs one request,
+     * not one per row.
+     */
+    private suspend fun probeSaysDown(): Boolean = probeLock.withLock {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastProbeAt < PROBE_REUSE_MS) return@withLock lastProbeDown
+        val down = try {
+            api.pingAnonymous()
+            false
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            true
+        }
+        lastProbeAt = android.os.SystemClock.elapsedRealtime()
+        lastProbeDown = down
+        down
+    }
 
     /** Asks AniList for the smallest possible answer: once it replies, the "AniList is down" card goes away by itself. */
     suspend fun checkReachable() {
@@ -244,6 +278,13 @@ class AniListRepository(
     suspend fun getStreamingEpisodes(mediaId: Int) = guarded("Loading episode titles", emptyList(), quiet = true) { api.getStreamingEpisodes(mediaId) }
 
     suspend fun search(query: String, page: Int = 1) = guarded("Searching", emptyList()) { api.searchMedia(query, page) }
+
+    /**
+     * Candidates for several titles at once (a few combined requests instead of one per title), keyed by the
+     * title as asked. Empty when AniList could not be asked at all.
+     */
+    suspend fun searchTitlesBatch(titles: List<String>): Map<String, List<AniListMedia>> =
+        guarded("Searching", emptyMap<String, List<AniListMedia>>(), quiet = true) { api.searchMediaBatch(titles) }
 
     /** One page of the Search screen's query with filters; null means the request failed. */
     suspend fun searchPage(query: String, filters: AniListSearchFilters, page: Int): AniListMediaPage? =

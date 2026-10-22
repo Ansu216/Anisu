@@ -458,7 +458,7 @@ fun AnimatedContentScope.PosterExpandContainer(
                 content()
             }
         }
-        if (bars && origin != null) {
+        if (bars) {
             BarsCurtain(
                 bounds = origin.bounds,
                 containerOffset = { container.offset },

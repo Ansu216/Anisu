@@ -56,11 +56,23 @@ fun BackgroundAnimation(
     val frameNanos = remember { mutableLongStateOf(0L) }
     val owner = LocalContext.current as? LifecycleOwner
     LaunchedEffect(style, owner) {
+        // These shapes drift a few pixels a second, so 30 fps looks exactly the same as 60. Publishing the clock
+        // only every other frame halves the full-screen redraws the animation costs, which is what it does all
+        // the time the app is on screen.
+        suspend fun tick() {
+            var last = 0L
+            while (true) withFrameNanos { frame ->
+                if (frame - last >= FRAME_INTERVAL_NANOS) {
+                    last = frame
+                    frameNanos.longValue = frame
+                }
+            }
+        }
         if (owner == null) {
-            while (true) withFrameNanos { frameNanos.longValue = it }
+            tick()
         } else {
             owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                while (true) withFrameNanos { frameNanos.longValue = it }
+                tick()
             }
         }
     }
@@ -109,6 +121,9 @@ fun BackgroundAnimation(
         }
     }
 }
+
+/** One third of a second in nanoseconds: 30 frames a second, which is enough for shapes this slow. */
+private const val FRAME_INTERVAL_NANOS = 33_000_000L
 
 private fun DrawScope.drawUnit(path: Path, radius: Float, color: Color, fillAlpha: Float, strokeAlpha: Float, density: Float) {
     scale(radius, radius, Offset.Zero) {
@@ -246,8 +261,8 @@ private fun unitPaths(style: BackgroundStyle): List<Path> = when (style) {
         Path().apply {
             moveTo(0f, 0.9f)
             cubicTo(-0.55f, 0.55f, -0.95f, -0.2f, -0.55f, -0.8f)
-            quadraticBezierTo(-0.25f, -1.0f, 0f, -0.7f)
-            quadraticBezierTo(0.25f, -1.0f, 0.55f, -0.8f)
+            quadraticTo(-0.25f, -1.0f, 0f, -0.7f)
+            quadraticTo(0.25f, -1.0f, 0.55f, -0.8f)
             cubicTo(0.95f, -0.2f, 0.55f, 0.55f, 0f, 0.9f)
             close()
         },
@@ -258,14 +273,14 @@ private fun unitPaths(style: BackgroundStyle): List<Path> = when (style) {
             moveTo(0f, -0.3f)
             lineTo(0.12f, -0.6f); lineTo(0.2f, -0.28f)
             cubicTo(0.5f, -0.55f, 0.85f, -0.5f, 1.0f, -0.2f)
-            quadraticBezierTo(0.85f, -0.05f, 0.7f, 0.1f)
-            quadraticBezierTo(0.62f, -0.05f, 0.5f, 0.15f)
-            quadraticBezierTo(0.42f, 0.0f, 0.25f, 0.3f)
-            quadraticBezierTo(0.1f, 0.5f, 0f, 0.55f)
-            quadraticBezierTo(-0.1f, 0.5f, -0.25f, 0.3f)
-            quadraticBezierTo(-0.42f, 0.0f, -0.5f, 0.15f)
-            quadraticBezierTo(-0.62f, -0.05f, -0.7f, 0.1f)
-            quadraticBezierTo(-0.85f, -0.05f, -1.0f, -0.2f)
+            quadraticTo(0.85f, -0.05f, 0.7f, 0.1f)
+            quadraticTo(0.62f, -0.05f, 0.5f, 0.15f)
+            quadraticTo(0.42f, 0.0f, 0.25f, 0.3f)
+            quadraticTo(0.1f, 0.5f, 0f, 0.55f)
+            quadraticTo(-0.1f, 0.5f, -0.25f, 0.3f)
+            quadraticTo(-0.42f, 0.0f, -0.5f, 0.15f)
+            quadraticTo(-0.62f, -0.05f, -0.7f, 0.1f)
+            quadraticTo(-0.85f, -0.05f, -1.0f, -0.2f)
             cubicTo(-0.85f, -0.5f, -0.5f, -0.55f, -0.2f, -0.28f)
             lineTo(-0.12f, -0.6f)
             close()
@@ -276,9 +291,9 @@ private fun unitPaths(style: BackgroundStyle): List<Path> = when (style) {
             lineTo(-0.7f, -0.2f)
             cubicTo(-0.7f, -0.95f, 0.7f, -0.95f, 0.7f, -0.2f)
             lineTo(0.7f, 0.8f)
-            quadraticBezierTo(0.47f, 0.55f, 0.23f, 0.8f)
-            quadraticBezierTo(0f, 0.55f, -0.23f, 0.8f)
-            quadraticBezierTo(-0.47f, 0.55f, -0.7f, 0.8f)
+            quadraticTo(0.47f, 0.55f, 0.23f, 0.8f)
+            quadraticTo(0f, 0.55f, -0.23f, 0.8f)
+            quadraticTo(-0.47f, 0.55f, -0.7f, 0.8f)
             close()
         },
         // 2: jack-o'-lantern face (eyes, nose, jagged mouth)

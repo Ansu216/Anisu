@@ -52,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -338,7 +339,9 @@ private fun BoxScope.SkipFeedback(side: Int, seconds: Int, tick: Int) {
                 repeat(3) { i ->
                     // Chevrons light up one after another, towards the direction of the skip.
                     val order = if (forward) i else 2 - i
-                    val a by transition.animateFloat(
+                    // The animated alpha is read in the layer, not while composing, so a chevron lighting up
+                    // costs a repaint of that icon instead of a recomposition of the skip overlay on every frame.
+                    val a = transition.animateFloat(
                         initialValue = 0.25f,
                         targetValue = 0.25f,
                         animationSpec = infiniteRepeatable(
@@ -359,7 +362,7 @@ private fun BoxScope.SkipFeedback(side: Int, seconds: Int, tick: Int) {
                         modifier = Modifier
                             .size(26.dp)
                             .rotate(if (forward) 0f else 180f)
-                            .alpha(a),
+                            .graphicsLayer { alpha = a.value },
                     )
                 }
             }

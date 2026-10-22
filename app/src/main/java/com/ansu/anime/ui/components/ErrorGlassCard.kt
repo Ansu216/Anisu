@@ -6,27 +6,27 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -38,22 +38,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ansu.anime.ui.theme.AnsuColors
 
 /**
- * The app's error card: the same black-glass surface as every other card (frosted fill, hairline
- * stroke, large rounded corners), with a soft red wash over the top edge, a red icon tile, a title,
- * a short message and an optional Retry button.
+ * The app's error card, laid out as one centred column: a caution-triangle badge, a bold title, a grey
+ * message and a wide "Try again" button. It sits on the same frosted black glass as every other card
+ * (blurred fill, hairline stroke, big rounded corners) with a soft red wash over the top edge.
  *
- * [details] is for the technical reason (an HTTP code, an exception message). When it is given, a
- * small "Details" toggle expands it under the message, so the card stays calm for most people and
- * still gives a bug report something to copy. [onDismiss] adds a close button in the corner.
+ * [details] is the technical reason (an HTTP code, an exception message). When given, a small "Details"
+ * toggle expands it under the message, so the card stays calm for most people and a bug report still
+ * has something to copy. [onDismiss] adds a close button in the top corner.
  *
- * Works full-width inside a screen, a list or a sheet; it does not fill the screen height, so the
- * caller decides where it sits.
+ * [compact] shrinks the badge, text and button for cards that sit in a list (a Home row) instead of
+ * taking the middle of a screen. The card never fills the screen height; the caller decides where it sits.
  */
 @Composable
 fun ErrorGlassCard(
@@ -61,131 +63,151 @@ fun ErrorGlassCard(
     message: String,
     modifier: Modifier = Modifier,
     details: String? = null,
-    retryLabel: String = "Retry",
+    retryLabel: String = "Try again",
     onRetry: (() -> Unit)? = null,
     retryEnabled: Boolean = true,
     onDismiss: (() -> Unit)? = null,
     blurRadius: androidx.compose.ui.unit.Dp = 12.dp,
+    compact: Boolean = false,
 ) {
     var showDetails by remember { mutableStateOf(false) }
-    val shape = MaterialTheme.shapes.large
+    val shape = RoundedCornerShape(if (compact) 24.dp else 32.dp)
+    val badge = if (compact) 52.dp else 88.dp
+    val badgeIcon = if (compact) 26.dp else 40.dp
 
     FrostedGlassCard(
         modifier = modifier.fillMaxWidth(),
         shape = shape,
-        tintAlpha = 0.85f,
+        tintAlpha = 0.88f,
         blurRadius = blurRadius,
     ) {
-        // Red wash fading out downwards, so the card reads as an error without turning into a red box.
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
+                // Red wash fading out downwards, so the card reads as an error without turning into a red box.
                 .background(
                     Brush.verticalGradient(
-                        0f to AnsuColors.Error.copy(alpha = 0.16f),
-                        0.7f to AnsuColors.Error.copy(alpha = 0f),
+                        0f to AnsuColors.Error.copy(alpha = 0.18f),
+                        0.65f to AnsuColors.Error.copy(alpha = 0f),
                     ),
-                )
-                .padding(16.dp),
+                ),
         ) {
-            Row(verticalAlignment = Alignment.Top) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = if (compact) 20.dp else 24.dp, vertical = if (compact) 20.dp else 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(badge)
                         .clip(CircleShape)
-                        .background(AnsuColors.Error.copy(alpha = 0.18f)),
+                        .background(AnsuColors.Error.copy(alpha = 0.14f))
+                        .border(1.dp, AnsuColors.Error.copy(alpha = 0.45f), CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.ErrorOutline,
+                        imageVector = Icons.Outlined.WarningAmber,
                         contentDescription = null,
                         tint = AnsuColors.Error,
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(badgeIcon),
                     )
                 }
-                Column(modifier = Modifier.weight(1f).padding(start = 12.dp, top = 2.dp)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = AnsuColors.TextPrimary,
-                    )
-                    Text(
-                        text = message,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = AnsuColors.TextSecondary,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
-                }
-                if (onDismiss != null) {
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                Text(
+                    text = title,
+                    style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = AnsuColors.TextPrimary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = if (compact) 12.dp else 22.dp),
+                )
+                Text(
+                    text = message,
+                    style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
+                    color = AnsuColors.TextSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = if (compact) 4.dp else 8.dp),
+                )
+
+                if (details != null) {
+                    Row(
+                        modifier = Modifier
+                            .padding(top = 10.dp)
+                            .clip(MaterialTheme.shapes.small)
+                            .clickable { showDetails = !showDetails }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Details",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = AnsuColors.TextTertiary,
+                        )
                         Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "Dismiss",
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = null,
                             tint = AnsuColors.TextTertiary,
-                            modifier = Modifier.size(18.dp),
+                            modifier = Modifier.size(18.dp).rotate(if (showDetails) 180f else 0f),
+                        )
+                    }
+                    AnimatedVisibility(
+                        visible = showDetails,
+                        enter = expandVertically(tween(200)) + fadeIn(tween(200)),
+                        exit = shrinkVertically(tween(160)) + fadeOut(tween(160)),
+                    ) {
+                        Text(
+                            text = details,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AnsuColors.TextTertiary,
+                            textAlign = TextAlign.Center,
+                            maxLines = 6,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp)
+                                .clip(MaterialTheme.shapes.medium)
+                                .background(AnsuColors.Background.copy(alpha = 0.45f))
+                                .padding(12.dp),
+                        )
+                    }
+                }
+
+                if (onRetry != null) {
+                    Button(
+                        onClick = onRetry,
+                        enabled = retryEnabled,
+                        shape = RoundedCornerShape(if (compact) 16.dp else 20.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White.copy(alpha = 0.16f),
+                            contentColor = AnsuColors.TextPrimary,
+                            disabledContainerColor = Color.White.copy(alpha = 0.08f),
+                            disabledContentColor = AnsuColors.TextTertiary,
+                        ),
+                        modifier = Modifier
+                            .padding(top = if (compact) 16.dp else 26.dp)
+                            .fillMaxWidth()
+                            .height(if (compact) 46.dp else 58.dp),
+                    ) {
+                        Text(
+                            text = retryLabel,
+                            style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
                         )
                     }
                 }
             }
 
-            if (details != null) {
-                Row(
-                    modifier = Modifier
-                        .padding(top = 12.dp)
-                        .clip(MaterialTheme.shapes.small)
-                        .clickable { showDetails = !showDetails }
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+            if (onDismiss != null) {
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(36.dp),
                 ) {
-                    Text(
-                        text = "Details",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = AnsuColors.TextTertiary,
-                    )
                     Icon(
-                        imageVector = Icons.Filled.KeyboardArrowDown,
-                        contentDescription = null,
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Dismiss",
                         tint = AnsuColors.TextTertiary,
-                        modifier = Modifier.size(18.dp).rotate(if (showDetails) 180f else 0f),
-                    )
-                }
-                AnimatedVisibility(
-                    visible = showDetails,
-                    enter = expandVertically(tween(200)) + fadeIn(tween(200)),
-                    exit = shrinkVertically(tween(160)) + fadeOut(tween(160)),
-                ) {
-                    Text(
-                        text = details,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = AnsuColors.TextTertiary,
-                        maxLines = 6,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 6.dp)
-                            .clip(MaterialTheme.shapes.medium)
-                            .background(AnsuColors.Background.copy(alpha = 0.45f))
-                            .padding(12.dp),
-                    )
-                }
-            }
-
-            if (onRetry != null) {
-                OutlinedButton(
-                    onClick = onRetry,
-                    enabled = retryEnabled,
-                    modifier = Modifier.padding(top = 14.dp),
-                    shape = CircleShape,
-                    border = BorderStroke(1.dp, AnsuColors.Error.copy(alpha = 0.55f)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AnsuColors.TextPrimary),
-                ) {
-                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text(
-                        text = retryLabel,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(start = 8.dp),
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }

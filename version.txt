@@ -1,5 +1,5 @@
-0.5.3
-2026102105
+0.5.4
+2026102216
 nightly
 # version.txt - the release metadata, read by app/build.gradle.kts and by the
 # workflows. Three value lines, then these notes:

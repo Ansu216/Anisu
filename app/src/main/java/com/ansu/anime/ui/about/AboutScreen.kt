@@ -36,12 +36,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -90,12 +92,19 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             TopAppBar(
-                title = {},
+                title = {
+                    Text(
+                        text = "About",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = AnsuColors.TextPrimary,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         },
     ) { padding ->
@@ -106,14 +115,7 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
-            Text(
-                text = "About",
-                style = MaterialTheme.typography.displayLarge,
-                color = AnsuColors.TextPrimary,
-                modifier = Modifier.padding(top = 8.dp, start = 4.dp),
-            )
-
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
 
             HeroCard()
 
