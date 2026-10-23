@@ -86,10 +86,6 @@ data class AniListMediaListEntry(
 /** Everything the CornCastle-style details page needs beyond the basic card: stats, cast, crew, related shows. */
 data class AniListMediaDetails(
     val id: Int,
-    /** MyAnimeList id AniList has for this show (AniSkip and Jikan trailers are keyed by it), or null. */
-    val malId: Int? = null,
-    /** Every name AniList has for this show, so sources can be searched under each without another request. */
-    val titles: List<String> = emptyList(),
     val title: String,
     val posterUrl: String?,
     val bannerUrl: String?,

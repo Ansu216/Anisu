@@ -367,7 +367,7 @@ internal fun SourcesPanel(
             items(shown) { source ->
                 SourceCard(
                     source = source,
-                    selected = source == state.selectedSource,
+                    selected = source == state.selectedSource || (state.selectedListed != null && source == state.selectedListed),
                     ping = state.pings[source.url],
                     measuring = state.isMeasuringPings && state.pings[source.url] == null && source.url.isNotBlank(),
                     onClick = { onSelect(source) },

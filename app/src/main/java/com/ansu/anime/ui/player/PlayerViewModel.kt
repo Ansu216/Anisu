@@ -173,6 +173,8 @@ data class PlayerUiState(
     val episode: SEpisode? = null,
     val sources: List<PlayableSource> = emptyList(),
     val selectedSource: PlayableSource? = null,
+    /** The Sources-list entry behind [selectedSource] (the list keeps the unresolved copy of a stream that was resolved to play); the panel highlights it. */
+    val selectedListed: PlayableSource? = null,
     val error: String? = null,
     val isPlaying: Boolean = false,
     val positionMs: Long = 0L,
@@ -407,7 +409,10 @@ class PlayerViewModel(
                     nextEpisode()?.let { playEpisode(it) }
                 }
                 val stale = state == Player.STATE_READY && _uiState.value.error?.contains("is not responding") == true
+                // Once the stream is ready, list every subtitle track it has now, in case a late one was missed.
+                val readyText = if (state == Player.STATE_READY) player.currentTracks.toOptions(C.TRACK_TYPE_TEXT) else emptyList()
                 _uiState.value = _uiState.value.copy(
+                    textOptions = if (readyText.size > _uiState.value.textOptions.size) readyText else _uiState.value.textOptions,
                     isBuffering = state == Player.STATE_BUFFERING,
                     isStarting = if (state == Player.STATE_READY && player.isPlaying) false else _uiState.value.isStarting,
                     error = if (stale) null else _uiState.value.error,
@@ -664,7 +669,7 @@ class PlayerViewModel(
             val label = repository.entryFor(downloadId)?.sourceLabel.orEmpty().ifBlank { "Downloaded" }
             val offline = PlayableSource(label = "Downloaded · $label", url = item.localConfiguration?.uri?.toString().orEmpty())
             _uiState.value = _uiState.value.copy(isLoadingSources = false, sources = listOf(offline), selectedSource = offline, error = null)
-            val factory = DefaultMediaSourceFactory(repository.dataSourceFactory)
+            val factory = DefaultMediaSourceFactory(repository.offlineDataSourceFactory)
             val subtitleList = item.localConfiguration?.subtitleConfigurations.orEmpty()
             val build: (List<MediaItem.SubtitleConfiguration>, Long) -> Unit = { subtitles, positionMs ->
                 player.setMediaSource(factory.createMediaSource(item.buildUpon().setSubtitleConfigurations(subtitles).build()), positionMs)
@@ -840,6 +845,7 @@ class PlayerViewModel(
         val alreadyPlaying = player.isPlaying && player.playbackState == Player.STATE_READY && _uiState.value.selectedSource?.url == source.url
         _uiState.value = _uiState.value.copy(
             selectedSource = source,
+            selectedListed = source,
             isStarting = if (alreadyPlaying) false else (showStartingScreen || _uiState.value.isStarting),
         )
         // Switching source (or falling back to the next one) carries on from where the video is now.
@@ -891,6 +897,7 @@ class PlayerViewModel(
         if (origin !== source) {
             diagnostics?.log(LogCategory.PLAYBACK, "'${origin.label}' answered first and plays")
             listedSelection = origin
+            _uiState.value = _uiState.value.copy(selectedListed = origin)
             origin.sourceId?.let { id ->
                 sessionSource = _uiState.value.anime?.anilistId to com.ansu.anime.data.repository.LastPlayedSource(id, origin.serverName, origin.label)
             }
@@ -905,6 +912,7 @@ class PlayerViewModel(
         _uiState.value = _uiState.value.copy(
             sources = _uiState.value.sources.map { if (it == origin) kept else it },
             selectedSource = kept,
+            selectedListed = kept,
         )
         return kept
     }
@@ -1323,6 +1331,7 @@ class PlayerViewModel(
             episode = target,
             sources = emptyList(),
             selectedSource = null,
+            selectedListed = null,
             isLoadingSources = true,
             error = null,
             positionMs = 0L,

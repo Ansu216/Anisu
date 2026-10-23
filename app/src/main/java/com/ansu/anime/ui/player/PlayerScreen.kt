@@ -506,6 +506,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     EpisodeInfoPane(
                         state = state,
                         onPlayEpisode = viewModel::playEpisode,
+                        downloads = container.downloads,
+                        playerPrefs = container.playerPrefs,
                         modifier = Modifier.weight(1f),
                     )
                 }

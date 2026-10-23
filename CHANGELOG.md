@@ -35,15 +35,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`CLAUDE.md` records the AniList query split.** The details query is the heavy one (characters, staff, relations, recommendations) and stays on the details page only; episodes, the player and the source search keep their own lighter requests. The rule is written down so a later change does not move episode fields into the details query and put the heavy answer back on the path to streaming.
+
 ## [0.5.5] - 2026-10-22
 
 ### Added
 - **Screens open without a connection.** Every answer AniList gives is now also kept on the device (in `files/anilist-cache`, one small file per request, at most 300 answers, dropped after 7 days), not only in memory for as long as the app runs. Home, search, the details page and the lists therefore still open with the last content they had when the phone is offline or AniList cannot be reached at all, and a small "Showing saved data · no connection" bar says so until a request works again. The bar disappears by itself the moment AniList answers. **Constraint:** a saved answer is only used for a request the app would cache anyway (feeds, details, search, lists); a mutation is never replayed from the cache.
 - **Logging can be turned off.** Settings › System has a "Keep logs" switch. It is on by default; switched off, nothing new is written to the device (a crash is still recorded so the next launch can say what ended the last one), and the choice survives a restart. The in-memory session log is cleared when it is switched off.
+- **Notifications show the app's real logo.** Android draws a notification's header with the icon it has cached for the package, and with Material You theming that icon is recoloured into the wallpaper palette (a red badge with a dark A, while the app still shows the dark logo). Every notification — downloads, update and new episode — now sets the app logo itself as its large icon, so the shade shows the same mark as the app whatever the system icon theme does. The adaptive icon also declares a monochrome layer now, so a themed launcher uses the A itself instead of a shape generated from the artwork.
+- **Discord link in About.** The Links group now has a Discord row (`discord.gg/Qhn6B76Z3`), next to the repository and the issue tracker.
 - **Old log entries delete themselves.** At every launch, lines older than 7 days are removed from both diagnostics files, together with their stack traces, so the report never carries weeks of history.
 
 ### Changed
-- **The details page asks AniList once instead of twice.** The page used to fetch the full details and then, in parallel, a second small query only to learn the MyAnimeList id (for the trailers row) and the show's other titles (for the source search). Both now come with the details answer itself (`idMal` plus the synonyms it already carried), so opening a show no longer spends a request — or the 350 ms gap between requests — on data the page already had. The page also writes one log line with the elapsed time and how many AniList requests the session has sent, so the cost of opening it can be read from an exported report.
+- **The details page keeps its extra data on a separate request.** The MyAnimeList id (trailers) and the show's other titles (source search) are fetched by their own small query, in parallel with the details, exactly as in 0.5.4. Folding them into the details answer saved one request, but it put the heavy answer on the path the player needs; the split is the rule now (see `CLAUDE.md`, the AniList query split), so the details query stays heavy and everything around it asks what it needs. The page still writes one log line with the elapsed time and how many AniList requests the session has sent, so the cost of opening it can be read from an exported report.
 
 ## [0.5.4] - 2026-10-22
 

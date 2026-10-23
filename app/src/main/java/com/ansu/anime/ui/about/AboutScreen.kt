@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NewReleases
@@ -70,6 +71,7 @@ import com.ansu.anime.ui.theme.AnsuColors
 private const val DEVELOPER_NAME = "Ansuman Sahu"
 private const val DEVELOPER_HANDLE = "Ansu216"
 private const val REPO_URL = "https://github.com/Ansu216/Anisu"
+private const val DISCORD_URL = "https://discord.gg/Qhn6B76Z3"
 private const val DEVELOPER_URL = "https://github.com/$DEVELOPER_HANDLE"
 
 /**
@@ -198,6 +200,17 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                     onClick = {
                         container.diagnostics.log(LogCategory.CLICK, "About → issue tracker opened")
                         openUrl(context, "$REPO_URL/issues")
+                    },
+                )
+                GlassRow(
+                    icon = Icons.Filled.Forum,
+                    title = "Discord",
+                    description = DISCORD_URL.removePrefix("https://"),
+                    showDivider = false,
+                    trailing = { LinkChevron() },
+                    onClick = {
+                        container.diagnostics.log(LogCategory.CLICK, "About → Discord opened")
+                        openUrl(context, DISCORD_URL)
                     },
                 )
             }

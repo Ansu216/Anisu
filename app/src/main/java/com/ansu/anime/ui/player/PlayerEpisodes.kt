@@ -31,7 +31,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,7 +61,14 @@ private fun isSameEpisode(a: SEpisode?, b: SEpisode): Boolean =
 
 /** One "E1 · Episode name · Aired date" card, as in the sketch's episode list. */
 @Composable
-fun EpisodeRow(episode: SEpisode, current: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun EpisodeRow(
+    episode: SEpisode,
+    current: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** Something at the end of the row, such as the download button (portrait list only). */
+    trailing: (@Composable () -> Unit)? = null,
+) {
     val number = episode.episodeNumber.formatEpisodeNumber()
     Row(
         modifier = modifier
@@ -117,6 +128,7 @@ fun EpisodeRow(episode: SEpisode, current: Boolean, onClick: () -> Unit, modifie
                 Text(it, color = AnsuColors.TextSecondary, fontSize = 12.sp, maxLines = 1)
             }
         }
+        trailing?.invoke()
     }
 }
 
@@ -125,8 +137,50 @@ fun EpisodeRow(episode: SEpisode, current: Boolean, onClick: () -> Unit, modifie
 fun EpisodeInfoPane(
     state: PlayerUiState,
     onPlayEpisode: (SEpisode) -> Unit,
+    downloads: com.ansu.anime.data.download.DownloadsRepository,
+    playerPrefs: com.ansu.anime.data.prefs.PlayerPrefs,
     modifier: Modifier = Modifier,
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Read here (not in the player screen) so the once-a-second progress updates only redraw this list.
+    val downloadItems by downloads.items.collectAsStateWithLifecycle()
+    val statuses = remember(downloadItems) { downloadItems.associate { it.entry.id to it.status } }
+    var downloadDialogFor by remember { mutableStateOf<SEpisode?>(null) }
+    val anilistKey = state.anime?.let { it.anilistId ?: it.id.toIntOrNull() }
+    fun keyOf(episode: SEpisode): String? = anilistKey?.let { com.ansu.anime.data.download.downloadKey(it, episode.episodeNumber) }
+    fun startDownload(episode: SEpisode) {
+        val show = state.anime ?: return
+        when (keyOf(episode)?.let { statuses[it] }?.phase) {
+            com.ansu.anime.data.download.DownloadPhase.Completed ->
+                android.widget.Toast.makeText(context, "Already downloaded", android.widget.Toast.LENGTH_SHORT).show()
+            com.ansu.anime.data.download.DownloadPhase.Preparing,
+            com.ansu.anime.data.download.DownloadPhase.Queued,
+            com.ansu.anime.data.download.DownloadPhase.Downloading ->
+                android.widget.Toast.makeText(context, "Already downloading", android.widget.Toast.LENGTH_SHORT).show()
+            else ->
+                if (playerPrefs.downloadQuality.value == com.ansu.anime.data.prefs.PlayerPrefs.DOWNLOAD_QUALITY_ASK) {
+                    downloadDialogFor = episode
+                } else {
+                    downloads.enqueue(show, episode)
+                    android.widget.Toast.makeText(context, "Download started", android.widget.Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+    downloadDialogFor?.let { episode ->
+        com.ansu.anime.ui.components.DownloadOptionsDialog(
+            bulk = false,
+            defaultQuality = playerPrefs.preferredQuality.value,
+            defaultLanguage = playerPrefs.preferredLanguage.value,
+            onDismiss = { downloadDialogFor = null },
+            onConfirm = { quality, _, _, language ->
+                downloadDialogFor = null
+                state.anime?.let { show ->
+                    downloads.enqueue(show, episode, quality = quality, language = language)
+                    android.widget.Toast.makeText(context, "Download started", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            },
+        )
+    }
     val episodes = remember(state.episodes) { state.episodes.sortedBy { it.episodeNumber } }
     val currentIndex = episodes.indexOfFirst { isSameEpisode(state.episode, it) }
     val listState = rememberLazyListState()
@@ -183,6 +237,12 @@ fun EpisodeInfoPane(
                 episode = episode,
                 current = isSameEpisode(state.episode, episode),
                 onClick = { onPlayEpisode(episode) },
+                trailing = {
+                    com.ansu.anime.ui.components.EpisodeDownloadButton(
+                        status = keyOf(episode)?.let { statuses[it] },
+                        onClick = { startDownload(episode) },
+                    )
+                },
             )
         }
     }

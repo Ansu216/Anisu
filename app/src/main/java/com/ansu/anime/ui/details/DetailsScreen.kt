@@ -3,7 +3,9 @@ package com.ansu.anime.ui.details
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.foundation.background
+import com.ansu.anime.ui.components.DownloadOptionsDialog
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -115,6 +117,8 @@ fun DetailsScreen(
     container: AppContainer,
     navController: NavHostController,
     onEpisodeSelected: (SEpisode) -> Unit,
+    /** Plays an episode in a chosen mode: true = the player picks the stream (Auto), false = the source picker opens. */
+    onEpisodePlayWith: (SEpisode, Boolean) -> Unit,
 ) {
     val viewModel: DetailsViewModel = viewModel(
         factory = viewModelFactory {
@@ -141,6 +145,8 @@ fun DetailsScreen(
     var showComments by remember { mutableStateOf(false) }
     // The download options dialog: asks for the picture quality of one episode, or for how many episodes to queue.
     var downloadDialog by remember { mutableStateOf<DownloadDialogTarget?>(null) }
+    // The menu a long press on an episode opens (download, or play the other way round).
+    var episodeMenu by remember { mutableStateOf<SEpisode?>(null) }
     var selectedGroup by remember(anime?.id) { mutableIntStateOf(0) }
     // Only the first few episodes of a group show until "More episodes" is tapped; reset per show and per group.
     var episodesExpanded by remember(anime?.id, selectedGroup) { mutableStateOf(false) }
@@ -170,6 +176,29 @@ fun DetailsScreen(
     val notifyMode = details?.status == "NOT_YET_RELEASED" && playTarget == null && anime?.anilistId != null
     val notifyOn = anime?.anilistId?.let { it in followedIds } == true
     val appContext = androidx.compose.ui.platform.LocalContext.current
+    // Downloads one episode (asking for quality and language first when the setting says to ask).
+    val startEpisodeDownload: (SEpisode) -> Unit = { episode ->
+        val show = anime
+        if (show != null) {
+            val id = show.anilistId?.let { com.ansu.anime.data.download.downloadKey(it, episode.episodeNumber) }
+            when (id?.let { downloadStatuses[it] }?.phase) {
+                com.ansu.anime.data.download.DownloadPhase.Completed ->
+                    android.widget.Toast.makeText(appContext, "Already downloaded", android.widget.Toast.LENGTH_SHORT).show()
+                com.ansu.anime.data.download.DownloadPhase.Preparing,
+                com.ansu.anime.data.download.DownloadPhase.Queued,
+                com.ansu.anime.data.download.DownloadPhase.Downloading ->
+                    android.widget.Toast.makeText(appContext, "Already downloading", android.widget.Toast.LENGTH_SHORT).show()
+                else -> {
+                    if (container.playerPrefs.downloadQuality.value == com.ansu.anime.data.prefs.PlayerPrefs.DOWNLOAD_QUALITY_ASK) {
+                        downloadDialog = DownloadDialogTarget(episode)
+                    } else {
+                        container.downloads.enqueue(show, episode)
+                        android.widget.Toast.makeText(appContext, "Download started", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
 
     // Hand the playable episodes to the player (previous/next and its "more episodes" list).
     LaunchedEffect(episodes, upcomingIds) {
@@ -345,34 +374,10 @@ fun DetailsScreen(
                         if (episode.id in upcomingIds) {
                             UpcomingEpisodeRow(episode)
                         } else {
-                            val downloadId = anime?.anilistId?.let { com.ansu.anime.data.download.downloadKey(it, episode.episodeNumber) }
                             EpisodeRow(
                                 episode = episode,
                                 synopsis = episode.description,
-                                download = downloadId?.let { downloadStatuses[it] },
-                                onDownload = {
-                                    val show = anime
-                                    if (show != null) {
-                                        val id = downloadId
-                                        val existing = id?.let { downloadStatuses[it] }
-                                        when (existing?.phase) {
-                                            com.ansu.anime.data.download.DownloadPhase.Completed ->
-                                                android.widget.Toast.makeText(appContext, "Already downloaded", android.widget.Toast.LENGTH_SHORT).show()
-                                            com.ansu.anime.data.download.DownloadPhase.Preparing,
-                                            com.ansu.anime.data.download.DownloadPhase.Queued,
-                                            com.ansu.anime.data.download.DownloadPhase.Downloading ->
-                                                android.widget.Toast.makeText(appContext, "Already downloading", android.widget.Toast.LENGTH_SHORT).show()
-                                            else -> {
-                                                if (container.playerPrefs.downloadQuality.value == com.ansu.anime.data.prefs.PlayerPrefs.DOWNLOAD_QUALITY_ASK) {
-                                                    downloadDialog = DownloadDialogTarget(episode)
-                                                } else {
-                                                    container.downloads.enqueue(show, episode)
-                                                    android.widget.Toast.makeText(appContext, "Download started", android.widget.Toast.LENGTH_SHORT).show()
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
+                                onLongClick = { episodeMenu = episode },
                                 onClick = {
                                     container.diagnostics.log(LogCategory.CLICK, "Episode selected: ${anime?.title} E${episode.episodeNumber}")
                                     onEpisodeSelected(episode)
@@ -478,43 +483,62 @@ fun DetailsScreen(
     }
 
     downloadDialog?.let { target ->
+        val playableNow = episodes.filter { it.id !in upcomingIds }.sortedBy { it.episodeNumber }
         DownloadOptionsDialog(
             bulk = target.episode == null,
             defaultQuality = container.playerPrefs.preferredQuality.value,
+            defaultLanguage = container.playerPrefs.preferredLanguage.value,
+            initialFrom = (playTarget?.episode?.episodeNumber ?: playableNow.firstOrNull()?.episodeNumber ?: 1f).toInt(),
+            maxEpisode = playableNow.lastOrNull()?.episodeNumber?.toInt() ?: 1,
             onDismiss = { downloadDialog = null },
-            onConfirm = { quality, count ->
+            onConfirm = { quality, fromEp, toEp, language ->
                 downloadDialog = null
                 val show = anime
                 if (show != null) {
                     val single = target.episode
                     if (single != null) {
-                        container.downloads.enqueue(show, single, quality = quality)
+                        container.downloads.enqueue(show, single, quality = quality, language = language)
                         android.widget.Toast.makeText(appContext, "Download started", android.widget.Toast.LENGTH_SHORT).show()
                     } else {
-                        // From the episode the main button plays onwards, skipping what is already saved or on its way.
-                        val playable = episodes.filter { it.id !in upcomingIds }.sortedBy { it.episodeNumber }
-                        val from = playTarget?.episode?.episodeNumber ?: playable.firstOrNull()?.episodeNumber ?: 0f
+                        // Every episode from "From ep" to "To ep", skipping what is already saved or on its way.
                         val busy = setOf(
                             com.ansu.anime.data.download.DownloadPhase.Completed,
                             com.ansu.anime.data.download.DownloadPhase.Preparing,
                             com.ansu.anime.data.download.DownloadPhase.Queued,
                             com.ansu.anime.data.download.DownloadPhase.Downloading,
                         )
-                        val open = playable.filter { it.episodeNumber >= from }.filter { ep ->
-                            val key = show.anilistId?.let { com.ansu.anime.data.download.downloadKey(it, ep.episodeNumber) }
-                            val phase = key?.let { downloadStatuses[it]?.phase }
-                            phase == null || phase !in busy
-                        }
-                        val chosen = if (count > 0) open.take(count) else open
+                        val chosen = playableNow
+                            .filter { it.episodeNumber >= fromEp && it.episodeNumber < toEp + 1f }
+                            .filter { ep ->
+                                val key = show.anilistId?.let { com.ansu.anime.data.download.downloadKey(it, ep.episodeNumber) }
+                                val phase = key?.let { downloadStatuses[it]?.phase }
+                                phase == null || phase !in busy
+                            }
                         if (chosen.isEmpty()) {
-                            android.widget.Toast.makeText(appContext, "Nothing left to download", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(appContext, "Nothing left to download in that range", android.widget.Toast.LENGTH_SHORT).show()
                         } else {
-                            container.downloads.enqueueMany(show, chosen, quality)
+                            container.downloads.enqueueMany(show, chosen, quality, language)
                             android.widget.Toast.makeText(appContext, "Downloading ${chosen.size} episode${if (chosen.size == 1) "" else "s"}", android.widget.Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
             },
+        )
+    }
+    episodeMenu?.let { episode ->
+        val usingAuto by container.playerPrefs.autoSourcePick.collectAsStateWithLifecycle()
+        val key = anime?.anilistId?.let { com.ansu.anime.data.download.downloadKey(it, episode.episodeNumber) }
+        EpisodeActionsSheet(
+            episode = episode,
+            usingAuto = usingAuto,
+            download = key?.let { downloadStatuses[it] },
+            onDownload = { episodeMenu = null; startEpisodeDownload(episode) },
+            onPlayOtherWay = {
+                episodeMenu = null
+                container.diagnostics.log(LogCategory.CLICK, "Episode held and played ${if (usingAuto) "with the source picker" else "on auto"}: ${anime?.title} E${episode.episodeNumber}")
+                onEpisodePlayWith(episode, !usingAuto)
+            },
+            onDismiss = { episodeMenu = null },
         )
     }
     playingTrailer?.let { trailer ->
@@ -839,16 +863,19 @@ private fun EpisodeGroupChips(groups: List<List<SEpisode>>, selected: Int, onSel
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun EpisodeRow(
     episode: SEpisode,
     synopsis: String?,
-    download: com.ansu.anime.data.download.DownloadStatus?,
-    onDownload: () -> Unit,
+    onLongClick: () -> Unit,
     onClick: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Box(
@@ -893,37 +920,6 @@ private fun EpisodeRow(
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
-        }
-        DownloadButton(status = download, onClick = onDownload)
-    }
-}
-
-/** The download icon at the end of an episode row: arrow to start, a ring while it downloads, a tick when saved. */
-@Composable
-private fun DownloadButton(status: com.ansu.anime.data.download.DownloadStatus?, onClick: () -> Unit) {
-    val phase = status?.phase
-    androidx.compose.material3.IconButton(onClick = onClick, modifier = Modifier.size(40.dp)) {
-        when (phase) {
-            com.ansu.anime.data.download.DownloadPhase.Completed ->
-                Icon(Icons.Filled.DownloadDone, contentDescription = "Downloaded", tint = AnsuColors.Accent, modifier = Modifier.size(22.dp))
-            com.ansu.anime.data.download.DownloadPhase.Preparing,
-            com.ansu.anime.data.download.DownloadPhase.Queued ->
-                androidx.compose.material3.CircularProgressIndicator(color = AnsuColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
-            com.ansu.anime.data.download.DownloadPhase.Downloading -> {
-                val percent = status?.percent ?: -1f
-                if (percent >= 0f) {
-                    androidx.compose.material3.CircularProgressIndicator(
-                        progress = { (percent / 100f).coerceIn(0f, 1f) },
-                        color = AnsuColors.Accent,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(20.dp),
-                    )
-                } else {
-                    androidx.compose.material3.CircularProgressIndicator(color = AnsuColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
-                }
-            }
-            else ->
-                Icon(Icons.Filled.Download, contentDescription = "Download episode", tint = AnsuColors.TextSecondary, modifier = Modifier.size(22.dp))
         }
     }
 }
@@ -1142,71 +1138,56 @@ private fun DownloadNextRow(onClick: () -> Unit) {
     }
 }
 
-/** A row of choices where one is selected (used for the episode count and the picture quality). */
+/** What a long press on an episode offers: download it, or play it the other way (auto <-> the source picker). */
 @Composable
-private fun <T> OptionPills(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(options.size) { index ->
-            val (value, label) = options[index]
-            val isSelected = value == selected
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(if (isSelected) AnsuColors.Accent else AnsuColors.AccentSoft)
-                    .clickable { onSelect(value) }
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    text = label,
-                    color = if (isSelected) androidx.compose.ui.graphics.Color.White else AnsuColors.TextPrimary,
-                    fontSize = 13.sp,
-                )
-            }
+private fun EpisodeActionsSheet(
+    episode: SEpisode,
+    usingAuto: Boolean,
+    download: com.ansu.anime.data.download.DownloadStatus?,
+    onDownload: () -> Unit,
+    onPlayOtherWay: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val downloadText = when (download?.phase) {
+        com.ansu.anime.data.download.DownloadPhase.Completed -> "Downloaded"
+        com.ansu.anime.data.download.DownloadPhase.Preparing,
+        com.ansu.anime.data.download.DownloadPhase.Queued,
+        com.ansu.anime.data.download.DownloadPhase.Downloading -> "Downloading\u2026"
+        else -> "Download"
+    }
+    com.ansu.anime.ui.components.GlassModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+            Text(
+                text = episode.name.takeIf { it.isNotBlank() && !it.startsWith("Episode") } ?: "Episode ${episode.episodeNumber.toInt()}",
+                color = AnsuColors.TextPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+            )
+            EpisodeActionRow(
+                icon = Icons.Filled.Download,
+                text = downloadText,
+                onClick = onDownload,
+            )
+            EpisodeActionRow(
+                icon = Icons.Filled.PlayArrow,
+                text = if (usingAuto) "Play with source picker" else "Play on auto",
+                onClick = onPlayOtherWay,
+            )
         }
     }
 }
 
-/**
- * Asks how to download: the picture quality (Any, 1080p ... 360p; a smaller picture is a smaller, faster download)
- * and, for the batch, how many of the next episodes. [bulk] adds the count and a "Default" quality that follows the setting.
- */
 @Composable
-private fun DownloadOptionsDialog(
-    bulk: Boolean,
-    defaultQuality: Int,
-    onDismiss: () -> Unit,
-    onConfirm: (quality: Int?, count: Int) -> Unit,
-) {
-    var count by remember { mutableIntStateOf(3) }
-    var quality by remember { mutableStateOf<Int?>(if (bulk) null else defaultQuality) }
-    val qualityOptions: List<Pair<Int?, String>> =
-        (if (bulk) listOf<Pair<Int?, String>>(null to "Default") else emptyList()) +
-            listOf<Pair<Int?, String>>(0 to "Any", 1080 to "1080p", 720 to "720p", 480 to "480p", 360 to "360p")
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = AnsuColors.BackgroundElevated,
-        title = {
-            Text(if (bulk) "Download next episodes" else "Download quality", color = AnsuColors.TextPrimary)
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (bulk) {
-                    Text("How many, from the episode you are on", color = AnsuColors.TextSecondary, fontSize = 13.sp)
-                    OptionPills(listOf(1 to "1", 3 to "3", 5 to "5", 10 to "10", 0 to "All"), count) { count = it }
-                }
-                Text("Quality", color = AnsuColors.TextSecondary, fontSize = 13.sp)
-                OptionPills(qualityOptions, quality) { quality = it }
-            }
-        },
-        confirmButton = {
-            androidx.compose.material3.TextButton(onClick = { onConfirm(quality, count) }) {
-                Text("Download", color = AnsuColors.Accent)
-            }
-        },
-        dismissButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) {
-                Text("Cancel", color = AnsuColors.TextSecondary)
-            }
-        },
-    )
+private fun EpisodeActionRow(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = AnsuColors.Accent, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(16.dp))
+        Text(text, color = AnsuColors.TextPrimary, fontSize = 15.sp)
+    }
 }

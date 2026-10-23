@@ -655,7 +655,6 @@ class AniListApi(
             query (${'$'}id: Int) {
               Media(id: ${'$'}id, type: ANIME) {
                 id
-                idMal
                 title { romaji english }
                 synonyms
                 coverImage { extraLarge }
@@ -1286,14 +1285,6 @@ class AniListApi(
 
         return AniListMediaDetails(
             id = idValue,
-            malId = this["idMal"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
-            titles = (listOfNotNull(
-                (this["title"] as? JsonObject)?.get("romaji")?.jsonPrimitive?.contentOrNull,
-                (this["title"] as? JsonObject)?.get("english")?.jsonPrimitive?.contentOrNull,
-            ) + this["synonyms"]?.jsonArray.orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull })
-                .map { it.trim() }
-                .filter { it.length >= 2 }
-                .distinct(),
             title = title,
             posterUrl = this["coverImage"]?.jsonObject?.get("extraLarge")?.jsonPrimitive?.content,
             bannerUrl = this["bannerImage"]?.jsonPrimitive?.content,

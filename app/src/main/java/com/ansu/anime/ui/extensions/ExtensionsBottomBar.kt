@@ -4,8 +4,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
@@ -22,12 +20,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -38,7 +32,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -50,15 +43,11 @@ import com.ansu.anime.ui.components.FrostedGlassCard
 import com.ansu.anime.ui.components.LocalNavBarBackdropBlur
 import com.ansu.anime.ui.components.LocalNavBarFrostiness
 import com.ansu.anime.ui.components.LocalNavBarRoundness
-import com.ansu.anime.ui.components.PillMotion
 import com.ansu.anime.ui.components.backdropBlurSupported
 import com.ansu.anime.ui.components.frostedBackdrop
 import com.ansu.anime.ui.components.navBarShape
 import com.ansu.anime.ui.components.navBarTintAlpha
 import com.ansu.anime.ui.theme.AnsuColors
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.launch
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 enum class ExtensionsTab(val label: String) { Available("Available"), Installed("Installed") }
@@ -72,14 +61,11 @@ private val TabSlotHeight = 44.dp
 /** Height of the whole floating row (bar and circle share it). */
 val ExtensionsBarHeight = TabSlotHeight + 10.dp
 
-/** How far (at most) the bar leans toward the pill while it is held and dragged. */
-private val TabBarDragShift = 8.dp
-
 /**
  * The floating Available / Installed bar. It is the Home nav bar's twin: the same frosted glass (following
- * the Appearance roundness / frostiness / blur settings), the same two-edge spring pill that stretches toward
- * the tab it is going to, the same swell when held and the same drag-to-pick. Only the slots are wider and
- * carry words instead of icons.
+ * the Appearance roundness / frostiness / blur settings) and wider slots that carry words instead of icons.
+ * The pill moves like the Schedule / News switch: one spring that overshoots a touch, stretching a little as it
+ * travels, with a swell while a finger is held on it. Tabs switch by tapping.
  */
 @Composable
 fun ExtensionsTabBar(
@@ -95,36 +81,30 @@ fun ExtensionsTabBar(
     val tabs = ExtensionsTab.entries
     val density = LocalDensity.current
     val slotPx = with(density) { TabSlotWidth.toPx() }
-    val maxLeft = slotPx * (tabs.size - 1)
     val targetIndex = tab.ordinal
-    val scope = rememberCoroutineScope()
 
-    val pill = remember { PillMotion(targetIndex * slotPx, slotPx) }
-    var held by remember { mutableStateOf(false) }
-    var dragLeft by remember { mutableStateOf<Float?>(null) }
+    val sources = remember { tabs.map { MutableInteractionSource() } }
+    val held = sources.any { it.collectIsPressedAsState().value }
     val holdAmount = animateFloatAsState(
         targetValue = if (held) 1f else 0f,
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
         label = "extTabHold",
     )
-    val activeIndex = dragLeft?.let { ((it + slotPx / 2f) / slotPx).toInt().coerceIn(0, tabs.size - 1) } ?: targetIndex
+    // Same motion as the Schedule / News switch: one spring that overshoots a touch.
+    val position = animateFloatAsState(
+        targetValue = targetIndex.toFloat(),
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
+        label = "extTabPosition",
+    )
+    val activeIndex = targetIndex
 
-    LaunchedEffect(targetIndex) {
-        if (abs(pill.left - targetIndex * slotPx) > 0.5f) pill.animateTo(targetIndex * slotPx)
-    }
-
-    val shiftPx = with(density) { TabBarDragShift.toPx() }
     val blurActive = backdropBlur && backdropBlurSupported
     val tintAlpha = navBarTintAlpha(frostiness) * (if (blurActive) 0.6f else 1f)
 
     Box(
         modifier = modifier.graphicsLayer {
-            val left = dragLeft ?: pill.left
-            val right = if (dragLeft != null) left + slotPx else pill.right
-            val lean = (((left + right) / 2f - slotPx / 2f) / maxLeft - 0.5f) * 2f
             val hold = holdAmount.value
-            translationX = lean * shiftPx * hold
-            scaleX = 1f + 0.03f * hold
+            scaleX = 1f + 0.04f * hold
             scaleY = 1f + 0.06f * hold
         },
     ) {
@@ -135,57 +115,21 @@ fun ExtensionsTabBar(
         ) {
             Spacer(Modifier.size(width = TabSlotWidth * tabs.size + 10.dp, height = ExtensionsBarHeight))
         }
-        Box(
-            modifier = Modifier
-                .padding(5.dp)
-                .pointerInput(tab) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown()
-                        held = true
-                        var moved = false
-                        var lastX = down.position.x
-                        while (true) {
-                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
-                            lastX = change.position.x
-                            if (!change.pressed) break
-                            if (!moved && abs(lastX - down.position.x) > viewConfiguration.touchSlop) moved = true
-                            if (moved) {
-                                dragLeft = (lastX - slotPx / 2).coerceIn(0f, maxLeft)
-                                change.consume()
-                            }
-                        }
-                        held = false
-                        val index = (lastX / slotPx).toInt().coerceIn(0, tabs.size - 1)
-                        val from = dragLeft
-                        val picked = tabs[index]
-                        scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                            if (from != null) pill.snapTo(from)
-                            dragLeft = null
-                            // A tab change is animated once, by the targetIndex effect above.
-                            if (picked == tab) pill.animateTo(index * slotPx)
-                        }
-                        if (picked != tab) onTabSelected(picked)
-                    }
-                },
-        ) {
+        Box(modifier = Modifier.padding(5.dp)) {
             Box(
                 modifier = Modifier
-                    .offset {
-                        val left = dragLeft ?: pill.left
-                        IntOffset(left.roundToInt(), 0)
-                    }
+                    .offset { IntOffset((position.value * slotPx).roundToInt(), 0) }
                     .size(width = TabSlotWidth, height = TabSlotHeight)
                     .drawBehind {
-                        val left = dragLeft ?: pill.left
-                        val right = if (dragLeft != null) left + slotPx else pill.right
-                        val stretch = ((right - left) / slotPx - 1f).coerceIn(0f, 1.2f)
+                        val p = position.value
+                        val travel = (4f * p * (1f - p)).coerceIn(0f, 1f)
                         val h = holdAmount.value
-                        val extraW = 22.dp.toPx() * h
-                        val extraH = 22.dp.toPx() * h + 12.dp.toPx() * (stretch / 1.2f)
-                        val w = (right - left) + extraW
+                        val extraW = 14.dp.toPx() * travel + 22.dp.toPx() * h
+                        val extraH = 22.dp.toPx() * h + 6.dp.toPx() * travel
+                        val w = size.width + extraW
                         val ht = size.height + extraH
                         val topLeft = Offset(-extraW / 2f, -extraH / 2f)
-                        val glow = (h + stretch).coerceAtMost(1.2f)
+                        val glow = (h + travel).coerceAtMost(1.2f)
                         val radius = CornerRadius(minOf(w, ht) * roundness.coerceIn(0f, 1f) / 2f)
                         drawRoundRect(
                             brush = Brush.verticalGradient(
@@ -216,7 +160,9 @@ fun ExtensionsTabBar(
             Row {
                 tabs.forEachIndexed { index, item ->
                     Box(
-                        modifier = Modifier.size(width = TabSlotWidth, height = TabSlotHeight),
+                        modifier = Modifier
+                            .size(width = TabSlotWidth, height = TabSlotHeight)
+                            .clickable(interactionSource = sources[index], indication = null) { onTabSelected(item) },
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(

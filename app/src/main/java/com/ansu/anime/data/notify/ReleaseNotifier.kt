@@ -13,6 +13,7 @@ import com.ansu.anime.MainActivity
 import com.ansu.anime.R
 import com.ansu.anime.core.diagnostics.Diagnostics
 import com.ansu.anime.core.diagnostics.LogCategory
+import com.ansu.anime.core.util.NotificationIcons
 import com.ansu.anime.data.update.UpdateNotifier
 
 /**
@@ -68,6 +69,7 @@ class ReleaseNotifier(
             ensureChannel()
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification)
+                .setLargeIcon(NotificationIcons.largeIcon(context))
                 .setContentTitle(title)
                 .setContentText(text)
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)

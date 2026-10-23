@@ -322,6 +322,10 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
                             navController.navigate(Dest.SOURCES)
                         }
                     },
+                    onEpisodePlayWith = { episode, auto ->
+                        container.selectionHolder.selectEpisode(episode)
+                        navController.navigate(if (auto) Dest.PLAYER else Dest.SOURCES)
+                    },
                 )
             }
         }

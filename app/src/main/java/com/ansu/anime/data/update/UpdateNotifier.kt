@@ -16,6 +16,7 @@ import com.ansu.anime.MainActivity
 import com.ansu.anime.R
 import com.ansu.anime.core.diagnostics.Diagnostics
 import com.ansu.anime.core.diagnostics.LogCategory
+import com.ansu.anime.core.util.NotificationIcons
 
 /**
  * Posts the **real** system-level Android notification that tells the user a new Ansu build is ready:
@@ -101,6 +102,7 @@ class UpdateNotifier(
             ensureChannel()
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification)
+                .setLargeIcon(NotificationIcons.largeIcon(context))
                 .setContentTitle(title)
                 .setContentText(text)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))

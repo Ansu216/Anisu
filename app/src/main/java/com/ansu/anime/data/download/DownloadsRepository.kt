@@ -338,6 +338,8 @@ class DownloadsRepository(
         siblings: List<PlayableSource> = emptyList(),
         /** Picture quality for this download only (360..1080, or [PlayerPrefs.QUALITY_ANY]); null follows the setting. */
         quality: Int? = null,
+        /** [PlayerPrefs.LANGUAGE_SUB] or [PlayerPrefs.LANGUAGE_DUB] for this download only; null follows the Preferred language setting. */
+        language: String? = null,
     ) {
         val anilistId = anime.anilistId ?: anime.id.toIntOrNull() ?: return
         val id = downloadKey(anilistId, episode.episodeNumber)
@@ -346,7 +348,7 @@ class DownloadsRepository(
         if (existing != null) remove(id)
 
         // What a retry needs to ask the source for a fresh link later (kept while the app is open).
-        retryContexts[id] = RetryContext(anime, episode, chosen, siblings, quality)
+        retryContexts[id] = RetryContext(anime, episode, chosen, siblings, quality, language)
         autoAttempts.remove(id)
 
         val stub = DownloadEntry(
@@ -369,7 +371,7 @@ class DownloadsRepository(
                 // Several episodes queued at once (Download next N) look their streams up two at a time, not all together.
                 val prepared = withContext(Dispatchers.IO) {
                     prepareGate.withPermit {
-                        prepare(stub, anime, episode, chosen, siblings, quality) { text ->
+                        prepare(stub, anime, episode, chosen, siblings, quality, language) { text ->
                             setPreparing(stub.id, DownloadStatus(DownloadPhase.Preparing, message = text))
                             DownloadNotifications.preparing(appContext, stub, text)
                         }
@@ -397,8 +399,8 @@ class DownloadsRepository(
     }
 
     /** Queues [episodes] of [anime] one after the other (the "Download next N" button). Episodes already saved are skipped. */
-    fun enqueueMany(anime: SAnime, episodes: List<SEpisode>, quality: Int? = null) {
-        episodes.forEach { enqueue(anime, it, null, emptyList(), quality) }
+    fun enqueueMany(anime: SAnime, episodes: List<SEpisode>, quality: Int? = null, language: String? = null) {
+        episodes.forEach { enqueue(anime, it, null, emptyList(), quality, language) }
     }
 
     // ---- the waiting queue ---------------------------------------------------------------------------------
@@ -533,6 +535,7 @@ class DownloadsRepository(
         val chosen: PlayableSource?,
         val siblings: List<PlayableSource>,
         val quality: Int?,
+        val language: String? = null,
     )
 
     private val retryContexts = ConcurrentHashMap<String, RetryContext>()
@@ -593,7 +596,7 @@ class DownloadsRepository(
             try {
                 val prepared = withContext(Dispatchers.IO) {
                     prepareGate.withPermit {
-                        prepare(entry, context.anime, context.episode, context.chosen, context.siblings, context.quality) { text ->
+                        prepare(entry, context.anime, context.episode, context.chosen, context.siblings, context.quality, context.language) { text ->
                             setPreparing(id, DownloadStatus(DownloadPhase.Preparing, message = text))
                         }
                     }
@@ -667,6 +670,13 @@ class DownloadsRepository(
         download.request.toMediaItem().buildUpon().setSubtitleConfigurations(subtitles).build()
     }
 
+    /**
+     * What plays a download: the saved video comes through the cache, while the saved subtitle files (local
+     * `file:` addresses) are read straight from disk instead of being pushed through the cache layer as well.
+     */
+    val offlineDataSourceFactory: DataSource.Factory =
+        androidx.media3.datasource.DefaultDataSource.Factory(appContext, dataSourceFactory)
+
     fun entryFor(id: String): DownloadEntry? = entries.value.firstOrNull { it.id == id }
 
     // ---- preparing a download ------------------------------------------------------------------------------
@@ -692,10 +702,11 @@ class DownloadsRepository(
         chosen: PlayableSource?,
         siblings: List<PlayableSource>,
         qualityChoice: Int?,
+        languageChoice: String?,
         onStage: (String) -> Unit,
     ): Pair<DownloadEntry, DownloadRequest> {
         val quality = qualityFor(qualityChoice)
-        val found = (if (chosen != null) resolveChosen(chosen) else findBestVideo(anime, episode, quality)) ?: throw IOException(if (chosen != null) "The stream you picked did not respond. Try another source." else "No playable source found for this episode")
+        val found = (if (chosen != null) resolveChosen(chosen) else findBestVideo(anime, episode, quality, languageChoice ?: playerPrefs.preferredLanguage.value)) ?: throw IOException(if (chosen != null) "The stream you picked did not respond. Try another source." else "No playable source found for this episode")
         val label = found.label
         val sourceId = found.sourceId
         val pool = if (chosen != null) siblings else found.pool
@@ -835,7 +846,7 @@ class DownloadsRepository(
     }
 
     /** Asks every source that has the episode and picks the stream the player would start with. */
-    private suspend fun findBestVideo(anime: SAnime, episode: SEpisode, quality: Int): Found? {
+    private suspend fun findBestVideo(anime: SAnime, episode: SEpisode, quality: Int, language: String): Found? {
         val origin = anime.origin as? MediaOrigin.Extension ?: return null
         // An episode that came without its alternates (Continue Watching) is matched in every source first.
         val enriched = if (episode.alternates.isEmpty() && episode.id.isNotBlank()) {
@@ -874,7 +885,7 @@ class DownloadsRepository(
         var attempts = 0
         while (pool.isNotEmpty() && attempts < MAX_RESOLVE_ATTEMPTS) {
             attempts++
-            val chosen = pickStart(pool, null, quality, playerPrefs.preferredLanguage.value) ?: pool.first()
+            val chosen = pickStart(pool, null, quality, language) ?: pool.first()
             pool.remove(chosen)
             val ready: PlayableSource? = chosen.resolve?.let { pending ->
                 try {

@@ -14,6 +14,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.ansu.anime.MainActivity
 import com.ansu.anime.R
+import com.ansu.anime.core.util.NotificationIcons
 
 /**
  * Every notification an episode download shows: the running one (episode name, percent, size, a real progress
@@ -113,6 +114,7 @@ object DownloadNotifications {
 
         val builder = NotificationCompat.Builder(context, CHANNEL_RUNNING)
             .setSmallIcon(R.drawable.ic_notification)
+            .setLargeIcon(NotificationIcons.largeIcon(context))
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
@@ -148,6 +150,7 @@ object DownloadNotifications {
         ensureChannels(context)
         val builder = NotificationCompat.Builder(context, CHANNEL_RUNNING)
             .setSmallIcon(R.drawable.ic_notification)
+            .setLargeIcon(NotificationIcons.largeIcon(context))
             .setContentTitle(episodeText(entry))
             .setContentText(text)
             .setContentIntent(openApp(context))
@@ -175,6 +178,7 @@ object DownloadNotifications {
         ensureChannels(context)
         val notification = NotificationCompat.Builder(context, CHANNEL_RESULT)
             .setSmallIcon(R.drawable.ic_notification)
+            .setLargeIcon(NotificationIcons.largeIcon(context))
             .setContentTitle(episodeText(entry))
             .setContentText(text)
             .setContentIntent(openApp(context))
