@@ -1139,6 +1139,7 @@ private fun DownloadNextRow(onClick: () -> Unit) {
 }
 
 /** What a long press on an episode offers: download it, or play it the other way (auto <-> the source picker). */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun EpisodeActionsSheet(
     episode: SEpisode,
