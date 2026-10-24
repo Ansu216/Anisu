@@ -59,6 +59,8 @@ object Dest {
     const val LICENSES = "licenses"
     const val UPDATES = "updates"
     const val CONTRIBUTORS = "contributors"
+    const val CHANGELOG = "changelog"
+    const val LICENSE = "license"
     const val SYSTEM = "system"
     const val BACKUP = "backup"
     const val MY_SPACE = "my_space"
@@ -270,6 +272,20 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         }
         composable(Dest.CONTRIBUTORS) {
             ContributorsScreen(container = container, navController = navController)
+        }
+        composable(Dest.CHANGELOG) {
+            com.ansu.anime.ui.docs.ProjectDocScreen(
+                doc = com.ansu.anime.data.docs.ProjectDoc.CHANGELOG,
+                container = container,
+                navController = navController,
+            )
+        }
+        composable(Dest.LICENSE) {
+            com.ansu.anime.ui.docs.ProjectDocScreen(
+                doc = com.ansu.anime.data.docs.ProjectDoc.LICENSE,
+                container = container,
+                navController = navController,
+            )
         }
         composable(Dest.SYSTEM) {
             SystemScreen(container = container, navController = navController)

@@ -30,6 +30,7 @@ class UpdateManager(
     context: Context,
     client: OkHttpClient,
     private val diagnostics: Diagnostics? = null,
+    private val nightlyDownloads: NightlyDownloads? = null,
 ) {
     private val appContext: Context = context.applicationContext
     val prefs: UpdatePrefs = UpdatePrefs(context)
@@ -142,6 +143,11 @@ class UpdateManager(
             }
             val apkFile = downloaded.getOrNull()
             if (apkFile != null) {
+                // About's nightly counter. A nightly has no GitHub download count to read, so the app
+                // counts its own downloads; it runs beside the install, never in front of it.
+                if (update.channel == UpdateChannel.NIGHTLY) {
+                    scope.launch { nightlyDownloads?.recordDownload() }
+                }
                 installer.install(apkFile)
             } else {
                 diagnostics?.log(LogCategory.UPDATE, "Download failed: ${downloaded.exceptionOrNull()?.message}")

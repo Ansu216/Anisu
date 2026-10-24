@@ -5,6 +5,9 @@ package com.ansu.anime.ui.about
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -24,12 +27,15 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Numbers
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,7 +45,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,9 +65,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
+import java.text.NumberFormat
 import com.ansu.anime.BuildConfig
 import com.ansu.anime.R
 import com.ansu.anime.core.diagnostics.LogCategory
+import com.ansu.anime.data.update.RepoStats
 import com.ansu.anime.data.update.UpdateCheckResult
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.FrostedGlassCard
@@ -88,7 +100,29 @@ private const val DEVELOPER_URL = "https://github.com/$DEVELOPER_HANDLE"
 fun AboutScreen(container: AppContainer, navController: NavHostController) {
     val state by container.updateManager.state.collectAsStateWithLifecycle()
     val updateAvailable = state.result is UpdateCheckResult.Available
+    // The counter describes the nightly builds, so only a nightly APK shows it. Which build this is
+    // comes from the channel line of version.txt, which Gradle bakes into BuildConfig: the channel
+    // picked in Settings says what the app looks for, it does not turn a stable APK into a nightly.
+    val onNightly = BuildConfig.RELEASE_CHANNEL == "nightly"
     val context = LocalContext.current
+    var stats by remember { mutableStateOf<RepoStats?>(null) }
+    var statsLoading by remember { mutableStateOf(true) }
+    var nightlyDownloads by remember { mutableStateOf<Long?>(null) }
+    var nightlyLoading by remember { mutableStateOf(false) }
+
+    // Asked once when About opens; GitHubStats keeps the answer for the rest of the app run.
+    LaunchedEffect(Unit) {
+        stats = container.gitHubStats.load()
+        statsLoading = false
+    }
+
+    // A stable build never asks the counter: no row, no request.
+    LaunchedEffect(Unit) {
+        if (!onNightly) return@LaunchedEffect
+        nightlyLoading = true
+        nightlyDownloads = container.nightlyDownloads.total()
+        nightlyLoading = false
+    }
 
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
@@ -153,6 +187,24 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                         navController.navigate(Dest.CONTRIBUTORS)
                     },
                 )
+                GlassRow(
+                    icon = Icons.Filled.History,
+                    title = "Changelog",
+                    description = "Every release, read from the repository",
+                    onClick = {
+                        container.diagnostics.log(LogCategory.CLICK, "About → Changelog opened")
+                        navController.navigate(Dest.CHANGELOG)
+                    },
+                )
+                GlassRow(
+                    icon = Icons.Filled.Gavel,
+                    title = "License",
+                    description = "GNU General Public License v3",
+                    onClick = {
+                        container.diagnostics.log(LogCategory.CLICK, "About → License opened")
+                        navController.navigate(Dest.LICENSE)
+                    },
+                )
             }
 
             GlassGroupLabel("The developer")
@@ -167,6 +219,43 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                         openUrl(context, DEVELOPER_URL)
                     },
                 )
+            }
+
+            GlassGroupLabel("The project")
+            GlassGroup {
+                GlassRow(
+                    icon = Icons.Filled.Star,
+                    title = "GitHub Stars",
+                    description = "How many people starred the repository",
+                    showDivider = false,
+                    trailing = { CounterValue(stats?.stars, statsLoading) },
+                    onClick = {
+                        container.diagnostics.log(LogCategory.CLICK, "About → repository stars opened")
+                        openUrl(context, REPO_URL)
+                    },
+                )
+                GlassRow(
+                    icon = Icons.Filled.Download,
+                    title = "Downloads",
+                    description = "APK downloads from every release",
+                    trailing = { CounterValue(stats?.downloads, statsLoading) },
+                    onClick = {
+                        container.diagnostics.log(LogCategory.CLICK, "About → downloads opened")
+                        openUrl(context, "$REPO_URL/releases")
+                    },
+                )
+                if (onNightly) {
+                    GlassRow(
+                        icon = Icons.Filled.Download,
+                        title = "Nightly Downloads",
+                        description = "Nightly builds downloaded through the app",
+                        trailing = { CounterValue(nightlyDownloads, nightlyLoading) },
+                        onClick = {
+                            container.diagnostics.log(LogCategory.CLICK, "About → nightly builds opened")
+                            openUrl(context, "$REPO_URL/tree/apk-nightly")
+                        },
+                    )
+                }
             }
 
             GlassGroupLabel("Links")
@@ -203,10 +292,10 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                     },
                 )
                 GlassRow(
-                    icon = Icons.Filled.Forum,
                     title = "Telegram",
                     description = TELEGRAM_URL.removePrefix("https://"),
                     showDivider = false,
+                    leading = { TelegramLogo() },
                     trailing = { LinkChevron() },
                     onClick = {
                         container.diagnostics.log(LogCategory.CLICK, "About → Telegram opened")
@@ -314,6 +403,38 @@ private fun DeveloperAvatar() {
             modifier = Modifier.fillMaxSize(),
         )
     }
+}
+
+/**
+ * One of the counters on the project rows — stars, release downloads, nightly downloads. The number
+ * counts up once it arrives, shows `…` while it is on its way and `—` when the source could not be
+ * asked, so a failed lookup never reads as a real zero.
+ */
+@Composable
+private fun CounterValue(value: Long?, loading: Boolean) {
+    // Created before the number exists, so the counter starts at zero and rolls up to the answer
+    // instead of appearing already finished.
+    val animated by animateIntAsState(
+        targetValue = (value ?: 0L).toInt(),
+        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+        label = "projectCounter",
+    )
+    if (value == null) {
+        GlassRowValue(if (loading) "…" else "—")
+        return
+    }
+    val formatter = remember { NumberFormat.getInstance() }
+    GlassRowValue(formatter.format(animated), color = AnsuColors.Accent, bold = true)
+}
+
+/** Telegram's own logo in the row, so the community link is recognised at a glance. */
+@Composable
+private fun TelegramLogo() {
+    Image(
+        painter = painterResource(R.drawable.ic_telegram),
+        contentDescription = null,
+        modifier = Modifier.size(40.dp),
+    )
 }
 
 /** The mark that says a row leaves the app. */

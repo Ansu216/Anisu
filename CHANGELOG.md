@@ -8,20 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## How this file is used
 
 - Every change updates the `## [Unreleased]` section **in the same commit** as
-
-### Added
-- **Sakura accent colour**, a soft cherry-blossom pink. Text on light accents is now dark so it stays readable.
-- **Three new background animations:** Cherry blossom (drifting petals), Snowfall, and Halloween (pumpkins, bats and ghosts). The animation picker scrolls to fit them.
-- **Background animation** (Appearance > Background > Background Animation): None, Circles, Triangles or Material shapes drift slowly behind the screens. They are drawn behind everything, so posters, cards and sheets stay fully opaque and the shapes only show in the empty space. Off by default; the loop pauses when the app is in the background.
-- **Autoplay switch in the player.** A YouTube-style pill in the player's top bar (landscape and portrait); when on, the next episode starts when one ends. Hide Next And Previous in Settings > Player and streaming removes those two buttons from the controls, and the play and seek buttons spread out to fill the gap.
-
-### Changed
-- **Clearer disclaimer and credits.** The README and the License screen now say plainly that Anisu is free and non-commercial, hosts no video and ships no sources, credit Aniyomi and Tachiyomi (Apache 2.0) and AniList, and the add-repository box tells people Anisu provides no repos.
-- Autoplay is controlled only from the player, not from Settings.
-
-### Removed
-- Haptic feedback: the vibration on taps, switches and holds, its Settings switch and the VIBRATE permission.
-- YouTube from the License and attribution screen.
   the code. See `CLAUDE.md` §7 for the full rules.
 - At release time the entries move under a new `## [<version>] - <YYYY-MM-DD>`
   heading, where `<version>` is the pushed tag **without** its `v` prefix
@@ -36,23 +22,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-24
+
 ### Added
 - **A one-time welcome card on first launch.** After the start-up animation, a frosted card in the style of the error card greets the person with the logo on a slowly rotating Material shape, a short welcome message a "Join us on Telegram" button and a sign-off from the Anisu Team, while the app behind it is blurred. It closes with its button and is never shown again.
 - **A "Movies" section on a movie's page, under Comments.** Movies used to show only the "Play movie" button. Now a "Movies" header sits under Comments with a row laid out like an episode, minus the episode badge: the thumbnail, the movie's name, its release date and a short description. A tap plays the movie, and holding it opens the same menu as an episode (download, or play with the source picker / on auto). The release date comes from AniList's full start date, so the details request now asks for the month and day too.
 - **Deleting a download now asks first.** Tapping the bin on the Downloads screen opens a small confirmation card with Cancel and Delete, so a stray tap no longer removes an episode.
+- **Downloads and stars counters in About.** A new "The project" group shows how many times Anisu's APKs have been downloaded — every asset of every published release, summed — and how many stars the repository has, both read live from the public GitHub API the updater already uses. Each row opens the page it counts. The numbers count up when they arrive, `…` marks the wait and `—` a lookup that failed, so GitHub being unreachable never reads as an empty project. **Constraint:** asked once per app run, both because the answer does not change while the app is open and to stay well inside GitHub's unauthenticated rate limit.
+- **Nightly download counter, shown only on the nightly channel.** GitHub counts downloads only for release assets, and nightly APKs live on the `apk-nightly` branch, where the API exposes no counter at all — so the number did not exist. Anisu now counts its own: every nightly update the app downloads adds one to a free public counter, and About reads the total back into a "Nightly Downloads" row under Downloads. It is anonymous — no id, no device, no session, just one number — and best-effort in both directions: a counter that cannot be reached shows `—` instead of failing the screen, and a download that cannot be recorded still installs. The row exists only in a nightly APK, because which build you are running comes from the channel line of `version.txt`, baked into the APK when it is built: switching to the nightly channel inside a stable install changes what the app looks for, it does not make that install a nightly. **Constraint:** it counts the nightly downloads made through the app, which is the path the nightly channel exists for; an APK fetched by hand from the branch cannot be counted.
+- **The changelog and the licence are readable inside the app.** Two new rows in About open the project's own `CHANGELOG.md` and `LICENSE`, read live from the repository exactly the way the Contributors screen reads its list, with the copy from the last launch served when there is no connection and a refresh button for a forced re-read. The changelog is drawn with the few Markdown rules the file uses (headings, bullets, bold) instead of pulling in a Markdown engine, a bullet written over several lines is joined back into one bullet rather than leaving its second half as a paragraph of its own, and the licence, which is wrapped at 70-odd columns in the file, is joined back into paragraphs so the screen does the wrapping instead of drawing one short line per block. **Constraint:** no bundled copy — the text is always the one the repository publishes, so a note edited on GitHub shows up without a new APK.
+- **Design credits** on the License and attribution screen: Nuvio for the animations and navigation bar, CornCastle for the details and schedule screens. Both cards link to their source, and the README credits them too.
+
+### Changed
+- **About links to Telegram instead of Discord.** The row now opens https://t.me/anisu_anime_app, with Telegram's own logo on it instead of a generic chat-bubble icon.
+- **`CLAUDE.md` records the AniList query split.** The details query is the heavy one (characters, staff, relations, recommendations) and stays on the details page only; episodes, the player and the source search keep their own lighter requests. The rule is written down so a later change does not move episode fields into the details query and put the heavy answer back on the path to streaming.
+- **Clearer disclaimer and credits.** The README and the License screen now say plainly that Anisu is free and non-commercial, hosts no video and ships no sources, credit Aniyomi and Tachiyomi (Apache 2.0) and AniList, and the add-repository box tells people Anisu provides no repos.
 
 ### Fixed
 - **Search finds shows even when the title is misspelled.** The typo tolerance only ranked titles the app had already shown, so a mistyped title ("narto", "shingeki no kyojn") that AniList could not match returned nothing. When the first page has no close title, the search now retries with two shortened forms of what was typed, ranks everything it finds by how close it is to what was typed, and shows the close ones first.
 - **The app logo now looks the same with a custom Android colour palette.** The launcher icon declared a monochrome layer, so with themed icons switched on Android drew only a tinted letter A instead of the logo. The layer is removed from both launcher icons, so the real logo shows in every palette. **Constraint:** the icon is no longer tinted by the system theme.
-
-### Changed
-- **About links to Telegram instead of Discord.** The row now opens https://t.me/anisu_anime_app.
-
-### Added
-- **Design credits** on the License and attribution screen: Nuvio for the animations and navigation bar, CornCastle for the details and schedule screens. Both cards link to their source, and the README credits them too.
-
-### Changed
-- **`CLAUDE.md` records the AniList query split.** The details query is the heavy one (characters, staff, relations, recommendations) and stays on the details page only; episodes, the player and the source search keep their own lighter requests. The rule is written down so a later change does not move episode fields into the details query and put the heavy answer back on the path to streaming.
 
 ## [0.5.5] - 2026-10-22
 
@@ -186,6 +174,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   see-through one, so text behind never overlaps. The sheet's hairline edge was a full `border`, which also stroked
   the straight sides and bottom of the sheet; it is now drawn along the top edge and corners only.
   **Constraint:** real blur still needs Android 12+ and the phone's window blur enabled.
+
+## [0.5.2] - 2026-10-20
+
+### Added
+- **Sakura accent colour**, a soft cherry-blossom pink. Text on light accents is now dark so it stays readable.
+- **Three new background animations:** Cherry blossom (drifting petals), Snowfall, and Halloween (pumpkins, bats and ghosts). The animation picker scrolls to fit them.
+
+## [0.5.1] - 2026-10-20
+
+### Added
+- **Background animation** (Appearance > Background > Background Animation): None, Circles, Triangles or Material shapes drift slowly behind the screens. They are drawn behind everything, so posters, cards and sheets stay fully opaque and the shapes only show in the empty space. Off by default; the loop pauses when the app is in the background.
+- **Autoplay switch in the player.** A YouTube-style pill in the player's top bar (landscape and portrait); when on, the next episode starts when one ends. Hide Next And Previous in Settings > Player and streaming removes those two buttons from the controls, and the play and seek buttons spread out to fill the gap.
+
+### Changed
+- Autoplay is controlled only from the player, not from Settings.
+
+### Removed
+- Haptic feedback: the vibration on taps, switches and holds, its Settings switch and the VIBRATE permission.
+- YouTube from the License and attribution screen.
 
 ## [0.4.5] - 2026-10-18
 

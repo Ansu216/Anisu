@@ -123,7 +123,19 @@ class AppContainer(context: Context) {
 
     val contributorsRepository: ContributorsRepository = ContributorsRepository(appContext, okHttpClient, apiErrorHandler)
 
-    val updateManager: UpdateManager = UpdateManager(appContext, okHttpClient, diagnostics)
+    /** The changelog and the licence, read live from the repository the way the contributors are. */
+    val projectDocs: com.ansu.anime.data.docs.ProjectDocsRepository =
+        com.ansu.anime.data.docs.ProjectDocsRepository(appContext, okHttpClient, apiErrorHandler)
+
+    /** The counter behind About's nightly row: GitHub has no download count for a branch. */
+    val nightlyDownloads: com.ansu.anime.data.update.NightlyDownloads =
+        com.ansu.anime.data.update.NightlyDownloads(okHttpClient)
+
+    /** The downloads and stars counters About shows; read once per app run from the public GitHub API. */
+    val gitHubStats: com.ansu.anime.data.update.GitHubStats =
+        com.ansu.anime.data.update.GitHubStats(okHttpClient)
+
+    val updateManager: UpdateManager = UpdateManager(appContext, okHttpClient, diagnostics, nightlyDownloads)
 
     /** What the user asked to be notified about (followed shows, Watching-list episodes) and the master switch. */
     val notificationPrefs: com.ansu.anime.data.notify.NotificationPrefs = com.ansu.anime.data.notify.NotificationPrefs(appContext)

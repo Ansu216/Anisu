@@ -245,6 +245,19 @@ means the manifest and the package name have drifted — that is an instant
   those APIs needs that line or it will not compile. Do not add a
   `-opt-in=` compiler flag in Gradle instead.
 
+### AniList queries — episodes have their own request
+
+The details query (`AniListApi.getMediaDetails`) is the **heavy** one: it carries
+characters, staff, relations and recommendations, and only the details page may
+pay for it. Episodes never come from it. An episode list, the player and the
+source search use their own lighter requests — `getMediaCore` /
+`getStreamingEpisodes` for the show's titles and its streaming episodes,
+`getAiringInfo` for status and episode counts, and `EpisodeMetadataRepository`
+for per-episode metadata — each with its own cache lifetime. When something needs
+an episode count or episode data, ask one of those: do not move episode fields
+into the details query to save a request, because that puts the heavy answer back
+on the path to streaming.
+
 ### Known traps — these have broken the build before
 
 - **Never leave two files declaring the same top-level symbol.** A duplicated
