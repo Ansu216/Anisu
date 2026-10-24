@@ -56,7 +56,8 @@ private data class Credit(
     val badgeColor: Long,
     val usedFor: String,
     val attribution: String,
-    val url: String,
+    /** Link opened on tap; null when the card has no link yet. */
+    val url: String?,
 )
 
 private val dataCredits = listOf(
@@ -65,7 +66,7 @@ private val dataCredits = listOf(
         domain = "anilist.co",
         badge = "A", badgeColor = 0xFF02A9FF,
         usedFor = "Sign-in, your lists and favourites, discovery, titles, scores, schedules, comments and discussions.",
-        attribution = "Anime data and images belong to AniList and their respective owners. Used through the AniList GraphQL API under its terms of use.",
+        attribution = "Anime metadata and images are provided by AniList and belong to AniList and their respective owners. Used through the AniList GraphQL API under its terms of use; Anisu is free and non-commercial.",
         url = "https://anilist.co",
     ),
     Credit(
@@ -118,13 +119,32 @@ private val dataCredits = listOf(
     ),
 )
 
+private val designCredits = listOf(
+    Credit(
+        name = "Nuvio",
+        domain = "github.com",
+        badge = "N", badgeColor = 0xFF6D4AFF,
+        usedFor = "Inspiration for Anisu's animations and its navigation bar.",
+        attribution = "Design credit to the Nuvio project and its authors. Anisu is not affiliated with Nuvio.",
+        url = "https://share.google/q1lx2TTjlIleRqFr1",
+    ),
+    Credit(
+        name = "CornCastle",
+        domain = "github.com",
+        badge = "C", badgeColor = 0xFFE0A526,
+        usedFor = "Inspiration for the details page and the schedule screen.",
+        attribution = "Design credit to the CornCastle project and its authors. Anisu is not affiliated with CornCastle.",
+        url = "https://github.com/mjlanddev/CornCastle-Anime-APP",
+    ),
+)
+
 private val softwareCredits = listOf(
     Credit(
-        name = "Aniyomi",
+        name = "Aniyomi · Tachiyomi",
         domain = "aniyomi.org",
         badge = "AY", badgeColor = 0xFF3F51B5,
-        usedFor = "Anisu's extension system loads Aniyomi-compatible extensions.",
-        attribution = "Aniyomi is open source under the Apache License 2.0. Extensions are made by their own authors, and Anisu does not host any video.",
+        usedFor = "Anisu's extension system re-implements their extension API so Aniyomi-compatible extensions can load.",
+        attribution = "Aniyomi and Tachiyomi are open source under the Apache License 2.0; credit to their authors and contributors, and Anisu's code has been modified. Extensions are made by their own authors, and Anisu does not host, provide or recommend any video or source.",
         url = "https://aniyomi.org",
     ),
     Credit(
@@ -184,12 +204,17 @@ fun LicensesScreen(container: AppContainer, navController: NavHostController) {
             GlassGroupLabel("Data and services")
             dataCredits.forEach { CreditCard(it, context) }
 
+            GlassGroupLabel("Design credits")
+            designCredits.forEach { CreditCard(it, context) }
+
             GlassGroupLabel("Software")
             softwareCredits.forEach { CreditCard(it, context) }
 
             Text(
-                text = "Anisu is an independent project and is not affiliated with, endorsed by or sponsored by any of the services above. " +
-                    "Names, logos and trademarks belong to their respective owners and are used here only to give credit.",
+                text = "Anisu is an independent, free project and is not affiliated with, endorsed by or sponsored by any of the services above. " +
+                    "Names, logos and trademarks belong to their respective owners and are used here only to give credit. " +
+                    "Anisu does not host or distribute any video and includes no sources; content comes from third-party extensions you choose to add, " +
+                    "and you are responsible for following the laws where you live.",
                 style = MaterialTheme.typography.bodySmall,
                 color = AnsuColors.TextTertiary,
                 modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 16.dp, bottom = 32.dp),
@@ -208,7 +233,7 @@ private fun CreditCard(credit: Credit, context: Context) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { openUrl(context, credit.url) }
+                .then(if (credit.url != null) Modifier.clickable { openUrl(context, credit.url) } else Modifier)
                 .padding(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -226,12 +251,14 @@ private fun CreditCard(credit: Credit, context: Context) {
                         fontSize = 12.sp,
                     )
                 }
-                Icon(
-                    Icons.AutoMirrored.Filled.OpenInNew,
-                    contentDescription = "Open ${credit.name}",
-                    tint = AnsuColors.TextTertiary,
-                    modifier = Modifier.size(18.dp),
-                )
+                if (credit.url != null) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.OpenInNew,
+                        contentDescription = "Open ${credit.name}",
+                        tint = AnsuColors.TextTertiary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
             Text(
                 text = credit.usedFor,

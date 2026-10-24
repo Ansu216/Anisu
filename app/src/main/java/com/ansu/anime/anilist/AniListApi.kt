@@ -671,7 +671,7 @@ class AniListApi(
                 status
                 nextAiringEpisode { episode }
                 trailer { id site }
-                startDate { year }
+                startDate { year month day }
                 characters(sort: [ROLE, RELEVANCE], perPage: 10) {
                   edges {
                     role
@@ -1307,6 +1307,8 @@ class AniListApi(
                 it["site"]?.jsonPrimitive?.contentOrNull.equals("youtube", ignoreCase = true)
             }?.get("id")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() },
             durationMinutes = this["duration"]?.jsonPrimitive?.content?.toIntOrNull(),
+            startMonth = this["startDate"]?.jsonObject?.get("month")?.jsonPrimitive?.content?.toIntOrNull(),
+            startDay = this["startDate"]?.jsonObject?.get("day")?.jsonPrimitive?.content?.toIntOrNull(),
         )
     }
 

@@ -106,6 +106,9 @@ class MainActivity : ComponentActivity() {
                 val showUpdateBanner = update != null && update.buildId != dismissedBuild
                 // The start-up animation plays once per launch; turning the phone does not play it again.
                 var showStartup by rememberSaveable { mutableStateOf(true) }
+                // The welcome card shows once, on the first launch, after the start-up animation has finished.
+                var welcomePending by rememberSaveable { mutableStateOf(!container.welcomePrefs.hasSeenWelcome()) }
+                val welcomeVisible = welcomePending && !showStartup
 
                 // The in-app banner is a heads-up: it hides itself after four seconds so it never
                 // stays pinned over the screen. Dismissing it by hand does the same thing earlier.
@@ -161,7 +164,7 @@ class MainActivity : ComponentActivity() {
                     Box(modifier = Modifier.fillMaxSize()) {
                         // The whole app blurs behind the outage card (Android 12+; older versions just dim it).
                         val outageBlur by animateDpAsState(
-                            targetValue = if (outageShowing && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 18.dp else 0.dp,
+                            targetValue = if ((outageShowing || welcomeVisible) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 18.dp else 0.dp,
                             animationSpec = tween(280),
                             label = "outageBlur",
                         )
@@ -220,6 +223,17 @@ class MainActivity : ComponentActivity() {
 
                         // Last, so it sits above everything: the notifications panel covers the whole window.
                         com.ansu.anime.ui.components.NotificationInboxOverlay()
+
+                        // One-time welcome card; the app behind it is blurred above.
+                        com.ansu.anime.ui.components.WelcomeOverlay(
+                            visible = welcomeVisible,
+                            onDismiss = {
+                                container.welcomePrefs.markWelcomeSeen()
+                                welcomePending = false
+                                container.diagnostics.log(LogCategory.CLICK, "Welcome card closed")
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
 
                         // Above everything, the app loads underneath it.
                         if (showStartup) {

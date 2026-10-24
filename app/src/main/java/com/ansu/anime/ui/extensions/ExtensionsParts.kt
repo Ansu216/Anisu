@@ -310,7 +310,7 @@ internal fun AddExtensionCardContent(
             OutlineAction("Add", onClick = onAdd, enabled = url.isNotBlank(), loading = adding, minWidth = 64.dp)
         }
         Text(
-            message ?: "Make sure you trust the repo.",
+            message ?: "Anisu provides no repos. Only add ones you trust and are allowed to use.",
             style = MaterialTheme.typography.bodySmall,
             color = if (failed) AnsuColors.Error else AnsuColors.TextSecondary,
             modifier = Modifier.padding(start = 6.dp, top = 8.dp),

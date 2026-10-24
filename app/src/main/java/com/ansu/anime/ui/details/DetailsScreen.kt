@@ -337,6 +337,34 @@ fun DetailsScreen(
                 item { CommentsEntry(onOpen = { showComments = true }) }
             }
 
+            // A movie has no episode list: its one entry sits under Comments as "Movies", the same way episodes do.
+            if (isMovie) {
+                item { DetailsSectionHeader("Movies") }
+                if (state.isLoading) {
+                    item { CircularProgressIndicator(color = AnsuColors.Accent, modifier = Modifier.padding(20.dp)) }
+                } else {
+                    item(key = "movie-entry") {
+                        val movie = episodes.firstOrNull { it.id !in upcomingIds }
+                        MovieRow(
+                            title = details?.title ?: anime?.title.orEmpty(),
+                            imageUrl = movie?.thumbnailUrl ?: details?.bannerUrl ?: anime?.bannerUrl ?: details?.posterUrl,
+                            releaseDate = movieReleaseLabel(details?.year, details?.startMonth, details?.startDay)
+                                ?: movie?.airDate?.takeIf { it.isNotBlank() },
+                            synopsis = movie?.description?.takeIf { it.isNotBlank() }
+                                ?: (parseSynopsis(details?.description ?: anime?.description).firstOrNull() as? SynopsisBlock.Paragraph)?.text,
+                            playable = movie != null,
+                            onLongClick = { if (movie != null) episodeMenu = movie },
+                            onClick = {
+                                if (movie != null) {
+                                    container.diagnostics.log(LogCategory.CLICK, "Movie selected: ${anime?.title}")
+                                    onEpisodeSelected(movie)
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+
             if (!isMovie) {
                 item { DetailsSectionHeader("Episodes") }
                 if (state.isLoading) {
@@ -530,6 +558,7 @@ fun DetailsScreen(
         val key = anime?.anilistId?.let { com.ansu.anime.data.download.downloadKey(it, episode.episodeNumber) }
         EpisodeActionsSheet(
             episode = episode,
+            titleOverride = if (isMovie) details?.title ?: anime?.title else null,
             usingAuto = usingAuto,
             download = key?.let { downloadStatuses[it] },
             onDownload = { episodeMenu = null; startEpisodeDownload(episode) },
@@ -924,6 +953,76 @@ private fun EpisodeRow(
     }
 }
 
+private val movieMonthNames = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+/** "Oct 3, 2025" when AniList knows the day, "Oct 2025" with only a month, "2025" with only a year, else null. */
+private fun movieReleaseLabel(year: Int?, month: Int?, day: Int?): String? {
+    if (year == null) return null
+    val m = month?.takeIf { it in 1..12 } ?: return year.toString()
+    val d = day?.takeIf { it in 1..31 }
+    return if (d != null) "${movieMonthNames[m - 1]} $d, $year" else "${movieMonthNames[m - 1]} $year"
+}
+
+/**
+ * The movie's entry under the "Movies" header, laid out exactly like an episode row without the episode badge: the
+ * thumbnail on the left, then the movie's name, its release date and a short description. A tap plays the movie; a long
+ * press opens the same menu as an episode (download, play the other way). When the movie cannot be played yet the
+ * row is shown but does nothing.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun MovieRow(
+    title: String,
+    imageUrl: String?,
+    releaseDate: String?,
+    synopsis: String?,
+    playable: Boolean,
+    onLongClick: () -> Unit,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(enabled = playable, onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier.width(120.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(AnsuColors.BackgroundElevated),
+        ) {
+            if (imageUrl != null) {
+                AsyncImage(model = imageUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = AnsuColors.TextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = releaseDate ?: if (playable) "Release date unknown" else "Not available yet",
+                color = AnsuColors.TextTertiary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            if (!synopsis.isNullOrBlank()) {
+                Text(
+                    text = synopsis,
+                    color = AnsuColors.TextTertiary,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
+    }
+}
+
 /** The episode the main button plays and the text on it. */
 private class PlayTarget(val episode: SEpisode, val label: String)
 
@@ -1143,6 +1242,7 @@ private fun DownloadNextRow(onClick: () -> Unit) {
 @Composable
 private fun EpisodeActionsSheet(
     episode: SEpisode,
+    titleOverride: String?,
     usingAuto: Boolean,
     download: com.ansu.anime.data.download.DownloadStatus?,
     onDownload: () -> Unit,
@@ -1159,7 +1259,7 @@ private fun EpisodeActionsSheet(
     com.ansu.anime.ui.components.GlassModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
             Text(
-                text = episode.name.takeIf { it.isNotBlank() && !it.startsWith("Episode") } ?: "Episode ${episode.episodeNumber.toInt()}",
+                text = titleOverride ?: episode.name.takeIf { it.isNotBlank() && !it.startsWith("Episode") } ?: "Episode ${episode.episodeNumber.toInt()}",
                 color = AnsuColors.TextPrimary,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,

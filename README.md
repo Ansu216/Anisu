@@ -9,7 +9,7 @@
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84?logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.1.0-7F52FF?logo=kotlin&logoColor=white)
 ![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white)
-![Version](https://img.shields.io/badge/version-0.5.0-blue)
+![Version](https://img.shields.io/badge/version-0.9.9-blue)
 
 </div>
 
@@ -57,13 +57,13 @@ Download the newest APK from the project's **Releases** page, or a nightly build
 
 ### Add sources
 
-Anisu does not include any streaming sources. To watch anything:
+Anisu does not include, host, provide or recommend any streaming sources or repositories. Extensions are made by independent third parties, and you decide what to add. To use them:
 
 1. Open **Extensions**.
-2. Add an extension repository (its `index.min.json` address).
+2. Add an extension repository: paste the address of its `index.min.json` file from a source you trust and are allowed to use.
 3. Install the extensions you want from **Available**, and use **Test** on an installed one to check that it can find episodes and streams.
 
-You are responsible for the repositories you add and for making sure your use of them is lawful where you live.
+You are responsible for the repositories and extensions you add and for making sure your use of them is lawful where you live. Please do not ask for, post or share links to specific repositories or sources in this project's issues, discussions or community chats.
 
 ---
 
@@ -124,13 +124,16 @@ More detail on the architecture, conventions and pitfalls is in [`CLAUDE.md`](CL
 
 Anisu is built on the work of others. The in-app **License and attribution** screen lists them all; the main ones are:
 
-- [AniList](https://anilist.co) for accounts, lists, titles, schedules, comments and discussions
+- [AniList](https://anilist.co) for accounts, lists, titles, schedules, comments and discussions. Anime metadata and images are provided by AniList through its public GraphQL API and belong to AniList and their respective owners. Anisu is free, has no ads or paid features, and uses the API under AniList's [terms of use](https://docs.anilist.co/guide/terms-of-use)
 - [MyAnimeList](https://myanimelist.net) through [Jikan](https://jikan.moe) for English titles, trailers and ids
 - [TMDB](https://www.themoviedb.org) for posters and artwork (this product uses the TMDB API but is not endorsed or certified by TMDB)
 - [ani.zip](https://ani.zip) for episode titles, thumbnails and logos, and [Kitsu](https://kitsu.app) for id mappings
 - [AniSkip](https://api.aniskip.com) for intro and outro timestamps
 - [Anime News Network](https://www.animenewsnetwork.com) for news headlines
-- [Aniyomi](https://github.com/aniyomiorg/aniyomi) for the extension format Anisu is compatible with
+- [Aniyomi](https://github.com/aniyomiorg/aniyomi) and [Tachiyomi](https://github.com/tachiyomiorg/tachiyomi), whose open-source work (Apache License 2.0) defines the extension format Anisu is compatible with. The `eu/kanade/tachiyomi/` package re-implements that extension API; credit and thanks to their authors and contributors, and to the extension developers who build on it
+- The open-source libraries listed under [Tech stack](#tech-stack) (Jetpack Compose, Media3 / ExoPlayer, OkHttp, Coil, Room, Jsoup and others), each under its own licence
+- [Nuvio](https://share.google/q1lx2TTjlIleRqFr1) for the inspiration behind the animations and the navigation bar
+- [CornCastle](https://github.com/mjlanddev/CornCastle-Anime-APP) for the inspiration behind the details page and the schedule screen
 
 Contributors are listed in the app (Settings > Contributors) and read from [`contributorsansu.json`](contributorsansu.json); open a pull request to add yourself.
 
@@ -151,4 +154,8 @@ When reporting a playback or download problem, attach the app's diagnostics log 
 
 ## Disclaimer
 
-Anisu is a client application. It does not host, store or distribute any video content, and it is not affiliated with AniList, MyAnimeList, TMDB, Aniyomi or any extension or source. Content comes from third-party extensions that you choose to install.
+Anisu is an independent, free and non-commercial client application. It does not host, store, upload or distribute any video content, and it ships with no sources, repositories or links to any. It is not affiliated with, endorsed by or sponsored by AniList, MyAnimeList, TMDB, Kitsu, Aniyomi, Tachiyomi or any extension, repository or content provider.
+
+Anime information and artwork come from the services credited above and belong to them and their respective owners. Names, logos and trademarks are used only to give credit. Any video content is provided by third-party extensions that you choose to install yourself; the developers of Anisu have no control over it and do not endorse it. You are solely responsible for what you add and for following the copyright laws of your country.
+
+If you are a rights holder and believe something in this repository infringes your rights, please open an issue or contact the maintainer and it will be looked at promptly.

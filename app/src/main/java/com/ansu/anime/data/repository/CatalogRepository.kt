@@ -68,8 +68,54 @@ class CatalogRepository(
         page: Int = 1,
     ): SearchPage? {
         val aniListPage = aniList.searchPage(query, filters, page)
-        val items = aniListPage?.media.orEmpty().map { it.toSAnime(sourceId = defaultSource()?.id ?: 1L) }
-        return if (aniListPage == null) null else SearchPage(items, aniListPage.hasNextPage)
+        val sourceId = defaultSource()?.id ?: 1L
+        val items = aniListPage?.media.orEmpty().map { it.toSAnime(sourceId = sourceId) }
+        if (aniListPage == null) return null
+        // AniList matches spelled-out words, so a typo ("narto", "shingeki no kyojn") finds nothing, or only loose
+        // matches. When the first page has no close title, the query is retried in shorter forms and every
+        // candidate is ranked by how close it is to what was typed.
+        if (page == 1 && query.isNotBlank() && items.none { TitleMatcher.scoreAny(query, it.title, it.altTitles) >= FUZZY_GOOD_ENOUGH }) {
+            val fuzzy = fuzzyCandidates(query, filters, sourceId)
+            if (fuzzy.isNotEmpty()) {
+                val ids = fuzzy.map { it.id }.toSet()
+                return SearchPage(fuzzy + items.filterNot { it.id in ids }, aniListPage.hasNextPage)
+            }
+        }
+        return SearchPage(items, aniListPage.hasNextPage)
+    }
+
+    /**
+     * Retries a query that found no close title with two shortened forms: the longest typed word and the whole phrase,
+     * each with its last letters cut (so a wrong last letter or two stops mattering). What comes back is ranked with [TitleMatcher], and
+     * only titles close enough to the typed text are kept, best first.
+     */
+    private suspend fun fuzzyCandidates(query: String, filters: AniListSearchFilters, sourceId: Long): List<SAnime> {
+        val whole = TitleMatcher.normalize(query)
+        val longest = whole.split(' ').filter { it.length >= 3 }.maxByOrNull { it.length } ?: return emptyList()
+        // Two tries at most: the longest word with its last letters cut, then the whole phrase cut the same way
+        // (or the word cut harder when the phrase is one short word).
+        val attempts = LinkedHashSet<String>()
+        attempts += longest.take(maxOf(3, longest.length - 2))
+        attempts += if (whole.length > 5 && whole != longest) whole.dropLast(2) else longest.take(maxOf(3, (longest.length * 3 + 3) / 5))
+        attempts.remove(whole)
+        val found = coroutineScope {
+            attempts.take(FUZZY_MAX_ATTEMPTS).map { attempt ->
+                async {
+                    try {
+                        aniList.searchPage(attempt, filters, 1)?.media.orEmpty()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        emptyList()
+                    }
+                }
+            }.awaitAll()
+        }.flatten().distinctBy { it.id }
+        return found
+            .map { media -> media to TitleMatcher.scoreAny(query, media.title, media.altTitles) }
+            .filter { it.second >= TitleMatcher.MIN_SCORE }
+            .sortedByDescending { it.second }
+            .map { it.first.toSAnime(sourceId = sourceId) }
     }
 
     /**
@@ -126,6 +172,12 @@ class CatalogRepository(
 
         /** Titles per combined AniList search; keeps the query well inside AniList's complexity limit. */
         const val SEARCH_BATCH_SIZE = 5
+
+        /** A search result this close (0..1) to the typed text means AniList understood the query; no retry. */
+        const val FUZZY_GOOD_ENOUGH = 0.75f
+
+        /** The most shortened queries tried for one typo'd search; the request gate spaces them out. */
+        const val FUZZY_MAX_ATTEMPTS = 2
     }
 }
 

@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Autoplay switch in the player.** A YouTube-style pill in the player's top bar (landscape and portrait); when on, the next episode starts when one ends. Hide Next And Previous in Settings > Player and streaming removes those two buttons from the controls, and the play and seek buttons spread out to fill the gap.
 
 ### Changed
+- **Clearer disclaimer and credits.** The README and the License screen now say plainly that Anisu is free and non-commercial, hosts no video and ships no sources, credit Aniyomi and Tachiyomi (Apache 2.0) and AniList, and the add-repository box tells people Anisu provides no repos.
 - Autoplay is controlled only from the player, not from Settings.
 
 ### Removed
@@ -34,6 +35,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release.
 
 ## [Unreleased]
+
+### Added
+- **A one-time welcome card on first launch.** After the start-up animation, a frosted card in the style of the error card greets the person with the logo on a slowly rotating Material shape, a short welcome message a "Join us on Telegram" button and a sign-off from the Anisu Team, while the app behind it is blurred. It closes with its button and is never shown again.
+- **A "Movies" section on a movie's page, under Comments.** Movies used to show only the "Play movie" button. Now a "Movies" header sits under Comments with a row laid out like an episode, minus the episode badge: the thumbnail, the movie's name, its release date and a short description. A tap plays the movie, and holding it opens the same menu as an episode (download, or play with the source picker / on auto). The release date comes from AniList's full start date, so the details request now asks for the month and day too.
+- **Deleting a download now asks first.** Tapping the bin on the Downloads screen opens a small confirmation card with Cancel and Delete, so a stray tap no longer removes an episode.
+
+### Fixed
+- **Search finds shows even when the title is misspelled.** The typo tolerance only ranked titles the app had already shown, so a mistyped title ("narto", "shingeki no kyojn") that AniList could not match returned nothing. When the first page has no close title, the search now retries with two shortened forms of what was typed, ranks everything it finds by how close it is to what was typed, and shows the close ones first.
+- **The app logo now looks the same with a custom Android colour palette.** The launcher icon declared a monochrome layer, so with themed icons switched on Android drew only a tinted letter A instead of the logo. The layer is removed from both launcher icons, so the real logo shows in every palette. **Constraint:** the icon is no longer tinted by the system theme.
+
+### Changed
+- **About links to Telegram instead of Discord.** The row now opens https://t.me/anisu_anime_app.
+
+### Added
+- **Design credits** on the License and attribution screen: Nuvio for the animations and navigation bar, CornCastle for the details and schedule screens. Both cards link to their source, and the README credits them too.
 
 ### Changed
 - **`CLAUDE.md` records the AniList query split.** The details query is the heavy one (characters, staff, relations, recommendations) and stays on the details page only; episodes, the player and the source search keep their own lighter requests. The rule is written down so a later change does not move episode fields into the details query and put the heavy answer back on the path to streaming.

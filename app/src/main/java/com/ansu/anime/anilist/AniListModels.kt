@@ -113,6 +113,9 @@ data class AniListMediaDetails(
     val trailerYoutubeId: String? = null,
     /** Minutes per episode (for a movie, its running time) as AniList lists it, or null. */
     val durationMinutes: Int? = null,
+    /** Month and day of AniList's start date (a movie's release date), when AniList knows them. */
+    val startMonth: Int? = null,
+    val startDay: Int? = null,
 )
 
 /** A show connected to another one on AniList, with how it connects (e.g. "Sequel", "Movie"). */

@@ -71,7 +71,7 @@ import com.ansu.anime.ui.theme.AnsuColors
 private const val DEVELOPER_NAME = "Ansuman Sahu"
 private const val DEVELOPER_HANDLE = "Ansu216"
 private const val REPO_URL = "https://github.com/Ansu216/Anisu"
-private const val DISCORD_URL = "https://discord.gg/Qhn6B76Z3"
+private const val TELEGRAM_URL = "https://t.me/anisu_anime_app"
 private const val DEVELOPER_URL = "https://github.com/$DEVELOPER_HANDLE"
 
 /**
@@ -204,13 +204,13 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                 )
                 GlassRow(
                     icon = Icons.Filled.Forum,
-                    title = "Discord",
-                    description = DISCORD_URL.removePrefix("https://"),
+                    title = "Telegram",
+                    description = TELEGRAM_URL.removePrefix("https://"),
                     showDivider = false,
                     trailing = { LinkChevron() },
                     onClick = {
-                        container.diagnostics.log(LogCategory.CLICK, "About → Discord opened")
-                        openUrl(context, DISCORD_URL)
+                        container.diagnostics.log(LogCategory.CLICK, "About → Telegram opened")
+                        openUrl(context, TELEGRAM_URL)
                     },
                 )
             }

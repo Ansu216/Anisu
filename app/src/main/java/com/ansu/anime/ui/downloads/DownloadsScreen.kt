@@ -33,9 +33,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +60,7 @@ import com.ansu.anime.data.download.DownloadPhase
 import com.ansu.anime.data.download.PauseState
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.GlassAlertDialog
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
 
@@ -68,6 +73,29 @@ fun DownloadsScreen(container: AppContainer, navController: NavHostController) {
     val hasQueue = items.any { it.status.phase != DownloadPhase.Completed && it.status.phase != DownloadPhase.Failed }
     // How many waiting downloads there are, to know which arrows to show.
     val waitingCount = items.count { it.status.queuePosition > 0 }
+    // The download the person tapped the bin on; nothing is deleted until they confirm.
+    var pendingDelete by remember { mutableStateOf<DownloadItem?>(null) }
+    pendingDelete?.let { target ->
+        val entry = target.entry
+        val label = entry.episodeName.takeIf { it.isNotBlank() } ?: "Episode ${entry.episodeNumber.toInt()}"
+        GlassAlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete download?") },
+            text = {
+                Text(
+                    text = "${entry.animeTitle} \u00B7 $label will be removed from this device. You can download it again later.",
+                    color = AnsuColors.TextSecondary,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    container.downloads.remove(entry.id)
+                    pendingDelete = null
+                }) { Text("Delete", color = AnsuColors.Error, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } },
+        )
+    }
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
@@ -146,7 +174,7 @@ fun DownloadsScreen(container: AppContainer, navController: NavHostController) {
                                 container.selectionHolder.selectOffline(anime, episode, entry.id)
                                 navController.navigate(Dest.PLAYER)
                             },
-                            onDelete = { container.downloads.remove(item.entry.id) },
+                            onDelete = { pendingDelete = item },
                             onRetry = { container.downloads.retry(item.entry.id) },
                             onMoveUp = { container.downloads.moveUp(item.entry.id) },
                             onMoveDown = { container.downloads.moveDown(item.entry.id) },
