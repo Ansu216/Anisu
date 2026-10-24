@@ -1,0 +1,35 @@
+0.6.0
+2026102301
+nightly
+# version.txt - the release metadata, read by app/build.gradle.kts and by the
+# workflows. Three value lines, then these notes:
+#   line 1 = version            line 2 = version code            line 3 = channel
+# Lines starting with "#" are ignored everywhere (the readers strip them), so
+# notes may be added here without renumbering the three value lines.
+#
+# line 1 - the SemVer base version. A release tag is "v" + this value and the
+#          CHANGELOG.md heading for a release uses it without the "v".
+# line 2 - the version code. A plain build number, bumped by one for every
+#          release and shared by the nightly and the stable channel, so several
+#          nightlies in a row deliberately carry the same code until a release
+#          moves it.
+#
+#          IT MUST NEVER BE LOWER than a code that is already out there. Android
+#          refuses to install an APK whose code is below the installed one and
+#          reports that to the user only as "the package appears to be invalid",
+#          so a lower number turns every update into a failed install. This is
+#          why the counter does not start at 1: the earlier workflows published
+#          date-coded codes (YYYYMMDDHH) up to 2026101113, and version.txt itself
+#          carried 2026101200, so 2026101201 is the first code above all of them.
+#          Keep counting up from here - never "tidy it up" into a small number.
+# line 3 - the channel, which is how the versioning is decided:
+#            nightly  every build is named <version>-nightly (for example
+#                     0.3.0-nightly) and is published to the apk-nightly branch;
+#            beta     <version> stays as it is, but the build is a pre-release;
+#            stable   <version> stays as it is and the build is a release.
+#
+# The name carries no timestamp, so two nightlies are told apart by the commit they were built
+# from: CI passes it as -PbuildCommit, the build exposes it as BuildConfig.BUILD_COMMIT, and the
+# updater compares that. It has to - the name and the version code are the same on every nightly
+# by design.
+
