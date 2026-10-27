@@ -12,7 +12,12 @@ import java.util.concurrent.TimeUnit
  * own OkHttp client. When a [context] is given, a Cloudflare challenge (403/503 from Cloudflare) is solved
  * in a hidden WebView and the request repeated, like Aniyomi; `cloudflareClient` is the same client.
  */
-class NetworkHelper(baseClient: OkHttpClient, context: Context? = null) {
+class NetworkHelper(
+    baseClient: OkHttpClient,
+    context: Context? = null,
+    /** Gets one line for every extension request that failed (HTTP error or no connection), for the diagnostics log. */
+    private val onFailure: ((String) -> Unit)? = null,
+) {
 
     val cookieJar = AndroidCookieJar()
 
@@ -22,6 +27,7 @@ class NetworkHelper(baseClient: OkHttpClient, context: Context? = null) {
         .readTimeout(30, TimeUnit.SECONDS)
         .callTimeout(2, TimeUnit.MINUTES)
         .addInterceptor(DefaultUserAgentInterceptor())
+        .apply { if (onFailure != null) addInterceptor(FailureLogInterceptor(onFailure)) }
         .apply {
             if (context != null) addInterceptor(CloudflareInterceptor(context, cookieJar, ::defaultUserAgentProvider))
         }
@@ -31,6 +37,27 @@ class NetworkHelper(baseClient: OkHttpClient, context: Context? = null) {
         get() = client
 
     fun defaultUserAgentProvider(): String = DEFAULT_USER_AGENT
+
+    /**
+     * Extensions often swallow their own errors and just return nothing. This writes down what actually went
+     * wrong on the wire (status code or exception, host and path only, never the query) so a log can say why.
+     */
+    private class FailureLogInterceptor(private val report: (String) -> Unit) : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val request = chain.request()
+            val where = request.url.host + request.url.encodedPath.take(80)
+            val response = try {
+                chain.proceed(request)
+            } catch (e: java.io.IOException) {
+                report("  request failed: ${request.method} $where -> ${e::class.java.simpleName}: ${e.message?.take(100)}")
+                throw e
+            }
+            if (!response.isSuccessful && response.code != 304) {
+                report("  request failed: ${request.method} $where -> HTTP ${response.code}")
+            }
+            return response
+        }
+    }
 
     private class DefaultUserAgentInterceptor : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response {

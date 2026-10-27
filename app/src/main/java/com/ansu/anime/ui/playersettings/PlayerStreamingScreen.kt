@@ -86,6 +86,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val prefs = container.playerPrefs
     val doubleTap by prefs.doubleTapSeek.collectAsStateWithLifecycle()
     val swipeSeek by prefs.swipeSeek.collectAsStateWithLifecycle()
+    val holdSpeed by prefs.holdSpeed.collectAsStateWithLifecycle()
     val hideEpisodeButtons by prefs.hideEpisodeButtons.collectAsStateWithLifecycle()
     val brightness by prefs.brightnessGesture.collectAsStateWithLifecycle()
     val volume by prefs.volumeGesture.collectAsStateWithLifecycle()
@@ -164,6 +165,12 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                     description = "Swipe right across the video to go ahead, left to go back",
                     checked = swipeSeek,
                     onCheckedChange = prefs::setSwipeSeek,
+                )
+                GlassToggleRow(
+                    title = "Hold To Speed",
+                    description = "Press and hold the video to play at 2x, release to go back to normal",
+                    checked = holdSpeed,
+                    onCheckedChange = prefs::setHoldSpeed,
                 )
                 GlassToggleRow(
                     title = "Swipe Controls",

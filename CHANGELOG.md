@@ -22,6 +22,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-27
+
+### Added
+- **Hold the video for 2x speed.** Pressing and holding anywhere on the video plays at 2x, shows a small "2x" pill at the top, and returns to the previous speed the moment the finger lifts. Dragging for brightness or volume still works and cancels the hold. **Constraint:** a new "Hold To Speed" switch in Player and streaming turns it off; it is on by default.
+- **Skip times from the stream itself.** When a source reports intro, outro or recap times for a stream, the player uses them first, and AniSkip only fills in the segment types the source did not give. The skip button still appears only while one of these segments is playing.
+- **Failed extension requests are written to the diagnostics log.** Extensions often swallow their own errors and return nothing, so the log never said why a source gave no videos. Every extension request that fails now logs its status or exception, with host and path only and never the query, capped per minute so a dead host cannot flood the log.
+
+### Fixed
+- **The number inside the skip button is centred.** It was drawn as ordinary text and sat high, because the replay icon's circle is centred below the icon's box. It is now drawn by hand on the circle's centre, whatever the font.
+- **AniSkip is asked again with the episode length.** AniSkip picks the matching submission by episode length, which was never sent. When the first answer is empty, the app now waits for the real length and asks once more, and empty answers made without a length are no longer remembered for the whole session. A title that AniList has no MyAnimeList id for is now logged instead of failing silently.
+
+### Removed
+- The unused "Skip outro" jump to the next episode that belonged to the old last-two-minutes fallback.
+
 ## [1.0.0] - 2026-10-24
 
 ### Added

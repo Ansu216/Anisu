@@ -52,6 +52,8 @@ data class PlayableSource(
     val extensionName: String? = null,
     /** The server (hoster) inside the extension, e.g. "HD-1"; the Sources list shows it next to [extensionName]. */
     val serverName: String? = null,
+    /** Intro/outro/recap times the source reported for this stream; they win over AniSkip's. */
+    val skipSegments: List<com.ansu.anime.data.repository.SkipSegment> = emptyList(),
 )
 
 /** How many other streams are opened next to the best one when sources are raced. */
@@ -343,6 +345,16 @@ class PlayerViewModel(
     private fun rankOf(sourceId: Long?): Int = playerPrefs?.rankOf(sourceId) ?: 0
     private var playbackJob: kotlinx.coroutines.Job? = null
     private var skipJob: kotlinx.coroutines.Job? = null
+
+    /** AniSkip's times and the playing stream's own times; [mergeSkipSegments] combines them (the source's win). */
+    private var aniSkipSegments: List<com.ansu.anime.data.repository.SkipSegment> = emptyList()
+    private var sourceSkipSegments: List<com.ansu.anime.data.repository.SkipSegment> = emptyList()
+
+    private fun mergeSkipSegments() {
+        val covered = sourceSkipSegments.map { it.type }.toSet()
+        val merged = (sourceSkipSegments + aniSkipSegments.filter { it.type !in covered }).sortedBy { it.startMs }
+        if (merged != _uiState.value.skipSegments) _uiState.value = _uiState.value.copy(skipSegments = merged)
+    }
     private var pingRuns = 0
 
     private val _uiState = MutableStateFlow(
@@ -686,16 +698,35 @@ class PlayerViewModel(
     /** Looks up AniSkip's intro/outro times for the episode; the skip button simply stays away if there are none. */
     private fun loadSkipTimes(anime: SAnime, episode: SEpisode) {
         skipJob?.cancel()
+        aniSkipSegments = emptyList()
+        sourceSkipSegments = emptyList()
         if (_uiState.value.skipSegments.isNotEmpty()) _uiState.value = _uiState.value.copy(skipSegments = emptyList())
         val anilistId = anime.anilistId ?: return
         val aniList = aniListRepository ?: return
         val aniSkip = aniSkipRepository ?: return
         skipJob = viewModelScope.launch {
-            val malId = aniList.getMalId(anilistId) ?: return@launch
-            val segments = aniSkip.getSkipTimes(malId, episode.episodeNumber.toInt())
-            diagnostics?.log(LogCategory.PLAYBACK, "AniSkip: ${segments.size} segment(s) for ${anime.title} E${episode.episodeNumber}")
+            val malId = aniList.getMalId(anilistId)
+            if (malId == null) {
+                diagnostics?.log(LogCategory.PLAYBACK, "AniSkip: ${anime.title} has no MyAnimeList id on AniList, so there is nothing to look up")
+                return@launch
+            }
+            val number = episode.episodeNumber.toInt()
+            // First without the episode length (not known yet); if AniSkip has nothing, ask again once the
+            // player knows how long the video is, because AniSkip uses it to pick the matching submission.
+            var segments = aniSkip.getSkipTimes(malId, number)
+            if (segments.isEmpty()) {
+                var seconds = 0.0
+                for (attempt in 0 until 60) {
+                    seconds = player.duration.takeIf { it > 0 }?.let { it / 1000.0 } ?: 0.0
+                    if (seconds > 0) break
+                    kotlinx.coroutines.delay(1_000L)
+                }
+                if (seconds > 0) segments = aniSkip.getSkipTimes(malId, number, seconds)
+            }
+            diagnostics?.log(LogCategory.PLAYBACK, "AniSkip: ${segments.size} segment(s) for ${anime.title} E${episode.episodeNumber} (MAL $malId)")
             if (_uiState.value.episode?.id == episode.id) {
-                _uiState.value = _uiState.value.copy(skipSegments = segments)
+                aniSkipSegments = segments
+                mergeSkipSegments()
             }
         }
     }
@@ -787,6 +818,7 @@ class PlayerViewModel(
         audioTracks = audioTracks,
         resolve = resolve?.let { pending -> suspend { pending()?.toPlayable() } },
         serverName = serverName,
+        skipSegments = skipSegments,
     )
 
     @androidx.annotation.OptIn(UnstableApi::class)
@@ -1024,6 +1056,12 @@ class PlayerViewModel(
     private fun startPlayback(source: PlayableSource, mimeType: String?) {
         // A new stream: its subtitle tracks get the person's session choice again once they are reported.
         subtitleChoiceApplied = false
+        // The stream's own intro/outro times (when its source gives them) win over AniSkip's.
+        sourceSkipSegments = source.skipSegments
+        if (source.skipSegments.isNotEmpty()) {
+            diagnostics?.log(LogCategory.PLAYBACK, "Skip times from the source itself: ${source.skipSegments.joinToString { it.type.name.lowercase() }}")
+        }
+        mergeSkipSegments()
         val mediaItem = MediaItem.Builder()
             .setUri(source.url)
             .apply {
@@ -1341,14 +1379,11 @@ class PlayerViewModel(
             skipSegments = emptyList(),
             isStarting = true,
         )
+        aniSkipSegments = emptyList()
+        sourceSkipSegments = emptyList()
         loadSources()
     }
 
-    fun skipOutro() {
-        val next = nextEpisode()
-        if (next != null) playEpisode(next)
-        else player.seekTo((player.duration - 1000).coerceAtLeast(0))
-    }
 
     fun togglePlayPause() {
         diagnostics?.log(LogCategory.CLICK, if (player.isPlaying) "Pause pressed" else "Play pressed")

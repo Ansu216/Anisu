@@ -31,6 +31,10 @@ object AniyomiRuntime {
     @Volatile
     private var installed = false
 
+    /** Where failed extension requests are written (set by the app; null keeps them silent). */
+    @Volatile
+    var failureLog: ((String) -> Unit)? = null
+
     /** The client handed to [install]; kept so a retry reuses Ansu's own client. */
     @Volatile
     var sharedClient: OkHttpClient? = null
@@ -43,7 +47,7 @@ object AniyomiRuntime {
         sharedClient = client
         val app = context.applicationContext as Application
         Injekt.addSingleton(app)
-        Injekt.addSingleton(NetworkHelper(client, app))
+        Injekt.addSingleton(NetworkHelper(client, app, onFailure = { failureLog?.invoke(it) }))
         Injekt.addSingleton(JavaScriptEngine(app))
         Injekt.addSingleton(Json { ignoreUnknownKeys = true })
         installed = true

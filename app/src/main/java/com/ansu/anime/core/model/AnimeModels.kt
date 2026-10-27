@@ -58,6 +58,8 @@ data class Video(
     val resolve: (suspend () -> Video?)? = null,
     /** Name of the server (hoster) the source got this video from, e.g. "HD-1"; shown next to the extension name. */
     val serverName: String? = null,
+    /** Intro/outro/recap stretches the source itself reported for this stream (exact for this very video). */
+    val skipSegments: List<com.ansu.anime.data.repository.SkipSegment> = emptyList(),
 )
 
 data class SubtitleTrack(val url: String, val lang: String)

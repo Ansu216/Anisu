@@ -32,6 +32,16 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putBoolean(KEY_SWIPE_SEEK, value).apply()
     }
 
+    private val _holdSpeed = MutableStateFlow(prefs.getBoolean(KEY_HOLD_SPEED, true))
+
+    /** Press and hold the video to play at 2x until the finger lifts. On by default. */
+    val holdSpeed: StateFlow<Boolean> = _holdSpeed
+
+    fun setHoldSpeed(value: Boolean) {
+        _holdSpeed.value = value
+        prefs.edit().putBoolean(KEY_HOLD_SPEED, value).apply()
+    }
+
     private val _brightnessGesture = MutableStateFlow(prefs.getBoolean(KEY_BRIGHTNESS, true))
 
     /** Swipe up/down on the left half of the video to change brightness. */
@@ -383,6 +393,7 @@ class PlayerPrefs(context: Context) {
         private const val KEY_DOWNLOAD_QUALITY = "download_quality"
         private const val KEY_DOUBLE_TAP = "double_tap_seek"
         private const val KEY_SWIPE_SEEK = "swipe_seek"
+        private const val KEY_HOLD_SPEED = "hold_speed"
         private const val KEY_BRIGHTNESS = "brightness_gesture"
         private const val KEY_VOLUME = "volume_gesture"
         private const val KEY_PIP = "pip_enabled"

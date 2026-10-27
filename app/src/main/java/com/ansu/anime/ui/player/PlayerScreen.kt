@@ -166,12 +166,24 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     var fitIndex by remember { mutableIntStateOf(0) }
     val doubleTapSeek by container.playerPrefs.doubleTapSeek.collectAsStateWithLifecycle()
     val swipeSeek by container.playerPrefs.swipeSeek.collectAsStateWithLifecycle()
+    val holdSpeed by container.playerPrefs.holdSpeed.collectAsStateWithLifecycle()
     val brightnessGesture by container.playerPrefs.brightnessGesture.collectAsStateWithLifecycle()
     val volumeGesture by container.playerPrefs.volumeGesture.collectAsStateWithLifecycle()
     val skipSeconds by container.playerPrefs.skipSeconds.collectAsStateWithLifecycle()
     val autoplayNext by container.playerPrefs.autoplayNext.collectAsStateWithLifecycle()
     val hideEpisodeButtons by container.playerPrefs.hideEpisodeButtons.collectAsStateWithLifecycle()
-    val gestureConfig = PlayerGestureConfig(doubleTapSeek, brightnessGesture, volumeGesture, skipSeconds, enabled = !locked, swipeSeek = swipeSeek)
+    val gestureConfig = PlayerGestureConfig(doubleTapSeek, brightnessGesture, volumeGesture, skipSeconds, enabled = !locked, swipeSeek = swipeSeek, holdSpeed = holdSpeed)
+    // Hold to speed: remember the speed before the hold and put it back on release.
+    var speedBeforeHold by remember { mutableStateOf<Float?>(null) }
+    val onHoldSpeed: (Boolean) -> Unit = { active ->
+        if (active) {
+            if (speedBeforeHold == null) speedBeforeHold = state.speed
+            viewModel.setSpeed(HOLD_SPEED)
+        } else {
+            speedBeforeHold?.let { viewModel.setSpeed(it) }
+            speedBeforeHold = null
+        }
+    }
 
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -414,6 +426,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 onTap = onScreenTap,
                 onBack = actions.onBack,
                 gestures = gestureConfig,
+                onHoldSpeed = onHoldSpeed,
                 onSeekBy = viewModel::seekBy,
                 cues = cues,
                 subtitleSize = subtitleSize,
@@ -465,6 +478,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     onTap = onScreenTap,
                     onBack = actions.onBack,
                     gestures = gestureConfig,
+                    onHoldSpeed = onHoldSpeed,
                     onSeekBy = viewModel::seekBy,
                     cues = cues,
                     subtitleSize = subtitleSize,
@@ -661,6 +675,7 @@ private fun PlayerSurface(
     onTap: () -> Unit,
     onBack: () -> Unit,
     gestures: PlayerGestureConfig = PlayerGestureConfig(),
+    onHoldSpeed: (Boolean) -> Unit = {},
     onSeekBy: (Long) -> Unit = {},
     skipLabel: String? = null,
     skipProgress: Float = 0f,
@@ -809,7 +824,7 @@ private fun PlayerSurface(
         // Everything else lives in the part of the screen the panel leaves free, so the title, the transport buttons
         // and the seek bar re-centre in the shrunken video area.
         Box(modifier = Modifier.fillMaxHeight().freeWidth(panelWidth, panelProgress)) {
-            PlayerGestureLayer(config = gestures, onTap = onTap, onSeekBy = onSeekBy)
+            PlayerGestureLayer(config = gestures, onTap = onTap, onSeekBy = onSeekBy, onHoldSpeed = onHoldSpeed)
 
             when {
                 state.isLoadingSources -> BufferingIndicator(buffering = true, modifier = Modifier.align(Alignment.Center))

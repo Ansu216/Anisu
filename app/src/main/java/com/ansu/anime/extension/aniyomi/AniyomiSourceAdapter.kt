@@ -428,8 +428,32 @@ class AniyomiSourceAdapter(
                 ),
             subtitleTracks = playable.subtitleTracks.map { track -> SubtitleTrack(track.url, track.lang) },
             audioTracks = playable.audioTracks.map { track -> SubtitleTrack(track.url, track.lang) },
+            skipSegments = skipSegmentsOf(playable),
         )
     }
+
+    /**
+     * The intro/outro/recap stretches an extension reports on a video (Aniyomi `Video.timestamps`, seconds).
+     * Typed ones map directly; an untyped one is recognised by its name ("Intro", "Opening", "Outro", "Credits").
+     */
+    private fun skipSegmentsOf(video: Video): List<com.ansu.anime.data.repository.SkipSegment> =
+        video.timestamps.mapNotNull { stamp ->
+            if (stamp.end <= stamp.start || stamp.start < 0.0) return@mapNotNull null
+            val name = stamp.name.lowercase()
+            val type = when (stamp.type) {
+                eu.kanade.tachiyomi.animesource.model.ChapterType.Opening,
+                eu.kanade.tachiyomi.animesource.model.ChapterType.MixedOp -> com.ansu.anime.data.repository.SkipType.INTRO
+                eu.kanade.tachiyomi.animesource.model.ChapterType.Ending -> com.ansu.anime.data.repository.SkipType.OUTRO
+                eu.kanade.tachiyomi.animesource.model.ChapterType.Recap -> com.ansu.anime.data.repository.SkipType.RECAP
+                else -> when {
+                    "intro" in name || "opening" in name || name == "op" -> com.ansu.anime.data.repository.SkipType.INTRO
+                    "outro" in name || "ending" in name || "credit" in name || name == "ed" -> com.ansu.anime.data.repository.SkipType.OUTRO
+                    "recap" in name -> com.ansu.anime.data.repository.SkipType.RECAP
+                    else -> return@mapNotNull null
+                }
+            }
+            com.ansu.anime.data.repository.SkipSegment(type, (stamp.start * 1000).toLong(), (stamp.end * 1000).toLong())
+        }.sortedBy { it.startMs }
 
     /**
      * Aniyomi plays with MPV and lets a source pass it options; Ansu plays with Media3, which has no such

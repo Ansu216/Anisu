@@ -39,7 +39,8 @@ class AniSkipRepository(private val client: OkHttpClient) {
         cache[key]?.let { return it }
         return try {
             val segments = fetch(malId, episodeNumber, episodeLengthSeconds)
-            cache[key] = segments
+            // An empty answer without the episode length may only mean "not matched yet": try again later with it.
+            if (segments.isNotEmpty() || episodeLengthSeconds > 0.0) cache[key] = segments
             segments
         } catch (e: CancellationException) {
             throw e
@@ -56,7 +57,7 @@ class AniSkipRepository(private val client: OkHttpClient) {
             .addQueryParameter("types", "mixed-op")
             .addQueryParameter("types", "mixed-ed")
             .addQueryParameter("types", "recap")
-            .addQueryParameter("episodeLength", lengthSeconds.coerceAtLeast(0.0).toString())
+            .addQueryParameter("episodeLength", lengthSeconds.coerceAtLeast(0.0).toLong().toString())
             .build()
         client.newCall(Request.Builder().url(url).build()).execute().use { response ->
             // 404 is how AniSkip says "nobody has timed this episode".

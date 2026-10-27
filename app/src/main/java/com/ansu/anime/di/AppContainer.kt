@@ -194,6 +194,18 @@ class AppContainer(context: Context) {
     init {
         // Aniyomi/Keiyoushi extensions need the Injekt container filled in before they are instantiated.
         // Do not swallow a failure silently: without this, every extension fails with "No registered instance".
+        // Requests an extension makes that fail go to the diagnostics log (extensions hide them otherwise).
+        // Capped per minute so a dead host cannot flood the log.
+        var failuresThisMinute = 0
+        var minuteStartedAt = 0L
+        com.ansu.anime.extension.aniyomi.AniyomiRuntime.failureLog = { line ->
+            val now = System.currentTimeMillis()
+            val allowed = synchronized(this) {
+                if (now - minuteStartedAt > 60_000L) { minuteStartedAt = now; failuresThisMinute = 0 }
+                failuresThisMinute++ <= 40
+            }
+            if (allowed) diagnostics.log(com.ansu.anime.core.diagnostics.LogCategory.PLAYBACK, line)
+        }
         try {
             com.ansu.anime.extension.aniyomi.AniyomiRuntime.install(appContext, okHttpClient)
         } catch (t: Throwable) {

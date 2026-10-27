@@ -48,6 +48,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,6 +73,8 @@ data class PlayerGestureConfig(
     val enabled: Boolean = true,
     /** Horizontal swipe scrubs the video (Settings > Swipe To Seek). */
     val swipeSeek: Boolean = false,
+    /** Press and hold plays at [HOLD_SPEED] until the finger lifts (Settings > Hold To Speed). */
+    val holdSpeed: Boolean = true,
 )
 
 private fun Context.activityOrNull(): Activity? {
@@ -93,8 +96,16 @@ fun PlayerGestureLayer(
     onTap: () -> Unit,
     onSeekBy: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    /** Called with true when a hold starts and false when it ends; the caller sets and restores the speed. */
+    onHoldSpeed: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val holdCallback by rememberUpdatedState(onHoldSpeed)
+    var holding by remember { mutableStateOf(false) }
+    // Never leave the video stuck at 2x if the layer leaves the screen mid-hold.
+    DisposableEffect(Unit) {
+        onDispose { if (holding) holdCallback(false) }
+    }
     val window = remember(context) { context.activityOrNull()?.window }
     val audio = remember(context) { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     var hud by remember { mutableStateOf<String?>(null) }
@@ -139,7 +150,7 @@ fun PlayerGestureLayer(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(config.enabled, config.doubleTapSeek, config.skipSeconds) {
+                .pointerInput(config.enabled, config.doubleTapSeek, config.skipSeconds, config.holdSpeed) {
                     // Our own tap detector: a double tap only counts when BOTH taps land on the same side.
                     // (detectTapGestures pairs any two quick taps, so left then right used to skip.)
                   coroutineScope {
@@ -171,7 +182,33 @@ fun PlayerGestureLayer(
                     awaitEachGesture {
                         val down = awaitFirstDown()
                         // Null when the finger dragged (brightness/volume) or the gesture was taken over.
-                        val up = waitForUpOrCancellation() ?: return@awaitEachGesture
+                        // With hold-to-speed on, a finger that stays down past the long-press time starts 2x.
+                        val up = if (config.enabled && config.holdSpeed) {
+                            val early = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                                waitForUpOrCancellation() ?: CANCELLED
+                            }
+                            when {
+                                early === CANCELLED -> return@awaitEachGesture
+                                early != null -> early as androidx.compose.ui.input.pointer.PointerInputChange
+                                else -> {
+                                    // Still pressed after the long-press time: play fast until it is lifted.
+                                    pending?.cancel(); pending = null
+                                    seriesZone = 0
+                                    holding = true
+                                    holdCallback(true)
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id }
+                                        if (change == null || change.isConsumed || !change.pressed) break
+                                    }
+                                    holding = false
+                                    holdCallback(false)
+                                    return@awaitEachGesture
+                                }
+                            }
+                        } else {
+                            waitForUpOrCancellation() ?: return@awaitEachGesture
+                        }
                         if (up.uptimeMillis - down.uptimeMillis > viewConfiguration.longPressTimeoutMillis) {
                             return@awaitEachGesture
                         }
@@ -278,6 +315,22 @@ fun PlayerGestureLayer(
         if (skipSide != 0) {
             SkipFeedback(side = skipSide, seconds = skipTotal, tick = skipTick)
         }
+        if (holding) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 28.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Text("2x", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                repeat(2) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
         hud?.let {
             Text(
                 text = it,
@@ -296,6 +349,8 @@ fun PlayerGestureLayer(
 }
 
 private const val SKIP_SERIES_MS = 700L
+const val HOLD_SPEED = 2f
+private val CANCELLED = Any()
 private const val SWIPE_SEEK_FULL_WIDTH_S = 120f
 
 /** The YouTube-style double-tap feedback: a soft half-disc on the tapped side, running chevrons and "N seconds". */

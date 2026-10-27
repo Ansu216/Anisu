@@ -43,6 +43,7 @@ import androidx.compose.material.icons.rounded.Speaker
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -67,6 +68,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -354,7 +360,29 @@ private fun SeekGlyph(forward: Boolean, seconds: Int, scale: Float, onClick: () 
             tint = Color.White,
             modifier = Modifier.size((46 * scale).dp).graphicsLayer { scaleX = if (forward) -1f else 1f },
         )
-        Text("$seconds", color = Color.White, fontSize = (11 * scale).sp, fontWeight = FontWeight.Bold)
+        // The number is drawn by hand, centred on the arrow's circle by its digit height. A Text here sat off
+        // centre: the Replay icon's circle is centred a little below the icon box, and fonts add their own
+        // top/bottom padding, so Text centring (which only knows the line box) always looked high.
+        val measurer = rememberTextMeasurer()
+        val style = LocalTextStyle.current.copy(
+            color = Color.White,
+            fontSize = (11 * scale).sp,
+            fontWeight = FontWeight.Bold,
+            platformStyle = PlatformTextStyle(includeFontPadding = false),
+        )
+        val layout = remember(seconds, scale, style) { measurer.measure(AnnotatedString("$seconds"), style) }
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val iconPx = 46 * scale * density
+            // Material's Replay circle is centred at 13/24 of the icon height and 12/24 of its width.
+            val cx = size.width / 2f
+            val cy = size.height / 2f + iconPx * (13f - 12f) / 24f
+            // Digits are about 0.7 of the font size tall; put their middle on the circle's centre.
+            val baseline = cy + 0.35f * style.fontSize.toPx()
+            drawText(
+                textLayoutResult = layout,
+                topLeft = Offset(cx - layout.size.width / 2f, baseline - layout.firstBaseline),
+            )
+        }
     }
 }
 
