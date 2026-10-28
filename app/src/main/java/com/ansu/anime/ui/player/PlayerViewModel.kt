@@ -1413,7 +1413,10 @@ class PlayerViewModel(
                 val reallyPlaying = player.isPlaying && player.playbackState == Player.STATE_READY
                 _uiState.value = _uiState.value.copy(
                     positionMs = player.currentPosition,
-                    durationMs = duration,
+                    // Some streams report a length shorter than what actually plays (HLS manifests that undercount, or a
+                    // wrong container duration), so the clock ran past the end: 24:16 of 24:07. The bar's length is never
+                    // allowed to fall below where playback already is.
+                    durationMs = maxOf(duration, player.currentPosition),
                     isStarting = if (reallyPlaying) false else _uiState.value.isStarting,
                 )
 

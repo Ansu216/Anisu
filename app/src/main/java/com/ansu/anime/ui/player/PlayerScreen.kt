@@ -172,6 +172,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     val skipSeconds by container.playerPrefs.skipSeconds.collectAsStateWithLifecycle()
     val autoplayNext by container.playerPrefs.autoplayNext.collectAsStateWithLifecycle()
     val hideEpisodeButtons by container.playerPrefs.hideEpisodeButtons.collectAsStateWithLifecycle()
+    val seekBarStyleKey by container.playerPrefs.seekBarStyle.collectAsStateWithLifecycle()
     val gestureConfig = PlayerGestureConfig(doubleTapSeek, brightnessGesture, volumeGesture, skipSeconds, enabled = !locked, swipeSeek = swipeSeek, holdSpeed = holdSpeed)
     // Hold to speed: remember the speed before the hold and put it back on release.
     var speedBeforeHold by remember { mutableStateOf<Float?>(null) }
@@ -392,6 +393,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         autoplayNext = autoplayNext,
         onAutoplayNext = container.playerPrefs::setAutoplayNext,
         hideEpisodeButtons = hideEpisodeButtons,
+        seekBarStyle = SeekBarStyle.fromKey(seekBarStyleKey),
     )
 
     // The video view of the portrait layout, read by the ambient glow for the colours under the video.

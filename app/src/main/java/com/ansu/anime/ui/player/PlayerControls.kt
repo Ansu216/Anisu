@@ -110,6 +110,8 @@ class PlayerActions(
     val onAutoplayNext: (Boolean) -> Unit = {},
     /** Settings > Player and streaming > Hide Next And Previous. */
     val hideEpisodeButtons: Boolean = false,
+    /** Settings > Playback > Seek Bar Style. */
+    val seekBarStyle: SeekBarStyle = SeekBarStyle.Classic,
 )
 
 /** YouTube-style autoplay pill: a track with a round thumb that carries a play/pause glyph and slides across. */
@@ -253,7 +255,7 @@ fun PlayerControlsOverlay(
                     Icon(Icons.Rounded.FullscreenExit, contentDescription = "Exit fullscreen", tint = Color.White, modifier = Modifier.size(22.dp))
                 }
             }
-            PlayerSeekBar(positionMs = state.positionMs, durationMs = state.durationMs, onSeek = actions.onSeekTo)
+            PlayerSeekBar(positionMs = state.positionMs, durationMs = state.durationMs, onSeek = actions.onSeekTo, style = actions.seekBarStyle)
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -527,6 +529,7 @@ fun PlayerControlsCompact(
                 thumbWidth = 12.dp,
                 thumbHeight = 12.dp,
                 showEndDot = false,
+                style = actions.seekBarStyle,
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -559,36 +562,47 @@ fun PlayerSeekBar(
     thumbWidth: Dp = 6.dp,
     thumbHeight: Dp = 26.dp,
     showEndDot: Boolean = true,
+    style: SeekBarStyle = SeekBarStyle.Classic,
+    /** False for the small previews in Settings: draws the bar but ignores touches. */
+    interactive: Boolean = true,
+    compact: Boolean = trackHeight < 8.dp,
 ) {
     var dragFraction by remember { mutableStateOf<Float?>(null) }
     var widthPx by remember { mutableStateOf(1f) }
     val fraction = dragFraction ?: if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
     val thumbPx = with(LocalDensity.current) { thumbWidth.toPx() }
     val tallest = if (thumbHeight > trackHeight) thumbHeight else trackHeight
+    val boxHeight = if (style == SeekBarStyle.Classic) tallest + 8.dp else styledSeekHeight(compact)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(tallest + 8.dp)
+            .height(boxHeight)
             .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
-            .pointerInput(durationMs) {
-                detectTapGestures { tap ->
-                    if (durationMs > 0) onSeek(((tap.x / widthPx).coerceIn(0f, 1f) * durationMs).toLong())
-                }
-            }
-            .pointerInput(durationMs) {
-                detectHorizontalDragGestures(
-                    onDragStart = { start -> dragFraction = (start.x / widthPx).coerceIn(0f, 1f) },
-                    onHorizontalDrag = { change, _ -> dragFraction = (change.position.x / widthPx).coerceIn(0f, 1f) },
-                    onDragEnd = {
-                        dragFraction?.let { if (durationMs > 0) onSeek((it * durationMs).toLong()) }
-                        dragFraction = null
+            .then(
+                if (!interactive) Modifier else Modifier
+                    .pointerInput(durationMs) {
+                        detectTapGestures { tap ->
+                            if (durationMs > 0) onSeek(((tap.x / widthPx).coerceIn(0f, 1f) * durationMs).toLong())
+                        }
+                    }
+                    .pointerInput(durationMs) {
+                        detectHorizontalDragGestures(
+                            onDragStart = { start -> dragFraction = (start.x / widthPx).coerceIn(0f, 1f) },
+                            onHorizontalDrag = { change, _ -> dragFraction = (change.position.x / widthPx).coerceIn(0f, 1f) },
+                            onDragEnd = {
+                                dragFraction?.let { if (durationMs > 0) onSeek((it * durationMs).toLong()) }
+                                dragFraction = null
+                            },
+                            onDragCancel = { dragFraction = null },
+                        )
                     },
-                    onDragCancel = { dragFraction = null },
-                )
-            },
+            ),
         contentAlignment = Alignment.CenterStart,
     ) {
+        if (style != SeekBarStyle.Classic) {
+            StyledSeekVisual(style = style, fraction = fraction, dragging = dragFraction != null, compact = compact, modifier = Modifier.fillMaxSize())
+        } else {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -618,6 +632,7 @@ fun PlayerSeekBar(
                 .clip(RoundedCornerShape(thumbWidth / 2))
                 .background(AnsuColors.Accent),
         )
+        }
     }
 }
 

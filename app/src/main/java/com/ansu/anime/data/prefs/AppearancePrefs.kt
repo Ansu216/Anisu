@@ -285,7 +285,8 @@ enum class BackgroundStyle(val key: String, val label: String) {
     SHAPES("shapes", "Material shapes"),
     SAKURA("sakura", "Cherry blossom"),
     SNOW("snow", "Snowfall"),
-    HALLOWEEN("halloween", "Halloween");
+    HALLOWEEN("halloween", "Halloween"),
+    BREAD("bread", "Cute bread");
 
     companion object {
         fun fromKey(key: String?): BackgroundStyle = entries.firstOrNull { it.key == key } ?: NONE

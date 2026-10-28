@@ -115,6 +115,7 @@ fun BackgroundAnimation(
                     BackgroundStyle.SAKURA -> drawPetal(paths[0], r, item, t)
                     BackgroundStyle.SNOW -> drawSnow(r, item, angle, density)
                     BackgroundStyle.HALLOWEEN -> drawHalloween(paths, r, item, angle, t)
+                    BackgroundStyle.BREAD -> drawBread(paths[0], r, item, t)
                     BackgroundStyle.NONE -> Unit
                 }
             }
@@ -158,6 +159,7 @@ private fun makeItems(style: BackgroundStyle): List<Item> {
             BackgroundStyle.SAKURA -> 51
             BackgroundStyle.SNOW -> 67
             BackgroundStyle.HALLOWEEN -> 83
+            BackgroundStyle.BREAD -> 97
             else -> 37
         },
     )
@@ -224,6 +226,15 @@ private fun makeItems(style: BackgroundStyle): List<Item> {
                     phase = between(0f, 6.28f), alpha = 1f, kind = 2, sway = 0.03f,
                 )
             }
+        }
+        // Slices of toast and round buns with sleepy little faces, drifting up and wobbling; two of the fourteen are sandwiches.
+        BackgroundStyle.BREAD -> List(14) { i ->
+            Item(
+                x = rnd.nextFloat(), y = rnd.nextFloat(),
+                vx = between(-0.004f, 0.004f), vy = between(-0.014f, -0.005f),
+                sizeDp = between(64f, 104f), rot = between(-12f, 12f), spin = 0f,
+                phase = between(0f, 6.28f), alpha = 1f, kind = if (i == 6 || i == 13) 2 else i % 2, sway = 0.02f,
+            )
         }
         else -> List(14) { i ->
             Item(
@@ -306,6 +317,21 @@ private fun unitPaths(style: BackgroundStyle): List<Path> = when (style) {
             lineTo(0.4f, 0.6f); lineTo(0f, 0.7f); lineTo(-0.4f, 0.6f); close()
         },
     )
+    BackgroundStyle.BREAD -> listOf(
+        // 0: a slice of toast with the two puffy shoulders.
+        Path().apply {
+            moveTo(-0.65f, 0.85f)
+            lineTo(0.65f, 0.85f)
+            quadraticTo(0.8f, 0.85f, 0.8f, 0.7f)
+            lineTo(0.8f, -0.05f)
+            cubicTo(1.05f, -0.1f, 1.05f, -0.85f, 0.5f, -0.85f)
+            lineTo(-0.5f, -0.85f)
+            cubicTo(-1.05f, -0.85f, -1.05f, -0.1f, -0.8f, -0.05f)
+            lineTo(-0.8f, 0.7f)
+            quadraticTo(-0.8f, 0.85f, -0.65f, 0.85f)
+            close()
+        },
+    )
     else -> emptyList()
 }
 
@@ -373,6 +399,64 @@ private fun DrawScope.drawHalloween(paths: List<Path>, r: Float, item: Item, ang
             drawOval(AnsuColors.Background, topLeft = Offset(-0.1f, 0.12f), size = Size(0.2f, 0.26f))
         }
     }
+}
+
+// Bread is drawn in solid, dim browns (like the Halloween shapes) so overlaps never add up brighter.
+private val BreadCrust = Color(0xFF6A4220)
+private val BreadCrumb = Color(0xFF93703F)
+private val BreadFace = Color(0xFF3A2410)
+private val BreadCheek = Color(0xFFA0555F)
+private val SandwichLettuce = Color(0xFF4A7A3A)
+private val SandwichCheese = Color(0xFFA88B2A)
+private val SandwichTomato = Color(0xFF8E3A33)
+
+/** A toast slice (kind 0), a round bun (kind 1) or, rarely, a sandwich (kind 2) with a kawaii face; it wobbles and squishes as it floats. */
+private fun DrawScope.drawBread(toast: Path, r: Float, item: Item, t: Float) {
+    val wobble = 6f * sin(t * 0.8f + item.phase)
+    val squish = 1f + 0.04f * sin(t * 1.6f + item.phase)
+    rotate(item.rot + wobble, Offset.Zero) {
+        scale(r / squish, r * squish, Offset.Zero) {
+            if (item.kind == 2) {
+                drawSandwichBody()
+            } else if (item.kind == 0) {
+                drawPath(toast, BreadCrust)
+                scale(0.8f, 0.8f, Offset(0f, 0.05f)) { drawPath(toast, BreadCrumb) }
+            } else {
+                drawOval(BreadCrust, topLeft = Offset(-0.95f, -0.72f), size = Size(1.9f, 1.55f))
+                drawOval(BreadCrumb, topLeft = Offset(-0.78f, -0.6f), size = Size(1.56f, 1.26f))
+            }
+            drawBreadFace(if (item.kind == 0) 0.05f else if (item.kind == 1) 0.0f else -0.4f, item, t)
+        }
+    }
+}
+
+/** Eyes (they blink now and then), pink cheeks and a small smile, in unit coordinates, eyes at [eyeY]. */
+private fun DrawScope.drawBreadFace(eyeY: Float, item: Item, t: Float) {
+    val blink = if (sin(t * 0.9f + item.phase) > 0.96f) 0.15f else 1f
+    drawOval(BreadFace, topLeft = Offset(-0.32f, eyeY - 0.08f * blink), size = Size(0.14f, 0.16f * blink))
+    drawOval(BreadFace, topLeft = Offset(0.18f, eyeY - 0.08f * blink), size = Size(0.14f, 0.16f * blink))
+    drawOval(BreadCheek, topLeft = Offset(-0.58f, eyeY + 0.1f), size = Size(0.22f, 0.13f))
+    drawOval(BreadCheek, topLeft = Offset(0.36f, eyeY + 0.1f), size = Size(0.22f, 0.13f))
+    val smile = Path().apply {
+        moveTo(-0.1f, eyeY + 0.14f)
+        quadraticTo(0f, eyeY + 0.3f, 0.1f, eyeY + 0.14f)
+    }
+    drawPath(smile, BreadFace, style = Stroke(width = 0.05f, cap = StrokeCap.Round))
+}
+
+/** The rare sandwich: bread, lettuce, cheese and tomato, with the face on the top slice. */
+private fun DrawScope.drawSandwichBody() {
+    drawRoundRect(BreadCrust, topLeft = Offset(-0.85f, 0.3f), size = Size(1.7f, 0.42f), cornerRadius = CornerRadius(0.16f))
+    drawRoundRect(BreadCrumb, topLeft = Offset(-0.78f, 0.3f), size = Size(1.56f, 0.3f), cornerRadius = CornerRadius(0.12f))
+    var x = -0.8f
+    while (x <= 0.81f) {
+        drawCircle(SandwichLettuce, radius = 0.11f, center = Offset(x, 0.27f))
+        x += 0.2f
+    }
+    drawRoundRect(SandwichCheese, topLeft = Offset(-0.92f, 0.1f), size = Size(1.84f, 0.13f), cornerRadius = CornerRadius(0.04f))
+    drawRoundRect(SandwichTomato, topLeft = Offset(-0.8f, -0.03f), size = Size(1.6f, 0.14f), cornerRadius = CornerRadius(0.07f))
+    drawRoundRect(BreadCrust, topLeft = Offset(-0.85f, -0.78f), size = Size(1.7f, 0.78f), cornerRadius = CornerRadius(0.42f, 0.42f))
+    drawRoundRect(BreadCrumb, topLeft = Offset(-0.77f, -0.7f), size = Size(1.54f, 0.64f), cornerRadius = CornerRadius(0.34f, 0.34f))
 }
 
 /** A closed curve r(theta), scaled so its farthest point sits at radius 1. */

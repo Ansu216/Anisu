@@ -68,6 +68,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.ansu.anime.data.prefs.PlayerPrefs
 import com.ansu.anime.di.AppContainer
+import androidx.compose.foundation.clickable
+import com.ansu.anime.ui.player.PlayerSeekBar
+import com.ansu.anime.ui.player.SeekBarStyle
 import com.ansu.anime.ui.player.ColorSwatchRow
 import com.ansu.anime.ui.player.SubtitleBgColors
 import com.ansu.anime.ui.player.SubtitlePreview
@@ -88,6 +91,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val swipeSeek by prefs.swipeSeek.collectAsStateWithLifecycle()
     val holdSpeed by prefs.holdSpeed.collectAsStateWithLifecycle()
     val hideEpisodeButtons by prefs.hideEpisodeButtons.collectAsStateWithLifecycle()
+    val seekBarStyleKey by prefs.seekBarStyle.collectAsStateWithLifecycle()
     val brightness by prefs.brightnessGesture.collectAsStateWithLifecycle()
     val volume by prefs.volumeGesture.collectAsStateWithLifecycle()
     val skipSeconds by prefs.skipSeconds.collectAsStateWithLifecycle()
@@ -185,12 +189,49 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
 
             GlassGroupLabel("Controls")
             GlassGroup {
+                GlassContentRow(
+                    title = "Seek Bar Style",
+                    description = "How the progress bar looks in the player",
+                    showDivider = false,
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        SeekBarStyle.entries.forEach { option ->
+                            val selected = SeekBarStyle.fromKey(seekBarStyleKey) == option
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .border(
+                                        width = if (selected) 2.dp else 1.dp,
+                                        color = if (selected) AnsuColors.Accent else AnsuColors.StrokeGlass,
+                                        shape = RoundedCornerShape(14.dp),
+                                    )
+                                    .clickable { prefs.setSeekBarStyle(option.key) }
+                                    .padding(horizontal = 6.dp, vertical = 10.dp),
+                            ) {
+                                PlayerSeekBar(
+                                    positionMs = 60_000L,
+                                    durationMs = 100_000L,
+                                    onSeek = {},
+                                    trackHeight = 8.dp,
+                                    thumbWidth = 4.dp,
+                                    thumbHeight = 16.dp,
+                                    showEndDot = false,
+                                    style = option,
+                                    interactive = false,
+                                    compact = true,
+                                )
+                                Text(option.label, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
                 GlassToggleRow(
                     title = "Hide Next And Previous",
                     description = "Remove the previous and next episode buttons from the player controls",
                     checked = hideEpisodeButtons,
                     onCheckedChange = prefs::setHideEpisodeButtons,
-                    showDivider = false,
                 )
             }
 

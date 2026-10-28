@@ -32,6 +32,16 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putBoolean(KEY_SWIPE_SEEK, value).apply()
     }
 
+    private val _seekBarStyle = MutableStateFlow(prefs.getString(KEY_SEEK_BAR_STYLE, SEEK_STYLE_CLASSIC) ?: SEEK_STYLE_CLASSIC)
+
+    /** Look of the player's progress bar: "classic", "cookie", "dot" or "outline" (Settings > Playback > Controls). */
+    val seekBarStyle: StateFlow<String> = _seekBarStyle
+
+    fun setSeekBarStyle(value: String) {
+        _seekBarStyle.value = value
+        prefs.edit().putString(KEY_SEEK_BAR_STYLE, value).apply()
+    }
+
     private val _holdSpeed = MutableStateFlow(prefs.getBoolean(KEY_HOLD_SPEED, true))
 
     /** Press and hold the video to play at 2x until the finger lifts. On by default. */
@@ -361,6 +371,8 @@ class PlayerPrefs(context: Context) {
 
     companion object {
         private const val KEY_AUTOPLAY_NEXT = "autoplay_next"
+        private const val KEY_SEEK_BAR_STYLE = "seek_bar_style"
+        const val SEEK_STYLE_CLASSIC = "classic"
         private const val KEY_HIDE_EPISODE_BUTTONS = "hide_episode_buttons"
         private const val KEY_AMBIENT_MODE = "ambient_mode"
         val SKIP_OPTIONS = listOf(5, 10, 15)

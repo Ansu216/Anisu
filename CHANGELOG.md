@@ -7,20 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## How this file is used
 
-- Every change updates the `## [Unreleased]` section **in the same commit** as
-  the code. See `CLAUDE.md` §7 for the full rules.
-- At release time the entries move under a new `## [<version>] - <YYYY-MM-DD>`
-  heading, where `<version>` is the pushed tag **without** its `v` prefix
-  (tag `v1.2.3` → heading `## [1.2.3]`).
-- `release-apk.yml` extracts that section verbatim and uses it as the GitHub
-  Release body, so the section is written for users, not for the git log.
-- Entries lead with a bold, one-line statement of the change, then explain what
-  was wrong or missing and why the change fixes it. A `**Constraint:**` sentence
-  records the limit that was deliberately kept, when there is one.
-- Published sections are never rewritten. A mistake is corrected in a new
-  release.
+- Every change updates the `## [Unreleased]
 
-## [Unreleased]
+## [1.0.2] - 2026-10-28
+
+### Added
+- **Cute bread background.** A new "Cute bread" choice in Appearance > Background animation: little toast and buns with sleepy faces floating behind the screens.
+- **Seek bar styles.** Pick Classic, Cookie, Dot or Outline in Settings > Playback > Controls > Seek Bar Style.
+
+### Fixed
+- **The clock no longer runs past the end of the bar.** Some streams report a shorter length than what plays; the bar now never ends before the current position.
 
 ## [1.0.1] - 2026-10-27
 
