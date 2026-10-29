@@ -29,6 +29,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.rounded.AspectRatio
+import androidx.compose.material.icons.rounded.Cast
+import androidx.compose.material.icons.rounded.CastConnected
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.FullscreenExit
@@ -112,7 +114,24 @@ class PlayerActions(
     val hideEpisodeButtons: Boolean = false,
     /** Settings > Playback > Seek Bar Style. */
     val seekBarStyle: SeekBarStyle = SeekBarStyle.Classic,
+    /** Settings > Playback > Cast Button, and a Chromecast was found: the cast icon sits between autoplay and lock. */
+    val showCastButton: Boolean = false,
+    val castConnected: Boolean = false,
+    val onCast: () -> Unit = {},
 )
+
+/** The Chromecast button of the top bar; it turns accent-coloured while a TV is connected. */
+@Composable
+private fun CastIconButton(actions: PlayerActions, iconSize: Dp) {
+    IconButton(onClick = actions.onCast) {
+        Icon(
+            if (actions.castConnected) Icons.Rounded.CastConnected else Icons.Rounded.Cast,
+            contentDescription = "Cast to TV",
+            tint = if (actions.castConnected) AnsuColors.Accent else Color.White,
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
 
 /** YouTube-style autoplay pill: a track with a round thumb that carries a play/pause glyph and slides across. */
 @Composable
@@ -219,6 +238,7 @@ fun PlayerControlsOverlay(
                     modifier = Modifier.padding(horizontal = 8.dp),
                 )
             }
+            if (actions.showCastButton) CastIconButton(actions, 26.dp)
             IconButton(onClick = actions.onLock) {
                 Icon(Icons.Rounded.Lock, contentDescription = "Lock controls", tint = Color.White, modifier = Modifier.size(26.dp))
             }
@@ -497,6 +517,7 @@ fun PlayerControlsCompact(
             }
             Box(modifier = Modifier.weight(1f))
             AutoplayToggle(checked = actions.autoplayNext, onCheckedChange = actions.onAutoplayNext, modifier = Modifier.padding(horizontal = 6.dp))
+            if (actions.showCastButton) CastIconButton(actions, 22.dp)
             IconButton(onClick = actions.onLock) {
                 Icon(Icons.Rounded.Lock, contentDescription = "Lock controls", tint = Color.White, modifier = Modifier.size(22.dp))
             }

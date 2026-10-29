@@ -229,7 +229,9 @@ fun SourcePickerScreen(container: AppContainer, navController: NavHostController
 @Composable
 private fun PickerHero(imageUrl: String?, episodeLabel: String, title: String, subtitle: String, onBack: () -> Unit) {
     Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-        if (imageUrl != null) {
+        if (imageUrl.isNullOrBlank()) {
+            com.ansu.anime.ui.components.NoImageBanner()
+        } else {
             AsyncImage(model = imageUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
         Box(

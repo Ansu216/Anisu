@@ -10,6 +10,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.layout.WindowInsets
@@ -363,30 +364,41 @@ fun NavBarSurface(
                         val topLeft = Offset(-extraW / 2f, -extraH / 2f)
                         val glow = (h + stretch).coerceAtMost(1.2f)
                         val radius = CornerRadius(minOf(w, ht) * roundness.coerceIn(0f, 1f) / 2f)
+                        // ONE fill, not three stacked translucent ones. The accent gradient, the white sheen and the
+                        // glass colours are blended here into the two stop colours, so the GPU rasterises a single
+                        // layer. Stacking three translucent fills on the same rounded shape let the faint seam that
+                        // runs through the middle of a stadium shape (between its top and bottom halves, from the
+                        // rounded tip inwards) add up three times while the pill stretched, which drew the thin white
+                        // line through the pill.
+                        val sheen = Color.White.copy(alpha = (0.12f * glow).coerceAtMost(0.2f))
+                        val topColor = sheen.compositeOver(
+                            AnsuColors.Accent.copy(alpha = (0.16f + 0.14f * glow).coerceAtMost(0.5f)),
+                        )
+                        val bottomColor = sheen.compositeOver(
+                            AnsuColors.Accent.copy(alpha = (0.10f + 0.08f * glow).coerceAtMost(0.4f)),
+                        )
                         drawRoundRect(
                             brush = Brush.verticalGradient(
-                                listOf(
-                                    AnsuColors.Accent.copy(alpha = (0.16f + 0.14f * glow).coerceAtMost(0.5f)),
-                                    AnsuColors.Accent.copy(alpha = (0.10f + 0.08f * glow).coerceAtMost(0.4f)),
-                                ),
+                                colors = listOf(topColor, bottomColor),
+                                startY = topLeft.y,
+                                endY = topLeft.y + ht,
                             ),
                             topLeft = topLeft,
                             size = Size(w, ht),
                             cornerRadius = radius,
                         )
-                        // Soft white sheen so the swollen pill reads as glass over the bar.
-                        drawRoundRect(
-                            color = Color.White.copy(alpha = (0.12f * glow).coerceAtMost(0.2f)),
-                            topLeft = topLeft,
-                            size = Size(w, ht),
-                            cornerRadius = radius,
-                        )
+                        // The outline is inset by half its width so it sits fully inside the fill's edge instead of
+                        // straddling it.
+                        val strokeW = 1.dp.toPx()
                         drawRoundRect(
                             color = Color.White.copy(alpha = (0.10f + 0.22f * glow).coerceAtMost(0.34f)),
-                            topLeft = topLeft,
-                            size = Size(w, ht),
-                            cornerRadius = radius,
-                            style = Stroke(width = 1.dp.toPx()),
+                            topLeft = Offset(topLeft.x + strokeW / 2f, topLeft.y + strokeW / 2f),
+                            size = Size(w - strokeW, ht - strokeW),
+                            cornerRadius = CornerRadius(
+                                (radius.x - strokeW / 2f).coerceAtLeast(0f),
+                                (radius.y - strokeW / 2f).coerceAtLeast(0f),
+                            ),
+                            style = Stroke(width = strokeW),
                         )
                     },
             )

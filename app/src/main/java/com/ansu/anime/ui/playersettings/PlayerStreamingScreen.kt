@@ -91,6 +91,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val swipeSeek by prefs.swipeSeek.collectAsStateWithLifecycle()
     val holdSpeed by prefs.holdSpeed.collectAsStateWithLifecycle()
     val hideEpisodeButtons by prefs.hideEpisodeButtons.collectAsStateWithLifecycle()
+    val castButton by prefs.castButton.collectAsStateWithLifecycle()
     val seekBarStyleKey by prefs.seekBarStyle.collectAsStateWithLifecycle()
     val brightness by prefs.brightnessGesture.collectAsStateWithLifecycle()
     val volume by prefs.volumeGesture.collectAsStateWithLifecycle()
@@ -232,6 +233,12 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                     description = "Remove the previous and next episode buttons from the player controls",
                     checked = hideEpisodeButtons,
                     onCheckedChange = prefs::setHideEpisodeButtons,
+                )
+                GlassToggleRow(
+                    title = "Cast Button",
+                    description = "Show a Chromecast button in the player's top bar, between the autoplay switch and the lock",
+                    checked = castButton,
+                    onCheckedChange = prefs::setCastButton,
                 )
             }
 

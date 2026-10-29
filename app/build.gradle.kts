@@ -198,4 +198,9 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
     implementation(libs.media3.datasource.okhttp)
+
+    // Chromecast: the Cast framework, its device picker and the Fragment support that picker needs.
+    implementation(libs.play.services.cast.framework)
+    implementation(libs.androidx.mediarouter)
+    implementation(libs.androidx.fragment)
 }

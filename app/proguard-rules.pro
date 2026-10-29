@@ -60,3 +60,6 @@
 -keep class androidx.media3.exoplayer.hls.** { *; }
 -keep class androidx.media3.exoplayer.dash.** { *; }
 -dontwarn androidx.media3.**
+
+# Chromecast: the Cast framework reads this class by name from the manifest (a meta-data value, which shrinking does not see).
+-keep class com.ansu.anime.cast.AnisuCastOptionsProvider { *; }

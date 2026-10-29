@@ -56,6 +56,14 @@ data class PlayableSource(
     val skipSegments: List<com.ansu.anime.data.repository.SkipSegment> = emptyList(),
 )
 
+/** The stream that is actually playing (after any resolving), which is what a Chromecast has to be given. */
+data class PlaybackTarget(
+    val url: String,
+    val mimeType: String?,
+    val headers: Map<String, String>,
+    val subtitles: List<SubtitleTrack> = emptyList(),
+)
+
 /** How many other streams are opened next to the best one when sources are raced. */
 private const val MAX_RACE_RIVALS = 2
 
@@ -213,6 +221,11 @@ class PlayerViewModel(
     private val episodeMetadataRepository: com.ansu.anime.data.repository.EpisodeMetadataRepository? = null,
     private val downloads: com.ansu.anime.data.download.DownloadsRepository? = null,
 ) : ViewModel() {
+
+    private val _playbackTarget = MutableStateFlow<PlaybackTarget?>(null)
+
+    /** The resolved stream now playing; null until one starts. The Cast button hands this to the TV. */
+    val playbackTarget: StateFlow<PlaybackTarget?> = _playbackTarget
 
     // Large buffers + a small start threshold: playback starts after a few seconds of data and the
     // rest keeps loading ahead in chunks, like other streaming apps (matters for big movie files).
@@ -1054,6 +1067,7 @@ class PlayerViewModel(
 
     @androidx.annotation.OptIn(UnstableApi::class)
     private fun startPlayback(source: PlayableSource, mimeType: String?) {
+        _playbackTarget.value = PlaybackTarget(source.url, mimeType, source.headers, source.subtitles)
         // A new stream: its subtitle tracks get the person's session choice again once they are reported.
         subtitleChoiceApplied = false
         // The stream's own intro/outro times (when its source gives them) win over AniSkip's.

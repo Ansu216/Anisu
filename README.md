@@ -11,6 +11,8 @@
 ![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white)
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
 
+[![Get it on Orion Store](https://raw.githubusercontent.com/RookieEnough/Orion-Store/refs/heads/main/assets/orion-badge.png)](https://rookieenough.github.io/Orion-Data/app/?id=anisu)
+
 </div>
 
 ---
@@ -52,6 +54,8 @@ Anisu is a native Android app that puts your AniList account, the airing schedul
 ---
 
 ## Install
+
+[![Get it on Orion Store](https://raw.githubusercontent.com/RookieEnough/Orion-Store/refs/heads/main/assets/orion-badge.png)](https://rookieenough.github.io/Orion-Data/app/?id=anisu)
 
 Download the newest APK from the project's **Releases** page, or a nightly build from the `apk-nightly` branch, and install it on your phone. Android may ask you to allow installing from your browser or file manager the first time. After that, Anisu can update itself from **Settings > About / Updates**.
 

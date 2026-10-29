@@ -297,7 +297,7 @@ fun ContinueWatchingThumbnail(
     // a memory-cache entry and the twin appears on its first frame instead of loading in.
     val context = LocalContext.current
     // A finished episode with a next one out shows that episode's own thumbnail, like a "Next Up" tile.
-    // The show's wide banner; with none, the gradient design (a portrait poster crops badly in this wide card).
+    // The show's wide banner; with none, the "No image" gradient (a portrait poster crops badly in this wide card).
     val banner = entry.bannerUrl
     val episodeThumb = (info as? ResumeCardInfo.NextUp)?.thumbnailUrl?.takeIf { it.isNotBlank() }
     // If the episode thumbnail is missing or fails to load, the show's horizontal banner is used instead.
@@ -309,7 +309,7 @@ fun ContinueWatchingThumbnail(
     val overlayCard = info is ResumeCardInfo.NextUp || info is ResumeCardInfo.Countdown
     Box(modifier = modifier.background(AnsuColors.BackgroundElevated)) {
         if (url.isNullOrBlank()) {
-            NoArtGradient(seed = entry.title)
+            NoImageBanner(textBias = if (overlayCard) 0f else -0.5f, scale = scale)
         } else {
             AsyncImage(
                 model = request,

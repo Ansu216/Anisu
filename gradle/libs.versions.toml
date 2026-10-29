@@ -13,6 +13,9 @@ kotlinxSerialization = "1.7.3"
 kotlinxCoroutines = "1.8.1"
 coil = "2.7.0"
 media3 = "1.5.0"
+playServicesCast = "21.5.0"
+mediarouter = "1.7.0"
+fragment = "1.8.5"
 browser = "1.8.0"
 datastore = "1.1.1"
 securityCrypto = "1.1.0-alpha06"
@@ -66,6 +69,9 @@ media3-exoplayer-dash = { group = "androidx.media3", name = "media3-exoplayer-da
 media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
 media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasource-okhttp", version.ref = "media3" }
+play-services-cast-framework = { group = "com.google.android.gms", name = "play-services-cast-framework", version.ref = "playServicesCast" }
+androidx-mediarouter = { group = "androidx.mediarouter", name = "mediarouter", version.ref = "mediarouter" }
+androidx-fragment = { group = "androidx.fragment", name = "fragment", version.ref = "fragment" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

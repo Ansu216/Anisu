@@ -145,7 +145,7 @@ private fun NextWatchCard(
     ) {
         val pickImage = pick.anime.bannerUrl
         if (pickImage.isNullOrBlank()) {
-            com.ansu.anime.ui.components.NoArtGradient(seed = pick.anime.anilistId?.toString() ?: pick.anime.title)
+            com.ansu.anime.ui.components.NoImageBanner()
         } else {
             AsyncImage(
                 model = pickImage,

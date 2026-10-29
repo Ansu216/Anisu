@@ -585,8 +585,8 @@ private fun DetailsHero(title: String, imageUrl: String?, logoUrl: String?, onBa
     // Taller than the art's 16:9 so the fade has room; the banner melts into the page like the home hero.
     Box(modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f)) {
         if (imageUrl.isNullOrBlank()) {
-            // No banner yet (an unreleased title, say): the gradient design, with nothing written on it.
-            com.ansu.anime.ui.components.NoArtGradient(seed = title)
+            // No banner yet (an unreleased title, say): the "No image" gradient.
+            com.ansu.anime.ui.components.NoImageBanner()
         } else {
             AsyncImage(
                 model = imageUrl,
@@ -990,7 +990,9 @@ private fun MovieRow(
         Box(
             modifier = Modifier.width(120.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(AnsuColors.BackgroundElevated),
         ) {
-            if (imageUrl != null) {
+            if (imageUrl.isNullOrBlank()) {
+                com.ansu.anime.ui.components.NoImageBanner(scale = 0.7f)
+            } else {
                 AsyncImage(model = imageUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
         }

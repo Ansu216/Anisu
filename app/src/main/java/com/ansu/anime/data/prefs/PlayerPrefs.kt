@@ -113,6 +113,16 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putBoolean(KEY_HIDE_EPISODE_BUTTONS, value).apply()
     }
 
+    private val _castButton = MutableStateFlow(prefs.getBoolean(KEY_CAST_BUTTON, true))
+
+    /** Shows the Chromecast button in the player's top bar, between the autoplay switch and the lock. */
+    val castButton: StateFlow<Boolean> = _castButton
+
+    fun setCastButton(value: Boolean) {
+        _castButton.value = value
+        prefs.edit().putBoolean(KEY_CAST_BUTTON, value).apply()
+    }
+
     private val _ambientMode = MutableStateFlow(prefs.getBoolean(KEY_AMBIENT_MODE, true))
 
     /** The portrait player glows under the video in the colours of what is playing. */
@@ -374,6 +384,7 @@ class PlayerPrefs(context: Context) {
         private const val KEY_SEEK_BAR_STYLE = "seek_bar_style"
         const val SEEK_STYLE_CLASSIC = "classic"
         private const val KEY_HIDE_EPISODE_BUTTONS = "hide_episode_buttons"
+        private const val KEY_CAST_BUTTON = "cast_button"
         private const val KEY_AMBIENT_MODE = "ambient_mode"
         val SKIP_OPTIONS = listOf(5, 10, 15)
         /** "Any": no resolution is aimed for; playback starts on the first stream in the chosen language that answers. */

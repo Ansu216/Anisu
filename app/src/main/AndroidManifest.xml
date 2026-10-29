@@ -51,6 +51,11 @@
             </intent-filter>
         </activity>
 
+        <!-- Chromecast: tells the Cast framework which receiver to use (see AnisuCastOptionsProvider). -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.ansu.anime.cast.AnisuCastOptionsProvider" />
+
         <service
             android:name=".data.download.AnisuDownloadService"
             android:exported="false"

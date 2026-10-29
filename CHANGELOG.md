@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Every change updates the `## [Unreleased]
 
+## [1.0.3] - 2026-10-29
+
+### Added
+- **"No image" picture for titles without a wide banner.** One fixed gradient with "No image" written on it now stands in for the banner on the Continue Watching and Your Next Watch cards, the top of the details page, the movie row and the source picker. The picker and the movie row used to show an empty box. The home hero keeps its own gradient design, since it shows the portrait cover.
+- **Chromecast.** A Cast button in the player's top bar, between the autoplay switch and the lock, sends the playing stream to a TV. While casting, the player shows its own controls (play/pause, skip, seek bar, Stop casting) and the phone's video stays paused; stopping carries on from where the TV was. Settings > Player and streaming > Cast Button turns the button off. Subtitles go to the TV too: the phone fetches each subtitle file, converts SRT/ASS to WebVTT and serves it on the local network, and a Subtitles menu on the casting screen switches or turns them off. Streams that need special request headers, and episodes stored on the phone, can't be played by a TV.
+- **Orion Store badge in the README.** The header and the Install section now carry the "Get it on Orion Store" badge linking to Anisu's Orion Store page.
+
+### Fixed
+- **No more thin white line inside the nav bar's selector pill while it moves.** The pill was drawn as three translucent fills stacked on the same rounded shape, and the faint seam through the middle of that shape added up three times while the pill stretched between tabs. It is now one fill with the colours blended up front, and its outline sits inside the edge.
+
 ## [1.0.2] - 2026-10-28
 
 ### Added

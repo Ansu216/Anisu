@@ -2,6 +2,7 @@ package com.ansu.anime.ui.player
 
 import android.app.Activity
 import android.content.Context
+import android.widget.Toast
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
@@ -68,6 +69,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
@@ -82,6 +84,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import com.ansu.anime.cast.CastController
+import com.ansu.anime.cast.isCastableUrl
 import androidx.media3.ui.SubtitleView
 import androidx.navigation.NavHostController
 import com.ansu.anime.data.repository.AnimeArtwork
@@ -143,6 +147,56 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         },
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val castButtonEnabled by container.playerPrefs.castButton.collectAsStateWithLifecycle()
+    val cast = remember { CastController(context.applicationContext) }
+    val castState by cast.state.collectAsStateWithLifecycle()
+    val playbackTarget by viewModel.playbackTarget.collectAsStateWithLifecycle()
+    DisposableEffect(cast) {
+        cast.attach()
+        onDispose { cast.release() }
+    }
+    // A session is up: the phone's own player stays paused and the stream goes to the TV, again each time the stream
+    // changes (another episode or source) while casting.
+    LaunchedEffect(castState.connected, playbackTarget) {
+        val target = playbackTarget
+        if (!castState.connected || target == null) return@LaunchedEffect
+        viewModel.player.pause()
+        if (!isCastableUrl(target.url)) {
+            Toast.makeText(context, "This stream is stored on your phone, so a TV can't play it", Toast.LENGTH_LONG).show()
+            return@LaunchedEffect
+        }
+        if (target.headers.isNotEmpty()) {
+            Toast.makeText(context, "This source may not play on a TV; if it doesn't, pick another source", Toast.LENGTH_LONG).show()
+        }
+        cast.load(
+            url = target.url,
+            mimeType = target.mimeType ?: "video/mp4",
+            headers = target.headers,
+            subtitles = target.subtitles,
+            title = state.anime?.title.orEmpty(),
+            subtitle = episodeLine(state.episode),
+            imageUrl = state.anime?.posterUrl,
+            positionMs = viewModel.player.currentPosition,
+        ) { ok ->
+            if (!ok) Toast.makeText(context, "The TV could not play this stream", Toast.LENGTH_LONG).show()
+        }
+    }
+    LaunchedEffect(castState.connected, state.isPlaying) {
+        if (castState.connected && state.isPlaying) viewModel.player.pause()
+    }
+    // The session ended (Stop casting, or the TV went away): carry on from where the TV was.
+    var wasCasting by remember { mutableStateOf(false) }
+    LaunchedEffect(castState.connected) {
+        if (castState.connected) {
+            wasCasting = true
+        } else if (wasCasting) {
+            wasCasting = false
+            cast.takeResume()?.let { resume ->
+                viewModel.seekTo(resume.positionMs)
+                if (resume.playing) viewModel.player.play()
+            }
+        }
+    }
     var sheet by remember { mutableStateOf<PlayerSheet?>(null) }
     // Landscape: Sources / Audio / Subtitles open as a small tab on the right instead of a bottom sheet.
     var panel by remember { mutableStateOf<PlayerPanel?>(null) }
@@ -300,7 +354,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     // playback, a seek, an opened panel or any touch puts the timer back to zero. A touch on the pause screen only
     // takes it away (and shows the controls); it never starts the video, the play button does.
     val resting = !state.isPlaying && !state.isBuffering && !state.isLoadingSources && state.error == null && state.durationMs > 0L
-    val pauseEligible = pauseScreenEnabled && resting && panel == null && sheet == null && !locked && !inPip
+    val pauseEligible = pauseScreenEnabled && resting && panel == null && sheet == null && !locked && !inPip && !castState.connected
     var pauseIdle by remember { mutableStateOf(false) }
     // Counts touches anywhere on the player (see the root layout): every one puts the pause screen's timer back to zero.
     var pauseTouchTick by remember { mutableIntStateOf(0) }
@@ -394,6 +448,9 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         onAutoplayNext = container.playerPrefs::setAutoplayNext,
         hideEpisodeButtons = hideEpisodeButtons,
         seekBarStyle = SeekBarStyle.fromKey(seekBarStyleKey),
+        showCastButton = castButtonEnabled && castState.available,
+        castConnected = castState.connected,
+        onCast = { (activity as? FragmentActivity)?.let(cast::showDialog) },
     )
 
     // The video view of the portrait layout, read by the ambient glow for the colours under the video.
@@ -443,6 +500,21 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
             ) {
                 if (inPip) {
                     Unit
+                } else if (castState.connected) {
+                    CastOverlay(
+                        state = castState,
+                        title = state.anime?.title.orEmpty(),
+                        episode = episodeLine(state.episode),
+                        seekSeconds = skipSeconds,
+                        onSubtitle = cast::selectSubtitle,
+                        onBack = actions.onBack,
+                        onDevice = actions.onCast,
+                        onPlayPause = cast::togglePlayPause,
+                        onSeekBy = cast::seekBy,
+                        onSeekTo = cast::seekTo,
+                        onDisconnect = cast::disconnect,
+                        compact = false,
+                    )
                 } else if (locked) {
                     LockedOverlay(onUnlock = { locked = false }, isBuffering = state.isBuffering)
                 } else {
@@ -494,6 +566,21 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 ) {
                     if (inPip) {
                         Unit
+                    } else if (castState.connected) {
+                        CastOverlay(
+                            state = castState,
+                            title = state.anime?.title.orEmpty(),
+                            episode = episodeLine(state.episode),
+                            seekSeconds = skipSeconds,
+                            onSubtitle = cast::selectSubtitle,
+                            onBack = actions.onBack,
+                            onDevice = actions.onCast,
+                            onPlayPause = cast::togglePlayPause,
+                            onSeekBy = cast::seekBy,
+                            onSeekTo = cast::seekTo,
+                            onDisconnect = cast::disconnect,
+                            compact = true,
+                        )
                     } else if (locked) {
                         LockedOverlay(onUnlock = { locked = false }, isBuffering = state.isBuffering)
                     } else {
