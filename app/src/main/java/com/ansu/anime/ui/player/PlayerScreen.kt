@@ -69,7 +69,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
-import androidx.fragment.app.FragmentActivity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
@@ -94,7 +93,7 @@ import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import kotlin.math.pow
 
-private enum class PlayerSheet { SOURCES, SUBS, AUDIO, EPISODES, SETTINGS }
+private enum class PlayerSheet { SOURCES, SUBS, AUDIO, EPISODES, SETTINGS, CAST }
 
 private val FitModes = listOf(
     "Fit" to AspectRatioFrameLayout.RESIZE_MODE_FIT,
@@ -258,6 +257,13 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         if (panel == PlayerPanel.SOURCES || sheet == PlayerSheet.SOURCES) viewModel.measurePings()
     }
     BackHandler(enabled = panel != null) { panel = null }
+    // Picking a TV in the Casting panel connects it; once it is connected the panel has done its job.
+    LaunchedEffect(castState.connected) {
+        if (castState.connected) {
+            if (panel == PlayerPanel.CAST) panel = null
+            if (sheet == PlayerSheet.CAST) sheet = null
+        }
+    }
 
     // Picture-in-picture: whether the app is currently shrunk into the floating window.
     var inPip by remember { mutableStateOf(false) }
@@ -448,9 +454,10 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         onAutoplayNext = container.playerPrefs::setAutoplayNext,
         hideEpisodeButtons = hideEpisodeButtons,
         seekBarStyle = SeekBarStyle.fromKey(seekBarStyleKey),
-        showCastButton = castButtonEnabled && castState.available,
+        showCastButton = castButtonEnabled,
         castConnected = castState.connected,
-        onCast = { (activity as? FragmentActivity)?.let(cast::showDialog) },
+        // The Casting panel (a bottom sheet in portrait) lists the TVs, or says it is searching / found none.
+        onCast = { if (isLandscape) panel = PlayerPanel.CAST else sheet = PlayerSheet.CAST },
     )
 
     // The video view of the portrait layout, read by the ambient glow for the colours under the video.
@@ -504,7 +511,9 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     CastOverlay(
                         state = castState,
                         title = state.anime?.title.orEmpty(),
-                        episode = episodeLine(state.episode),
+                        episodeLine = castEpisodeLine(state.episode, startingInfo),
+                        logoUrl = startingInfo.logoUrl,
+                        backdropUrl = startingBackdrop,
                         seekSeconds = skipSeconds,
                         onSubtitle = cast::selectSubtitle,
                         onBack = actions.onBack,
@@ -570,7 +579,9 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                         CastOverlay(
                             state = castState,
                             title = state.anime?.title.orEmpty(),
-                            episode = episodeLine(state.episode),
+                            episodeLine = castEpisodeLine(state.episode, startingInfo),
+                            logoUrl = startingInfo.logoUrl,
+                            backdropUrl = startingBackdrop,
                             seekSeconds = skipSeconds,
                             onSubtitle = cast::selectSubtitle,
                             onBack = actions.onBack,
@@ -684,6 +695,13 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     onClose = close,
                     modifier = panelModifier,
                 )
+                PlayerPanel.CAST -> CastPanel(
+                    state = castState,
+                    progress = progress,
+                    onSelect = { cast.connect(it.id) },
+                    onClose = close,
+                    modifier = panelModifier,
+                )
             }
         }
 
@@ -732,6 +750,13 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 state = state,
                 onPlayEpisode = viewModel::playEpisode,
                 onDismiss = { sheet = null },
+            )
+            PlayerSheet.CAST -> CastPanel(
+                state = castState,
+                progress = { 1f },
+                onSelect = { cast.connect(it.id) },
+                onClose = { sheet = null },
+                sheet = true,
             )
             PlayerSheet.SETTINGS -> SettingsMenuSheet(
                 fitLabel = fitLabel,

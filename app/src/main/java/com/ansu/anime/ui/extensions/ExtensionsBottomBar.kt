@@ -25,7 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -46,6 +45,7 @@ import com.ansu.anime.ui.components.LocalNavBarRoundness
 import com.ansu.anime.ui.components.backdropBlurSupported
 import com.ansu.anime.ui.components.frostedBackdrop
 import com.ansu.anime.ui.components.navBarShape
+import com.ansu.anime.ui.components.pillCornerRadius
 import com.ansu.anime.ui.components.navBarTintAlpha
 import com.ansu.anime.ui.theme.AnsuColors
 import kotlin.math.roundToInt
@@ -130,7 +130,7 @@ fun ExtensionsTabBar(
                         val ht = size.height + extraH
                         val topLeft = Offset(-extraW / 2f, -extraH / 2f)
                         val glow = (h + travel).coerceAtMost(1.2f)
-                        val radius = CornerRadius(minOf(w, ht) * roundness.coerceIn(0f, 1f) / 2f)
+                        val radius = pillCornerRadius(w, ht, roundness, 1.dp.toPx())
                         drawRoundRect(
                             brush = Brush.verticalGradient(
                                 listOf(

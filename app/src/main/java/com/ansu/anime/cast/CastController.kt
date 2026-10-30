@@ -4,8 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
-import androidx.fragment.app.FragmentActivity
-import androidx.mediarouter.app.MediaRouteDialogFactory
+import androidx.mediarouter.media.MediaRouter
 import com.ansu.anime.core.model.SubtitleTrack
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaLoadRequestData
@@ -28,7 +27,9 @@ import kotlinx.coroutines.flow.update
 
 /** What the player shows about the Chromecast: whether one is around, whether a session is up, and what it is playing. */
 data class CastUiState(
-    /** At least one Cast device was found on the network (the player's Cast button only shows then). */
+    /** The Cast framework started, so the player's Cast button shows (tapping it opens the device picker, which searches). */
+    val ready: Boolean = false,
+    /** At least one Cast device was found on the network. */
     val available: Boolean = false,
     val connected: Boolean = false,
     val deviceName: String? = null,
@@ -39,9 +40,20 @@ data class CastUiState(
     /** The text tracks the TV reports for what it is playing (the ones sent from here and any inside the stream). */
     val subtitleTracks: List<CastTrackOption> = emptyList(),
     val activeSubtitleId: Long? = null,
+    /** Every Cast device the network answered with, for the Casting panel. */
+    val devices: List<CastDeviceOption> = emptyList(),
 )
 
 data class CastTrackOption(val id: Long, val label: String)
+
+/** One TV the Casting panel lists: [selected] is the one the phone is connected to, [connecting] one it is connecting to. */
+data class CastDeviceOption(
+    val id: String,
+    val name: String,
+    val detail: String?,
+    val selected: Boolean,
+    val connecting: Boolean,
+)
 
 /** Where the TV was when the session ended, so the phone can carry on from there. */
 data class CastResume(val positionMs: Long, val playing: Boolean)
@@ -49,7 +61,7 @@ data class CastResume(val positionMs: Long, val playing: Boolean)
 /**
  * Chromecast support for the player. It owns the Cast session and the remote player on the TV; the local ExoPlayer
  * stays untouched and is simply kept paused while a session is up. Nothing here may throw on a phone without Google
- * Play services: the Cast framework is started asynchronously and a failure only leaves [CastUiState.available] false.
+ * Play services: the Cast framework is started asynchronously and a failure only leaves [CastUiState.ready] false.
  */
 class CastController(private val context: Context) {
 
@@ -62,6 +74,14 @@ class CastController(private val context: Context) {
     private var lastResume: CastResume? = null
     private var subtitleServer: CastSubtitleServer? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var router: MediaRouter? = null
+    // Keeps the Casting panel's device list live: a TV appearing, going away or changing state refreshes it.
+    private val discoveryCallback = object : MediaRouter.Callback() {
+        override fun onRouteAdded(router: MediaRouter, route: MediaRouter.RouteInfo) = refreshDevices()
+        override fun onRouteRemoved(router: MediaRouter, route: MediaRouter.RouteInfo) = refreshDevices()
+        override fun onRouteChanged(router: MediaRouter, route: MediaRouter.RouteInfo) = refreshDevices()
+        override fun onProviderChanged(router: MediaRouter, provider: MediaRouter.ProviderInfo) = refreshDevices()
+    }
 
     private val sessionListener = object : SessionManagerListener<CastSession> {
         override fun onSessionStarting(session: CastSession) = Unit
@@ -77,6 +97,7 @@ class CastController(private val context: Context) {
 
     private val castStateListener = CastStateListener { castState ->
         _state.update { it.copy(available = castState != CastState.NO_DEVICES_AVAILABLE) }
+        refreshDevices()
     }
 
     private val mediaCallback = object : RemoteMediaClient.Callback() {
@@ -93,15 +114,26 @@ class CastController(private val context: Context) {
         runCatching {
             CastContext.getSharedInstance(context, initExecutor)
                 .addOnSuccessListener { ctx -> if (!released) onContextReady(ctx) }
-                .addOnFailureListener { _state.update { it.copy(available = false) } }
+                .addOnFailureListener { _state.update { it.copy(ready = false, available = false) } }
         }
     }
 
     private fun onContextReady(ctx: CastContext) {
         castContext = ctx
+        // The framework only looks for TVs by itself while a route button is on screen, and the player draws its own
+        // icon, so it would never have searched. Asking the router for an active scan while the player is open is what
+        // makes devices show up.
+        ctx.mergedSelector?.let { selector ->
+            runCatching {
+                val mediaRouter = MediaRouter.getInstance(context)
+                mediaRouter.addCallback(selector, discoveryCallback, MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN)
+                router = mediaRouter
+            }
+        }
         ctx.sessionManager.addSessionManagerListener(sessionListener, CastSession::class.java)
         ctx.addCastStateListener(castStateListener)
-        _state.update { it.copy(available = ctx.castState != CastState.NO_DEVICES_AVAILABLE) }
+        _state.update { it.copy(ready = true, available = ctx.castState != CastState.NO_DEVICES_AVAILABLE) }
+        refreshDevices()
         ctx.sessionManager.currentCastSession?.takeIf { it.isConnected }?.let(::bind)
     }
 
@@ -112,12 +144,42 @@ class CastController(private val context: Context) {
         client?.registerCallback(mediaCallback)
         client?.addProgressListener(progressListener, PROGRESS_INTERVAL_MS)
         _state.update { it.copy(connected = true, deviceName = session.castDevice?.friendlyName) }
+        refreshDevices()
     }
 
     private fun unbind() {
         detachRemote()
         stopSubtitleServer()
-        _state.update { CastUiState(available = it.available) }
+        _state.update { CastUiState(ready = it.ready, available = it.available, devices = it.devices) }
+        refreshDevices()
+    }
+
+    /** Re-reads the Cast devices the router knows, so the Casting panel lists them with who is connected. */
+    private fun refreshDevices() {
+        val mediaRouter = router ?: return
+        val selector = castContext?.mergedSelector ?: return
+        val devices = runCatching {
+            mediaRouter.routes
+                .filter { it.isEnabled && it.matchesSelector(selector) }
+                .map { route ->
+                    val connecting = route.connectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING
+                    CastDeviceOption(
+                        id = route.id,
+                        name = route.name,
+                        detail = route.description?.takeIf { it.isNotBlank() && it != route.name },
+                        selected = route.isSelected && !connecting,
+                        connecting = connecting,
+                    )
+                }
+                .sortedBy { it.name.lowercase() }
+        }.getOrDefault(emptyList())
+        _state.update { it.copy(devices = devices) }
+    }
+
+    /** Connects to the device with [id] from the Casting panel (the framework starts the session by itself). */
+    fun connect(id: String) {
+        val mediaRouter = router ?: return
+        mediaRouter.routes.firstOrNull { it.id == id }?.let { runCatching { mediaRouter.selectRoute(it) } }
     }
 
     private fun detachRemote() {
@@ -265,21 +327,6 @@ class CastController(private val context: Context) {
         seekTo((current.positionMs + deltaMs).coerceIn(0L, limit))
     }
 
-    /** Opens the device picker, or the "connected to ..." dialog when a session is already up. */
-    fun showDialog(activity: FragmentActivity) {
-        val ctx = castContext ?: return
-        val fragmentManager = activity.supportFragmentManager
-        if (fragmentManager.findFragmentByTag(DIALOG_TAG) != null) return
-        val factory = MediaRouteDialogFactory.getDefault()
-        if (_state.value.connected) {
-            factory.onCreateControllerDialogFragment().show(fragmentManager, DIALOG_TAG)
-        } else {
-            val chooser = factory.onCreateChooserDialogFragment()
-            ctx.mergedSelector?.let { chooser.setRouteSelector(it) }
-            chooser.show(fragmentManager, DIALOG_TAG)
-        }
-    }
-
     /** Ends the session; the TV stops playing and the phone gets the video back (see [takeResume]). */
     fun disconnect() {
         castContext?.sessionManager?.endCurrentSession(true)
@@ -288,6 +335,8 @@ class CastController(private val context: Context) {
     /** Leaving the player ends the session, so the TV does not keep playing something the phone no longer shows. */
     fun release() {
         released = true
+        runCatching { router?.removeCallback(discoveryCallback) }
+        router = null
         castContext?.let { ctx ->
             ctx.removeCastStateListener(castStateListener)
             ctx.sessionManager.removeSessionManagerListener(sessionListener, CastSession::class.java)
@@ -299,7 +348,6 @@ class CastController(private val context: Context) {
     }
 
     private companion object {
-        const val DIALOG_TAG = "anisu_cast_dialog"
         const val PROGRESS_INTERVAL_MS = 1000L
 
         /** The Cast framework starts on a background thread; one shared thread is enough for every player screen. */

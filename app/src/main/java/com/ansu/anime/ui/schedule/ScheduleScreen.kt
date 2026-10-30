@@ -6,7 +6,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -22,6 +21,7 @@ import com.ansu.anime.ui.components.LocalNavBarRoundness
 import com.ansu.anime.ui.components.backdropBlurSupported
 import com.ansu.anime.ui.components.frostedBackdrop
 import com.ansu.anime.ui.components.navBarShape
+import com.ansu.anime.ui.components.pillCornerRadius
 import com.ansu.anime.ui.components.navBarTintAlpha
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -226,7 +226,7 @@ private fun SubTabToggle(
                         val h = size.height + extraH
                         val topLeft = Offset(-extraW / 2f, -extraH / 2f)
                         val glow = (holdAmount + travel).coerceAtMost(1.2f)
-                        val radius = CornerRadius(minOf(w, h) * roundness.coerceIn(0f, 1f) / 2f)
+                        val radius = pillCornerRadius(w, h, roundness, 1.dp.toPx())
                         drawRoundRect(
                             brush = Brush.verticalGradient(
                                 listOf(

@@ -101,7 +101,25 @@ fun navBarTintAlpha(frostiness: Float): Float = 0.05f + frostiness.coerceIn(0f, 
 
 /** Maps roundness 0..1 to a corner radius that scales with the bar's own height (50% = full pill). */
 fun navBarShape(roundness: Float): RoundedCornerShape =
-    RoundedCornerShape(percent = (roundness.coerceIn(0f, 1f) * 50f).roundToInt())
+    // Capped at 49%, never the full 50%: at exactly 50% the corner radius is half the bar's height, so the straight
+    // part between the two caps has zero height. The GPU's rounded-rect drawing leaves a hairline seam through the
+    // middle of such a perfect stadium (the thin white line seen on the bar and its pill at full roundness). 49% looks
+    // the same but keeps a straight band for the caps to meet on.
+    RoundedCornerShape(percent = (roundness.coerceIn(0f, 1f) * 50f).roundToInt().coerceAtMost(49))
+
+/**
+ * Corner radius of a selection pill of [width] x [height] at the given nav-bar [roundness]. It stops [clearancePx]
+ * short of half the pill's short side, for the same reason as [navBarShape]: a radius of exactly half the height makes
+ * a stadium with no straight band, and that is where the hairline seam appears. The nav pill, the Extensions pill and
+ * the Schedule / News pill all use this, so none of them can reach that shape.
+ */
+internal fun pillCornerRadius(width: Float, height: Float, roundness: Float, clearancePx: Float): CornerRadius {
+    val shortSide = minOf(width, height)
+    val radius = (shortSide * roundness.coerceIn(0f, 1f) / 2f)
+        .coerceAtMost(shortSide / 2f - clearancePx)
+        .coerceAtLeast(0f)
+    return CornerRadius(radius)
+}
 
 /** Frosted-glass bottom nav bar: a compact, icon-only floating pill. */
 @Composable
@@ -363,7 +381,8 @@ fun NavBarSurface(
                         val ht = size.height + extraH
                         val topLeft = Offset(-extraW / 2f, -extraH / 2f)
                         val glow = (h + stretch).coerceAtMost(1.2f)
-                        val radius = CornerRadius(minOf(w, ht) * roundness.coerceIn(0f, 1f) / 2f)
+                        val strokeW = 1.dp.toPx()
+                        val radius = pillCornerRadius(w, ht, roundness, strokeW)
                         // ONE fill, not three stacked translucent ones. The accent gradient, the white sheen and the
                         // glass colours are blended here into the two stop colours, so the GPU rasterises a single
                         // layer. Stacking three translucent fills on the same rounded shape let the faint seam that
@@ -389,7 +408,6 @@ fun NavBarSurface(
                         )
                         // The outline is inset by half its width so it sits fully inside the fill's edge instead of
                         // straddling it.
-                        val strokeW = 1.dp.toPx()
                         drawRoundRect(
                             color = Color.White.copy(alpha = (0.10f + 0.22f * glow).coerceAtMost(0.34f)),
                             topLeft = Offset(topLeft.x + strokeW / 2f, topLeft.y + strokeW / 2f),

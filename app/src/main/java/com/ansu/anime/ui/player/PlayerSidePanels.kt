@@ -61,7 +61,7 @@ import com.ansu.anime.ui.theme.AnsuColors
 import kotlin.math.roundToInt
 
 /** The three small tabs that slide in from the right of the fullscreen player. */
-internal enum class PlayerPanel { SOURCES, SUBS, AUDIO, EPISODES }
+internal enum class PlayerPanel { SOURCES, SUBS, AUDIO, EPISODES, CAST }
 
 /** Share of the screen width the panel takes; the video shrinks into the rest. */
 internal const val PANEL_WIDTH_FRACTION = 0.36f
@@ -70,10 +70,10 @@ internal const val PANEL_WIDTH_FRACTION = 0.36f
 internal fun panelWidthDp(screenWidthDp: Int): Dp = (screenWidthDp * PANEL_WIDTH_FRACTION).coerceIn(280f, 400f).dp
 
 private val PanelBackground = Color(0xFF0C0D12)
-private val PanelCard = Color(0xFF171923)
-private val PanelCardBorder = Color.White.copy(alpha = 0.08f)
-private val PanelMuted = Color.White.copy(alpha = 0.6f)
-private val PanelCardShape = RoundedCornerShape(14.dp)
+internal val PanelCard = Color(0xFF171923)
+internal val PanelCardBorder = Color.White.copy(alpha = 0.08f)
+internal val PanelMuted = Color.White.copy(alpha = 0.6f)
+internal val PanelCardShape = RoundedCornerShape(14.dp)
 
 /**
  * The panel frame: slides in from the right as [progress] goes 0 -> 1 (the screen drives it with one animation that

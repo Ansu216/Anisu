@@ -4,6 +4,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Chromecast discovery: finding a TV on the Wi-Fi uses multicast DNS, which needs both of these. Without them the
+         Cast framework never sees a device. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <!-- Soft haptic feedback on taps, toggles and tab changes (switchable in Settings). -->
     <!-- Android 13+ runtime permission for the "update available" notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
