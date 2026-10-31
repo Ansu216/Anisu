@@ -1,0 +1,11 @@
+{
+  "app": "Anisu",
+  "package": "com.ansu.anime",
+  "versionName": "1.0.3",
+  "versionCode": 2026103001,
+  "builtAt": "2026-10-31T14:07:29Z",
+  "commit": "8f03a1a38d0b4349e7c61ad6b073baf8dcd24564",
+  "runId": "41208657228",
+  "apk": "Ansu-nightly.apk",
+  "apkDebug": "Ansu-nightly-debug.apk"
+}
