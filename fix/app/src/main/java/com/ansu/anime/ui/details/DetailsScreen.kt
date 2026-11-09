@@ -1,0 +1,1296 @@
+package com.ansu.anime.ui.details
+
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.outlined.NotificationsNone
+import androidx.compose.foundation.background
+import com.ansu.anime.ui.components.DownloadOptionsDialog
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavHostController
+import coil.compose.AsyncImage
+import com.ansu.anime.anilist.AniListMedia
+import com.ansu.anime.core.model.MediaOrigin
+import com.ansu.anime.core.model.SAnime
+import com.ansu.anime.core.diagnostics.LogCategory
+import com.ansu.anime.core.model.SEpisode
+import com.ansu.anime.core.util.SynopsisBlock
+import com.ansu.anime.core.util.formatEpisodeNumber
+import com.ansu.anime.core.util.parseSynopsis
+import com.ansu.anime.data.repository.ListStatus
+import com.ansu.anime.data.repository.logoFor
+import com.ansu.anime.data.repository.pickHeroImage
+import com.ansu.anime.data.repository.seasonLabel
+import com.ansu.anime.data.prefs.TitleLanguage
+import com.ansu.anime.di.AppContainer
+import com.ansu.anime.ui.components.HeavyGlassCard
+import com.ansu.anime.ui.components.GenreChip
+import com.ansu.anime.ui.components.PersonCard
+import com.ansu.anime.ui.components.PosterGlassLabel
+import com.ansu.anime.ui.components.GlassDropdownMenu
+import com.ansu.anime.ui.components.LocalPosterSettled
+import com.ansu.anime.ui.components.posterTransitionOrigin
+import com.ansu.anime.ui.components.StatItem
+import com.ansu.anime.ui.components.TitleLogo
+import com.ansu.anime.ui.theme.AnsuColors
+
+/** The last state the page showed, kept outside composition state so reading it never subscribes the page. */
+private class HeldState {
+    var value: DetailsUiState? = null
+}
+
+/**
+ * Details page — a JJK-reference-style layout: banner hero with back button,
+ * white "Play Now" + frosted circular like button, score/episodes/year/format
+ * stats, genre row, expandable synopsis, episode list, cast, crew, related
+ * shows. Data comes from [DetailsViewModel]: episodes are resolved from the
+ * anime's real extension source, AniList details load in parallel.
+ */
+@Composable
+fun DetailsScreen(
+    container: AppContainer,
+    navController: NavHostController,
+    onEpisodeSelected: (SEpisode) -> Unit,
+    /** Plays an episode in a chosen mode: true = the player picks the stream (Auto), false = the source picker opens. */
+    onEpisodePlayWith: (SEpisode, Boolean) -> Unit,
+) {
+    val viewModel: DetailsViewModel = viewModel(
+        factory = viewModelFactory {
+            initializer {
+                DetailsViewModel(container.extensionManager, container.aniListRepository, container.episodeMetadataRepository, container.localListRepository, container.artworkRepository, container.trailerRepository, container.diagnostics, container.selectionHolder)
+            }
+        },
+    )
+    val anime by viewModel.anime.collectAsStateWithLifecycle()
+    val liveState by viewModel.uiState.collectAsStateWithLifecycle()
+    // While the page is opening or closing, data arriving from the cache or the network is held back and applied
+    // in one go once the motion has finished: every arrival rebuilds the hero and the episode list, which inside a
+    // frame that is also moving the window is what made the animation stutter now and then. While held back this
+    // does not even read the live state, so the page is not recomposed at all.
+    val settled = LocalPosterSettled.current
+    val heldState = remember { HeldState() }
+    val state = if (settled || heldState.value == null) liveState.also { heldState.value = it } else heldState.value!!
+    val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
+    val downloadItems by container.downloads.items.collectAsStateWithLifecycle()
+    val downloadStatuses = remember(downloadItems) { downloadItems.associate { it.entry.id to it.status } }
+    var expandSynopsis by remember { mutableStateOf(false) }
+    var selectedPerson by remember { mutableStateOf<PersonDetail?>(null) }
+    var playingTrailer by remember { mutableStateOf<com.ansu.anime.data.repository.Trailer?>(null) }
+    var showComments by remember { mutableStateOf(false) }
+    // The download options dialog: asks for the picture quality of one episode, or for how many episodes to queue.
+    var downloadDialog by remember { mutableStateOf<DownloadDialogTarget?>(null) }
+    // The menu a long press on an episode opens (download, or play the other way round).
+    var episodeMenu by remember { mutableStateOf<SEpisode?>(null) }
+    var selectedGroup by remember(anime?.id) { mutableIntStateOf(0) }
+    // Only the first few episodes of a group show until "More episodes" is tapped; reset per show and per group.
+    var episodesExpanded by remember(anime?.id, selectedGroup) { mutableStateOf(false) }
+
+    val details = state.aniListDetails
+    // Episodes that have not aired yet: shown as compact rows and not playable.
+    // The source/extension list can run past what the show really has (a movie returned with 12 "episodes",
+    // a 13-episode cour followed by stray numbers), so AniList's own episode count and format trim it.
+    val episodes = remember(state.episodes, details?.episodes, details?.format) {
+        trimToAniListCount(state.episodes, details?.episodes, details?.format)
+    }
+    val upcomingIds = remember(episodes, details?.status, details?.nextAiringEpisode) {
+        upcomingEpisodeIds(episodes, details?.status, details?.nextAiringEpisode)
+    }
+
+    // Where the viewer left off in this title, so the main button continues instead of restarting at Ep. 1.
+    val resumeEntries by container.continueWatchingRepository.entries.collectAsStateWithLifecycle(initialValue = emptyList())
+    // A movie has no episode list: one "Play movie" button, and its running time instead of an episode count.
+    val isMovie = (details?.format ?: anime?.format).equals("MOVIE", ignoreCase = true)
+    val playTarget = remember(resumeEntries, anime?.anilistId, episodes, upcomingIds, isMovie) {
+        val resume = anime?.anilistId?.let { id -> resumeEntries.firstOrNull { it.anilistId == id } }
+        resolvePlayTarget(episodes.filter { it.id !in upcomingIds }, resume, isMovie)
+    }
+
+    // An unreleased show has nothing to play: its main button becomes "Notify me" (release notification).
+    val followedIds by container.notificationPrefs.followedIds.collectAsStateWithLifecycle()
+    val notifyMode = details?.status == "NOT_YET_RELEASED" && playTarget == null && anime?.anilistId != null
+    val notifyOn = anime?.anilistId?.let { it in followedIds } == true
+    val appContext = androidx.compose.ui.platform.LocalContext.current
+    // Downloads one episode (asking for quality and language first when the setting says to ask).
+    val startEpisodeDownload: (SEpisode) -> Unit = { episode ->
+        val show = anime
+        if (show != null) {
+            val id = show.anilistId?.let { com.ansu.anime.data.download.downloadKey(it, episode.episodeNumber) }
+            when (id?.let { downloadStatuses[it] }?.phase) {
+                com.ansu.anime.data.download.DownloadPhase.Completed ->
+                    android.widget.Toast.makeText(appContext, "Already downloaded", android.widget.Toast.LENGTH_SHORT).show()
+                com.ansu.anime.data.download.DownloadPhase.Preparing,
+                com.ansu.anime.data.download.DownloadPhase.Queued,
+                com.ansu.anime.data.download.DownloadPhase.Downloading ->
+                    android.widget.Toast.makeText(appContext, "Already downloading", android.widget.Toast.LENGTH_SHORT).show()
+                else -> {
+                    if (container.playerPrefs.downloadQuality.value == com.ansu.anime.data.prefs.PlayerPrefs.DOWNLOAD_QUALITY_ASK) {
+                        downloadDialog = DownloadDialogTarget(episode)
+                    } else {
+                        container.downloads.enqueue(show, episode)
+                        android.widget.Toast.makeText(appContext, "Download started", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    // Hand the playable episodes to the player (previous/next and its "more episodes" list).
+    LaunchedEffect(episodes, upcomingIds) {
+        container.selectionHolder.selectEpisodes(episodes.filter { it.id !in upcomingIds })
+    }
+
+    // One line per opened title, so an exported report shows what the user was looking at.
+    LaunchedEffect(anime?.id) {
+        anime?.let { container.diagnostics.log(LogCategory.CLICK, "Details opened: ${it.title}") }
+    }
+
+    val detailsBackgroundStyle by container.appearancePrefs.backgroundStyle.collectAsStateWithLifecycle()
+    Box(modifier = Modifier.fillMaxSize().background(AnsuColors.Background)) {
+        // Same animation as the rest of the app (it is driven by the frame clock, so it lines up with the one behind).
+        com.ansu.anime.ui.components.BackgroundAnimation(style = detailsBackgroundStyle)
+        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
+            item {
+                // Art of this exact entry: a first season keeps the series backdrop, while later seasons,
+                // movies and specials use their own banner/cover so they no longer all look the same.
+                // The title comes from AniList's details in the chosen language once they have loaded.
+                val shownTitle = details?.title ?: anime?.title.orEmpty()
+                DetailsHero(
+                    title = shownTitle,
+                    imageUrl = pickHeroImage(
+                        title = shownTitle,
+                        format = details?.format ?: anime?.format,
+                        hasPrequel = details?.hasPrequel == true,
+                        entryBanner = details?.bannerUrl ?: anime?.bannerUrl,
+                        // English: the Western-release poster ani.zip has, if any; Romaji: AniList's own (Japanese key art) cover.
+                        // The poster is not used as a last resort: a portrait cover crops badly in this wide frame,
+                        // so a title with no wide picture gets the gradient design instead.
+                        poster = null,
+                        artwork = state.artwork,
+                    ),
+                    logoUrl = state.artwork.logoFor(titleLanguage),
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // Which season (or movie/OVA) this page is, right under the hero's title.
+            seasonLabel(
+                title = details?.title ?: anime?.title.orEmpty(),
+                format = details?.format ?: anime?.format,
+                hasPrequel = details?.hasPrequel == true,
+                aniZipSeason = state.artwork.season,
+            )?.let { label ->
+                item {
+                    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) { GenreChip(label) }
+                }
+            }
+
+            item {
+                PlayLikeRow(
+                    playLabel = playTarget?.label ?: if (isMovie) "Movie not available yet" else "No episodes yet",
+                    playEnabled = playTarget != null,
+                    notifyMode = notifyMode,
+                    notifyOn = notifyOn,
+                    onNotify = {
+                        anime?.anilistId?.let { id ->
+                            val following = container.toggleFollow(id, details?.status)
+                            container.diagnostics.log(LogCategory.CLICK, "Notify me ${if (following) "on" else "off"}: ${anime?.title}")
+                            android.widget.Toast.makeText(
+                                appContext,
+                                if (following) "We'll notify you when it releases" else "Notification turned off",
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    },
+                    onPlay = {
+                        playTarget?.episode?.let { episode ->
+                            container.diagnostics.log(LogCategory.CLICK, "Play pressed: ${anime?.title} E${episode.episodeNumber}")
+                            onEpisodeSelected(episode)
+                        }
+                    },
+                    isLiked = state.liked,
+                    onToggleLike = {
+                        container.diagnostics.log(LogCategory.CLICK, "Favourite toggled: ${anime?.title}")
+                        viewModel.toggleFavourite()
+                    },
+                    // Signed in it edits the AniList list; signed out it edits the on-device list.
+                    showListButton = anime?.anilistId != null,
+                    listStatus = state.shownListStatus,
+                    onSetListStatus = {
+                        container.diagnostics.log(LogCategory.CLICK, "List status set to $it: ${anime?.title}")
+                        viewModel.setListStatus(it)
+                    },
+                )
+            }
+
+            item {
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    StatItem(Icons.Filled.Star, details?.averageScore?.let { "$it%" } ?: "—", "SCORE", tint = AnsuColors.ScoreGreen)
+                    if (isMovie) {
+                        StatItem(Icons.Filled.Schedule, formatMovieDuration(details?.durationMinutes), "DURATION")
+                    } else {
+                        StatItem(Icons.AutoMirrored.Filled.ViewList, (details?.episodes ?: episodes.size.takeIf { it > 0 })?.toString() ?: "—", "EPISODES")
+                    }
+                    StatItem(Icons.Filled.CalendarToday, details?.year?.toString() ?: anime?.releaseYear?.toString() ?: "—", "YEAR")
+                    StatItem(Icons.Filled.Tv, details?.format ?: "TV", "FORMAT")
+                }
+            }
+
+            val genres = (details?.genres?.takeIf { it.isNotEmpty() } ?: anime?.genres).orEmpty()
+            if (genres.isNotEmpty()) {
+                item {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(genres) { genre -> GenreChip(genre) }
+                    }
+                }
+            }
+
+            val synopsisBlocks = parseSynopsis(details?.description ?: anime?.description)
+            if (synopsisBlocks.isNotEmpty()) {
+                item {
+                    Synopsis(
+                        blocks = synopsisBlocks,
+                        expanded = expandSynopsis,
+                        onToggle = { expandSynopsis = !expandSynopsis },
+                    )
+                }
+            }
+
+            // Jikan's promo videos; AniList's own trailer stands in when Jikan has none.
+            val trailers = (
+                details?.trailerYoutubeId?.let { listOf(com.ansu.anime.data.repository.Trailer(it, "Official Trailer")) }.orEmpty() +
+                    state.trailers
+                ).distinctBy { it.youtubeId }
+            if (trailers.isNotEmpty()) {
+                item { DetailsSectionHeader("Trailers") }
+                item { TrailersRow(trailers = trailers, onPlay = { playingTrailer = it }) }
+            }
+
+            // The show's comments are its AniList forum threads, so they need its AniList id.
+            if (anime?.anilistId != null) {
+                item { DetailsSectionHeader("Comments") }
+                item { CommentsEntry(onOpen = { showComments = true }) }
+            }
+
+            // A movie has no episode list: its one entry sits under Comments as "Movies", the same way episodes do.
+            if (isMovie) {
+                item { DetailsSectionHeader("Movies") }
+                if (state.isLoading) {
+                    item { CircularProgressIndicator(color = AnsuColors.Accent, modifier = Modifier.padding(20.dp)) }
+                } else {
+                    item(key = "movie-entry") {
+                        val movie = episodes.firstOrNull { it.id !in upcomingIds }
+                        MovieRow(
+                            title = details?.title ?: anime?.title.orEmpty(),
+                            imageUrl = movie?.thumbnailUrl ?: details?.bannerUrl ?: anime?.bannerUrl ?: details?.posterUrl,
+                            releaseDate = movieReleaseLabel(details?.year, details?.startMonth, details?.startDay)
+                                ?: movie?.airDate?.takeIf { it.isNotBlank() },
+                            synopsis = movie?.description?.takeIf { it.isNotBlank() }
+                                ?: (parseSynopsis(details?.description ?: anime?.description).firstOrNull() as? SynopsisBlock.Paragraph)?.text,
+                            playable = movie != null,
+                            onLongClick = { if (movie != null) episodeMenu = movie },
+                            onClick = {
+                                if (movie != null) {
+                                    container.diagnostics.log(LogCategory.CLICK, "Movie selected: ${anime?.title}")
+                                    onEpisodeSelected(movie)
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+
+            if (!isMovie) {
+                item { DetailsSectionHeader("Episodes") }
+                if (state.isLoading) {
+                    item { CircularProgressIndicator(color = AnsuColors.Accent, modifier = Modifier.padding(20.dp)) }
+                } else if (episodes.isEmpty()) {
+                    item {
+                        Text(
+                            state.error ?: "No episodes found yet.",
+                            color = AnsuColors.TextTertiary,
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                        )
+                    }
+                } else {
+                    item(key = "download-next") {
+                        DownloadNextRow(onClick = { downloadDialog = DownloadDialogTarget(null) })
+                    }
+                    val groups = episodes.chunked(EPISODE_GROUP_SIZE)
+                    val groupIndex = selectedGroup.coerceIn(0, groups.lastIndex)
+                    // Nothing to switch between when none of the episodes can be played yet.
+                    if (groups.size > 1 && upcomingIds.size < episodes.size) {
+                        item {
+                            EpisodeGroupChips(
+                                groups = groups,
+                                selected = groupIndex,
+                                onSelect = { selectedGroup = it },
+                            )
+                        }
+                    }
+                    val fullGroup = groups[groupIndex]
+                    val collapsed = !episodesExpanded && fullGroup.size > EPISODE_PREVIEW_COUNT
+                    val visible = if (collapsed) fullGroup.take(EPISODE_PREVIEW_COUNT) else fullGroup
+                    // Upcoming episodes with no announced date carry no information; they collapse into one line.
+                    val undated = visible.filter { it.id in upcomingIds && it.airDate.isNullOrBlank() }
+                    itemsIndexed(visible.filterNot { it in undated }, key = { index, episode -> "ep:${episode.id}#$index" }) { _, episode ->
+                        if (episode.id in upcomingIds) {
+                            UpcomingEpisodeRow(episode)
+                        } else {
+                            EpisodeRow(
+                                episode = episode,
+                                synopsis = episode.description,
+                                onLongClick = { episodeMenu = episode },
+                                onClick = {
+                                    container.diagnostics.log(LogCategory.CLICK, "Episode selected: ${anime?.title} E${episode.episodeNumber}")
+                                    onEpisodeSelected(episode)
+                                },
+                            )
+                            androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
+                        }
+                    }
+                    if (undated.isNotEmpty()) {
+                        item { UndatedUpcomingRow(undated) }
+                    }
+                    if (collapsed) {
+                        item(key = "more-episodes") {
+                            MoreEpisodesChip(
+                                remaining = fullGroup.size - EPISODE_PREVIEW_COUNT,
+                                onClick = { episodesExpanded = true },
+                            )
+                        }
+                    }
+                }
+            }
+
+            details?.franchise?.takeIf { it.isNotEmpty() }?.let { franchise ->
+                item { DetailsSectionHeader("More from this Show") }
+                item {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        itemsIndexed(franchise, key = { index, relation -> "fr:${relation.media.id}#$index" }) { _, relation ->
+                            RelatedPoster(
+                                media = relation.media,
+                                badge = relation.label,
+                                onClick = {
+                                    container.selectionHolder.selectAnime(relation.media.toSAnime())
+                                    navController.navigate(com.ansu.anime.ui.navigation.Dest.DETAILS)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
+            details?.characters?.takeIf { it.isNotEmpty() }?.let { characters ->
+                item { DetailsSectionHeader("Characters") }
+                item {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        itemsIndexed(characters, key = { index, character -> "ch:${character.id}#$index" }) { _, character ->
+                            PersonCard(
+                                imageUrl = character.imageUrl,
+                                name = character.name,
+                                role = character.role.lowercase().replaceFirstChar { it.uppercase() },
+                                onClick = { selectedPerson = PersonDetail.Character(character) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            details?.staff?.takeIf { it.isNotEmpty() }?.let { staff ->
+                item { DetailsSectionHeader("Staff") }
+                item {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        itemsIndexed(staff, key = { index, member -> "st:${member.id}#$index" }) { _, member ->
+                            PersonCard(
+                                imageUrl = member.imageUrl,
+                                name = member.name,
+                                role = member.role,
+                                onClick = { selectedPerson = PersonDetail.Staff(member) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            details?.related?.takeIf { it.isNotEmpty() }?.let { related ->
+                item { DetailsSectionHeader("More Like This") }
+                item {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        itemsIndexed(related, key = { index, media -> "rl:${media.id}#$index" }) { _, media ->
+                            RelatedPoster(
+                                media = media,
+                                onClick = {
+                                    container.selectionHolder.selectAnime(media.toSAnime())
+                                    navController.navigate(com.ansu.anime.ui.navigation.Dest.DETAILS)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    selectedPerson?.let { person ->
+        CharacterStaffSheet(person = person, onDismiss = { selectedPerson = null })
+    }
+    val commentsFor = anime
+    if (showComments && commentsFor?.anilistId != null) {
+        CommentsSheet(
+            container = container,
+            mediaId = commentsFor.anilistId!!,
+            mediaTitle = commentsFor.title,
+            onDismiss = { showComments = false },
+        )
+    }
+
+    downloadDialog?.let { target ->
+        val playableNow = episodes.filter { it.id !in upcomingIds }.sortedBy { it.episodeNumber }
+        DownloadOptionsDialog(
+            bulk = target.episode == null,
+            defaultQuality = container.playerPrefs.preferredQuality.value,
+            defaultLanguage = container.playerPrefs.preferredLanguage.value,
+            initialFrom = (playTarget?.episode?.episodeNumber ?: playableNow.firstOrNull()?.episodeNumber ?: 1f).toInt(),
+            maxEpisode = playableNow.lastOrNull()?.episodeNumber?.toInt() ?: 1,
+            onDismiss = { downloadDialog = null },
+            onConfirm = { quality, fromEp, toEp, language ->
+                downloadDialog = null
+                val show = anime
+                if (show != null) {
+                    val single = target.episode
+                    if (single != null) {
+                        container.downloads.enqueue(show, single, quality = quality, language = language)
+                        android.widget.Toast.makeText(appContext, "Download started", android.widget.Toast.LENGTH_SHORT).show()
+                    } else {
+                        // Every episode from "From ep" to "To ep", skipping what is already saved or on its way.
+                        val busy = setOf(
+                            com.ansu.anime.data.download.DownloadPhase.Completed,
+                            com.ansu.anime.data.download.DownloadPhase.Preparing,
+                            com.ansu.anime.data.download.DownloadPhase.Queued,
+                            com.ansu.anime.data.download.DownloadPhase.Downloading,
+                        )
+                        val chosen = playableNow
+                            .filter { it.episodeNumber >= fromEp && it.episodeNumber < toEp + 1f }
+                            .filter { ep ->
+                                val key = show.anilistId?.let { com.ansu.anime.data.download.downloadKey(it, ep.episodeNumber) }
+                                val phase = key?.let { downloadStatuses[it]?.phase }
+                                phase == null || phase !in busy
+                            }
+                        if (chosen.isEmpty()) {
+                            android.widget.Toast.makeText(appContext, "Nothing left to download in that range", android.widget.Toast.LENGTH_SHORT).show()
+                        } else {
+                            container.downloads.enqueueMany(show, chosen, quality, language)
+                            android.widget.Toast.makeText(appContext, "Downloading ${chosen.size} episode${if (chosen.size == 1) "" else "s"}", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            },
+        )
+    }
+    episodeMenu?.let { episode ->
+        val usingAuto by container.playerPrefs.autoSourcePick.collectAsStateWithLifecycle()
+        val key = anime?.anilistId?.let { com.ansu.anime.data.download.downloadKey(it, episode.episodeNumber) }
+        EpisodeActionsSheet(
+            episode = episode,
+            titleOverride = if (isMovie) details?.title ?: anime?.title else null,
+            usingAuto = usingAuto,
+            download = key?.let { downloadStatuses[it] },
+            onDownload = { episodeMenu = null; startEpisodeDownload(episode) },
+            onPlayOtherWay = {
+                episodeMenu = null
+                container.diagnostics.log(LogCategory.CLICK, "Episode held and played ${if (usingAuto) "with the source picker" else "on auto"}: ${anime?.title} E${episode.episodeNumber}")
+                onEpisodePlayWith(episode, !usingAuto)
+            },
+            onDismiss = { episodeMenu = null },
+        )
+    }
+    playingTrailer?.let { trailer ->
+        TrailerSheet(trailer = trailer, trailerRepository = container.trailerRepository, onDismiss = { playingTrailer = null })
+    }
+}
+
+/**
+ * Banner hero with back button and the title lettering. The frame is 16:9, so a horizontal
+ * banner/backdrop fills it edge to edge without being cropped. The title is the show's logo when
+ * one exists and plain text otherwise.
+ */
+@Composable
+private fun DetailsHero(title: String, imageUrl: String?, logoUrl: String?, onBack: () -> Unit) {
+    // Taller than the art's 16:9 so the fade has room; the banner melts into the page like the home hero.
+    Box(modifier = Modifier.fillMaxWidth().aspectRatio(4f / 3f)) {
+        if (imageUrl.isNullOrBlank()) {
+            // No banner yet (an unreleased title, say): the "No image" gradient.
+            com.ansu.anime.ui.components.NoImageBanner()
+        } else {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().background(AnsuColors.BackgroundElevated),
+            )
+        }
+        // Long, eased fade into the page background (no hard bottom edge), same colour the home hero ends in.
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    0.35f to Color.Black.copy(alpha = 0.08f),
+                    0.6f to AnsuColors.Background.copy(alpha = 0.55f),
+                    0.82f to AnsuColors.Background.copy(alpha = 0.92f),
+                    1f to AnsuColors.Background,
+                ),
+            ),
+        )
+        // Keeps the status-bar icons legible over bright artwork, as on the home hero.
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(96.dp)
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.4f), Color.Transparent))),
+        )
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(12.dp)
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.35f)),
+        ) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = AnsuColors.TextPrimary)
+        }
+        TitleLogo(
+            title = title,
+            logoUrl = logoUrl,
+            alignment = Alignment.CenterStart,
+            textAlign = TextAlign.Start,
+            fontSize = 24.sp,
+            uppercase = true,
+            maxLogoWidth = 320.dp,
+            maxLogoHeight = 110.dp,
+            modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 20.dp, vertical = 16.dp),
+        )
+    }
+}
+
+/**
+ * The synopsis laid out as short paragraphs, labelled lists and a credit line instead of one wall of
+ * text. Collapsed it shows the opening paragraph (4 lines); expanded it shows everything with gaps.
+ */
+@Composable
+private fun Synopsis(blocks: List<SynopsisBlock>, expanded: Boolean, onToggle: () -> Unit) {
+    val canExpand = blocks.size > 1 || (blocks.first() as? SynopsisBlock.Paragraph)?.text.orEmpty().length > 200
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+        if (!expanded) {
+            Text(
+                text = when (val first = blocks.first()) {
+                    is SynopsisBlock.Paragraph -> first.text
+                    is SynopsisBlock.Label -> first.text
+                    is SynopsisBlock.Bullet -> first.text
+                    is SynopsisBlock.Source -> first.text
+                },
+                color = AnsuColors.TextSecondary,
+                fontSize = 14.sp,
+                lineHeight = 21.sp,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+            )
+        } else {
+            blocks.forEachIndexed { index, block ->
+                val previous = blocks.getOrNull(index - 1)
+                when (block) {
+                    is SynopsisBlock.Paragraph -> {
+                        if (previous != null) Spacer(Modifier.height(12.dp))
+                        Text(text = block.text, color = AnsuColors.TextSecondary, fontSize = 14.sp, lineHeight = 21.sp)
+                    }
+                    is SynopsisBlock.Label -> {
+                        if (previous != null) Spacer(Modifier.height(18.dp))
+                        Text(text = block.text, color = AnsuColors.TextPrimary, fontSize = 14.sp, lineHeight = 21.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    is SynopsisBlock.Bullet -> {
+                        Spacer(Modifier.height(if (previous is SynopsisBlock.Bullet) 6.dp else 8.dp))
+                        Row {
+                            Text(text = "\u2022", color = AnsuColors.TextTertiary, fontSize = 14.sp, lineHeight = 21.sp, modifier = Modifier.width(16.dp))
+                            Text(text = block.text, color = AnsuColors.TextSecondary, fontSize = 14.sp, lineHeight = 21.sp, modifier = Modifier.weight(1f))
+                        }
+                    }
+                    is SynopsisBlock.Source -> {
+                        Spacer(Modifier.height(14.dp))
+                        Text(text = block.text, color = AnsuColors.TextTertiary, fontSize = 12.sp, lineHeight = 18.sp, fontStyle = FontStyle.Italic)
+                    }
+                }
+            }
+        }
+        if (canExpand) {
+            Text(
+                text = if (expanded) "Show Less" else "Read More",
+                color = AnsuColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 10.dp).clickable(onClick = onToggle),
+            )
+        }
+    }
+}
+
+/** White "Play" CTA with a circular frosted-glass like button to its right. */
+@Composable
+private fun PlayLikeRow(
+    playLabel: String,
+    playEnabled: Boolean,
+    notifyMode: Boolean,
+    notifyOn: Boolean,
+    onNotify: () -> Unit,
+    onPlay: () -> Unit,
+    isLiked: Boolean,
+    onToggleLike: () -> Unit,
+    showListButton: Boolean,
+    listStatus: String?,
+    onSetListStatus: (String?) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Button(
+            onClick = if (notifyMode) {
+                { onNotify() }
+            } else {
+                onPlay
+            },
+            enabled = notifyMode || playEnabled,
+            modifier = Modifier.weight(1f).height(50.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
+            shape = RoundedCornerShape(14.dp),
+        ) {
+            Icon(
+                imageVector = when {
+                    !notifyMode -> Icons.Filled.PlayArrow
+                    notifyOn -> Icons.Filled.NotificationsActive
+                    else -> Icons.Outlined.NotificationsNone
+                },
+                contentDescription = null,
+                tint = AnsuColors.OnAccent,
+            )
+            Text(
+                text = when {
+                    !notifyMode -> playLabel
+                    notifyOn -> "Notifying you"
+                    else -> "Notify me"
+                },
+                color = AnsuColors.OnAccent,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+        HeavyGlassCard(modifier = Modifier.size(50.dp), shape = CircleShape, tintAlpha = 0.5f) {
+            IconButton(onClick = { onToggleLike() }, modifier = Modifier.fillMaxSize()) {
+                Icon(
+                    imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                    contentDescription = "Favourite",
+                    tint = if (isLiked) AnsuColors.Accent else AnsuColors.TextPrimary,
+                )
+            }
+        }
+        if (showListButton) {
+            var menuOpen by remember { mutableStateOf(false) }
+            Box {
+                HeavyGlassCard(modifier = Modifier.size(50.dp), shape = CircleShape, tintAlpha = 0.5f) {
+                    IconButton(onClick = { menuOpen = true }, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            imageVector = if (listStatus != null) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                            contentDescription = ListStatus.label(listStatus),
+                            tint = if (listStatus != null) AnsuColors.Accent else AnsuColors.TextPrimary,
+                        )
+                    }
+                }
+                GlassDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    ListStatus.ALL.forEach { status ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    ListStatus.label(status),
+                                    fontWeight = if (status == listStatus) FontWeight.Bold else FontWeight.Normal,
+                                )
+                            },
+                            onClick = { menuOpen = false; onSetListStatus(status) },
+                        )
+                    }
+                    if (listStatus != null) {
+                        DropdownMenuItem(
+                            text = { Text("Remove from list") },
+                            onClick = { menuOpen = false; onSetListStatus(null) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailsSectionHeader(title: String) {
+    Text(
+        text = title,
+        color = AnsuColors.TextPrimary,
+        fontSize = 19.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 20.dp, top = 22.dp, bottom = 12.dp),
+    )
+}
+
+/** The card under the "Comments" header: one tap opens the show's AniList discussions. */
+@Composable
+private fun CommentsEntry(onOpen: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(AnsuColors.BackgroundElevated)
+            .clickable(onClick = onOpen)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Read and join the discussion", color = AnsuColors.TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Comments from AniList. Sign in there to write, reply and like.",
+                color = AnsuColors.TextSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(top = 3.dp),
+            )
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = AnsuColors.TextSecondary)
+    }
+}
+
+/** Episodes per chip: shows longer than this are split into 1-50, 51-100, … pages. */
+private const val EPISODE_GROUP_SIZE = 50
+
+/** Episodes shown per group before the "More episodes" chip is tapped. */
+private const val EPISODE_PREVIEW_COUNT = 6
+
+/** Pill at the end of the collapsed episode list; tapping it reveals the rest of the group. */
+@Composable
+private fun MoreEpisodesChip(remaining: Int, onClick: () -> Unit) {
+    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(AnsuColors.Accent)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+        ) {
+            Text(
+                text = "More episodes ($remaining)",
+                color = AnsuColors.OnAccent,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
+/** Horizontally scrolling pill row that switches between groups of [EPISODE_GROUP_SIZE] episodes. */
+@Composable
+private fun EpisodeGroupChips(groups: List<List<SEpisode>>, selected: Int, onSelect: (Int) -> Unit) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(selected) { listState.animateScrollToItem(selected) }
+    LazyRow(
+        state = listState,
+        contentPadding = PaddingValues(horizontal = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.padding(bottom = 16.dp),
+    ) {
+        itemsIndexed(groups) { index, group ->
+            val start = index * EPISODE_GROUP_SIZE + 1
+            val isSelected = index == selected
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(if (isSelected) AnsuColors.Accent else AnsuColors.SurfaceGlassBase)
+                    .clickable { onSelect(index) }
+                    .padding(horizontal = 22.dp, vertical = 10.dp),
+            ) {
+                Text(
+                    text = "$start-${start + group.size - 1}",
+                    color = if (isSelected) AnsuColors.OnAccent else AnsuColors.TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun EpisodeRow(
+    episode: SEpisode,
+    synopsis: String?,
+    onLongClick: () -> Unit,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier.width(120.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(AnsuColors.BackgroundElevated),
+        ) {
+            if (episode.thumbnailUrl != null) {
+                AsyncImage(model = episode.thumbnailUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+            Icon(
+                Icons.Filled.PlayArrow,
+                contentDescription = null,
+                tint = AnsuColors.TextPrimary,
+                modifier = Modifier.align(Alignment.BottomStart).padding(6.dp).size(18.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = episode.name.takeIf { it.isNotBlank() && !it.startsWith("Episode") } ?: "Untitled",
+                color = AnsuColors.TextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(
+                modifier = Modifier.padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                EpisodeBadge(episode)
+                if (!episode.airDate.isNullOrBlank()) {
+                    Text(text = episode.airDate, color = AnsuColors.TextTertiary, fontSize = 12.sp)
+                }
+            }
+            if (!synopsis.isNullOrBlank()) {
+                Text(
+                    text = synopsis,
+                    color = AnsuColors.TextTertiary,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
+    }
+}
+
+private val movieMonthNames = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+/** "Oct 3, 2025" when AniList knows the day, "Oct 2025" with only a month, "2025" with only a year, else null. */
+private fun movieReleaseLabel(year: Int?, month: Int?, day: Int?): String? {
+    if (year == null) return null
+    val m = month?.takeIf { it in 1..12 } ?: return year.toString()
+    val d = day?.takeIf { it in 1..31 }
+    return if (d != null) "${movieMonthNames[m - 1]} $d, $year" else "${movieMonthNames[m - 1]} $year"
+}
+
+/**
+ * The movie's entry under the "Movies" header, laid out exactly like an episode row without the episode badge: the
+ * thumbnail on the left, then the movie's name, its release date and a short description. A tap plays the movie; a long
+ * press opens the same menu as an episode (download, play the other way). When the movie cannot be played yet the
+ * row is shown but does nothing.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun MovieRow(
+    title: String,
+    imageUrl: String?,
+    releaseDate: String?,
+    synopsis: String?,
+    playable: Boolean,
+    onLongClick: () -> Unit,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(enabled = playable, onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier.width(120.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(AnsuColors.BackgroundElevated),
+        ) {
+            if (imageUrl.isNullOrBlank()) {
+                com.ansu.anime.ui.components.NoImageBanner(scale = 0.7f)
+            } else {
+                AsyncImage(model = imageUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = AnsuColors.TextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = releaseDate ?: if (playable) "Release date unknown" else "Not available yet",
+                color = AnsuColors.TextTertiary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            if (!synopsis.isNullOrBlank()) {
+                Text(
+                    text = synopsis,
+                    color = AnsuColors.TextTertiary,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
+    }
+}
+
+/** The episode the main button plays and the text on it. */
+private class PlayTarget(val episode: SEpisode, val label: String)
+
+/**
+ * Picks what the main button does: continue the episode that was left unfinished, move on to the next one
+ * after a finished episode, or start at the first episode when nothing was watched yet.
+ */
+private fun resolvePlayTarget(playable: List<SEpisode>, resume: com.ansu.anime.data.db.ContinueWatchingEntity?, isMovie: Boolean = false): PlayTarget? {
+    val sorted = playable.sortedBy { it.episodeNumber }
+    val first = sorted.firstOrNull() ?: return null
+    if (isMovie) {
+        val unfinished = resume != null && resume.positionSeconds > 5 &&
+            !(resume.durationSeconds > 0 && resume.positionSeconds >= resume.durationSeconds * 0.9)
+        val finished = resume != null && resume.durationSeconds > 0 && resume.positionSeconds >= resume.durationSeconds * 0.9
+        return PlayTarget(
+            first,
+            when {
+                unfinished -> "Continue movie · ${formatClock(resume!!.positionSeconds)}"
+                finished -> "Rewatch movie"
+                else -> "Play movie"
+            },
+        )
+    }
+    fun start(episode: SEpisode) = PlayTarget(episode, "Play Ep. ${episode.episodeNumber.formatEpisodeNumber()}")
+    if (resume == null) return start(first)
+    val last = sorted.firstOrNull { it.id == resume.episodeId } ?: sorted.firstOrNull { it.episodeNumber == resume.episodeNumber }
+        ?: return start(first)
+    val finished = resume.durationSeconds > 0 && resume.positionSeconds >= resume.durationSeconds * 0.9
+    if (!finished) {
+        val number = last.episodeNumber.formatEpisodeNumber()
+        val time = if (resume.positionSeconds > 5) " · ${formatClock(resume.positionSeconds)}" else ""
+        return PlayTarget(last, "Continue Ep. $number$time")
+    }
+    val next = sorted.firstOrNull { it.episodeNumber > last.episodeNumber }
+    return if (next != null) {
+        PlayTarget(next, "Continue Ep. ${next.episodeNumber.formatEpisodeNumber()}")
+    } else {
+        PlayTarget(first, "Rewatch from Ep. ${first.episodeNumber.formatEpisodeNumber()}")
+    }
+}
+
+/** "1h 52m" / "45m" from a running time in minutes; a dash when AniList has none. */
+private fun formatMovieDuration(minutes: Int?): String {
+    if (minutes == null || minutes <= 0) return "—"
+    val h = minutes / 60
+    val m = minutes % 60
+    return when {
+        h == 0 -> "${m}m"
+        m == 0 -> "${h}h"
+        else -> "${h}h ${m}m"
+    }
+}
+
+private fun formatClock(totalSeconds: Long): String {
+    val h = totalSeconds / 3600
+    val m = (totalSeconds % 3600) / 60
+    val s = totalSeconds % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
+}
+
+/**
+ * Drops source episodes beyond what AniList says the show has. A movie keeps one entry. If trimming would
+ * leave nothing (the source numbers episodes differently, e.g. absolute numbering), the list is left alone.
+ */
+private fun trimToAniListCount(episodes: List<SEpisode>, total: Int?, format: String?): List<SEpisode> {
+    val limit = when {
+        total != null && total > 0 -> total
+        format == "MOVIE" -> 1
+        else -> return episodes
+    }
+    val trimmed = episodes.filter { it.episodeNumber <= limit }
+    return if (trimmed.isEmpty()) episodes else trimmed
+}
+
+/**
+ * Ids of the episodes that have not aired yet. An episode is upcoming when its air date is after
+ * today, and so is every later episode with no date at all (a show airs in order, so once one
+ * episode is in the future the rest are too). A show whose episodes simply have no metadata, with
+ * no future date anywhere, is left fully playable.
+ */
+private fun upcomingEpisodeIds(episodes: List<SEpisode>, status: String?, nextAiringEpisode: Int?): Set<String> {
+    // AniList knows the release status even when the source or metadata has no air dates:
+    // an unreleased show has no playable episodes, and an airing show's episodes from the next one on are not out yet.
+    if (status == "NOT_YET_RELEASED") return episodes.map { it.id }.toSet()
+    if (status == "RELEASING" && nextAiringEpisode != null) {
+        val fromAniList = episodes.filter { it.episodeNumber >= nextAiringEpisode }.map { it.id }.toSet()
+        if (fromAniList.isNotEmpty()) return fromAniList
+    }
+    val today = java.time.LocalDate.now()
+    val result = mutableSetOf<String>()
+    var seenUpcoming = false
+    for (episode in episodes.sortedBy { it.episodeNumber }) {
+        val date = episode.airDate?.take(10)?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }
+        val upcoming = if (date != null) date.isAfter(today) else seenUpcoming
+        if (upcoming) {
+            seenUpcoming = true
+            result += episode.id
+        }
+    }
+    return result
+}
+
+/** One slim line for an episode that has not aired: no empty thumbnail, just the badge and air date. */
+@Composable
+private fun UpcomingEpisodeRow(episode: SEpisode) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        EpisodeBadge(episode)
+        val title = episode.name.takeIf { it.isNotBlank() && !it.startsWith("Episode") }
+        Column(modifier = Modifier.weight(1f)) {
+            if (title != null) {
+                Text(text = title, color = AnsuColors.TextSecondary, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text(text = "Airs ${episode.airDate}", color = AnsuColors.TextTertiary, fontSize = 12.sp)
+        }
+    }
+}
+
+/** A single summary line for upcoming episodes with no announced date, e.g. "E5-E12 - Not yet scheduled". */
+@Composable
+private fun UndatedUpcomingRow(episodes: List<SEpisode>) {
+    val first = episodes.first().episodeNumber.formatEpisodeNumber()
+    val last = episodes.last().episodeNumber.formatEpisodeNumber()
+    Text(
+        text = (if (episodes.size == 1) "E$first" else "E$first-E$last") + " · Not yet scheduled",
+        color = AnsuColors.TextTertiary,
+        fontSize = 13.sp,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+    )
+}
+
+@Composable
+private fun EpisodeBadge(episode: SEpisode) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(AnsuColors.SurfaceGlassBase)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    ) {
+        Text(
+            text = "E${episode.episodeNumber.formatEpisodeNumber()}",
+            color = AnsuColors.TextPrimary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun RelatedPoster(media: AniListMedia, onClick: () -> Unit, badge: String? = null) {
+    Column(modifier = Modifier.width(120.dp).clickable(onClick = onClick)) {
+        Box(
+            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).posterTransitionOrigin(media.posterUrl, 10.dp).clip(RoundedCornerShape(10.dp)).background(AnsuColors.BackgroundElevated),
+        ) {
+            if (media.posterUrl != null) {
+                AsyncImage(model = media.posterUrl, contentDescription = media.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+            if (badge != null) {
+                PosterGlassLabel(
+                    text = badge,
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(6.dp),
+                )
+            }
+        }
+        Text(
+            text = media.title,
+            color = AnsuColors.TextPrimary,
+            fontSize = 12.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+    }
+}
+
+private fun AniListMedia.toSAnime(): SAnime = SAnime(
+    id = id.toString(),
+    title = title,
+    posterUrl = posterUrl,
+    bannerUrl = bannerUrl,
+    description = description,
+    genres = genres,
+    releaseYear = year,
+    rating = averageScore?.div(10.0),
+    anilistId = id,
+    altTitles = altTitles,
+    origin = MediaOrigin.Extension(sourceId = 1L, urlPath = id.toString()),
+)
+
+
+/** What the download dialog is for: one episode (a quality choice) or, with no episode, the "next N" batch. */
+private class DownloadDialogTarget(val episode: SEpisode?)
+
+/** The button above the episode list that queues the next few episodes at once. */
+@Composable
+private fun DownloadNextRow(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .padding(start = 20.dp, end = 20.dp, bottom = 12.dp)
+            .clip(RoundedCornerShape(50))
+            .background(AnsuColors.AccentSoft)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Download, contentDescription = null, tint = AnsuColors.Accent, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text("Download next episodes", color = AnsuColors.TextPrimary, fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
+    }
+}
+
+/** What a long press on an episode offers: download it, or play it the other way (auto <-> the source picker). */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun EpisodeActionsSheet(
+    episode: SEpisode,
+    titleOverride: String?,
+    usingAuto: Boolean,
+    download: com.ansu.anime.data.download.DownloadStatus?,
+    onDownload: () -> Unit,
+    onPlayOtherWay: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val downloadText = when (download?.phase) {
+        com.ansu.anime.data.download.DownloadPhase.Completed -> "Downloaded"
+        com.ansu.anime.data.download.DownloadPhase.Preparing,
+        com.ansu.anime.data.download.DownloadPhase.Queued,
+        com.ansu.anime.data.download.DownloadPhase.Downloading -> "Downloading\u2026"
+        else -> "Download"
+    }
+    com.ansu.anime.ui.components.GlassModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+            Text(
+                text = titleOverride ?: episode.name.takeIf { it.isNotBlank() && !it.startsWith("Episode") } ?: "Episode ${episode.episodeNumber.toInt()}",
+                color = AnsuColors.TextPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+            )
+            EpisodeActionRow(
+                icon = Icons.Filled.Download,
+                text = downloadText,
+                onClick = onDownload,
+            )
+            EpisodeActionRow(
+                icon = Icons.Filled.PlayArrow,
+                text = if (usingAuto) "Play with source picker" else "Play on auto",
+                onClick = onPlayOtherWay,
+            )
+        }
+    }
+}
+
+@Composable
+private fun EpisodeActionRow(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = AnsuColors.Accent, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(16.dp))
+        Text(text, color = AnsuColors.TextPrimary, fontSize = 15.sp)
+    }
+}

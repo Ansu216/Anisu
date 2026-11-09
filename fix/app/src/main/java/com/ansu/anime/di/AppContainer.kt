@@ -1,0 +1,241 @@
+package com.ansu.anime.di
+
+import android.content.Context
+import com.ansu.anime.anilist.AniListApi
+import com.ansu.anime.anilist.AniListAuthManager
+import com.ansu.anime.anilist.AniListRepository
+import com.ansu.anime.core.diagnostics.Diagnostics
+import com.ansu.anime.core.net.ApiErrorHandler
+import com.ansu.anime.data.contributors.ContributorsRepository
+import com.ansu.anime.data.db.AppDatabase
+import com.ansu.anime.data.prefs.AppearancePrefs
+import com.ansu.anime.data.repository.CatalogRepository
+import com.ansu.anime.data.repository.ContinueWatchingRepository
+import com.ansu.anime.data.repository.ArtworkRepository
+import com.ansu.anime.data.repository.EpisodeMetadataRepository
+import com.ansu.anime.data.repository.LibrarySyncRepository
+import com.ansu.anime.data.repository.LocalListRepository
+import com.ansu.anime.data.update.UpdateManager
+import com.ansu.anime.core.util.SelectionHolder
+import com.ansu.anime.extension.ExtensionManager
+import com.ansu.anime.extension.ExtensionRepo
+import com.ansu.anime.extension.SourceTester
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+
+/**
+ * A single, plainly-constructed object graph. Every dependency is created
+ * once here and handed out via simple property access — no annotation
+ * processor, no reflection-based DI framework, which keeps this project easy
+ * to build the first time you open it.
+ */
+class AppContainer(context: Context) {
+
+    private val appContext = context.applicationContext
+
+    /** Work that must not hold up the first frame (scanning extensions, scheduling) runs here. */
+    val backgroundScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    init {
+        com.ansu.anime.extension.EpisodeListCache.attach(appContext.cacheDir)
+        com.ansu.anime.extension.SourceMatchMemory.attach(appContext.filesDir)
+    }
+
+    /** Ansu's black box: every crash, navigation, tap, playback and network event. */
+    val diagnostics: Diagnostics = Diagnostics(appContext)
+
+    val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+        .build()
+
+    /**
+     * The client every video byte goes through (playback, pre-loading and downloads). Media3 used to open its own
+     * plain HTTP connection per request; sharing one OkHttp client gives HTTP/2, connection reuse across segments
+     * and a larger connection pool, which is what keeps HLS segment fetches from stalling on a new handshake each time.
+     * The request logger is left out: it would log every segment.
+     */
+    val streamClient: OkHttpClient = okHttpClient.newBuilder()
+        .apply { interceptors().clear() }
+        .connectionPool(okhttp3.ConnectionPool(16, 5, java.util.concurrent.TimeUnit.MINUTES))
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
+
+    val database: AppDatabase = AppDatabase.build(appContext)
+
+    val extensionManager: ExtensionManager = ExtensionManager(appContext)
+    val extensionRepo: ExtensionRepo = ExtensionRepo(appContext, okHttpClient)
+    val newsRepository: com.ansu.anime.data.news.NewsRepository = com.ansu.anime.data.news.NewsRepository(okHttpClient)
+    val sourceHealth: com.ansu.anime.extension.SourceHealth = com.ansu.anime.extension.SourceHealth(appContext)
+    val sourceTester: SourceTester = SourceTester(okHttpClient, sourceHealth)
+
+    val apiErrorHandler: ApiErrorHandler = ApiErrorHandler(diagnostics)
+
+    val aniListAuthManager: AniListAuthManager = AniListAuthManager(appContext)
+    val appearancePrefs: AppearancePrefs = AppearancePrefs(appContext)
+    val welcomePrefs: com.ansu.anime.data.prefs.WelcomePrefs = com.ansu.anime.data.prefs.WelcomePrefs(appContext)
+    val playerPrefs: com.ansu.anime.data.prefs.PlayerPrefs = com.ansu.anime.data.prefs.PlayerPrefs(appContext)
+    val searchHistory: com.ansu.anime.data.prefs.SearchHistoryPrefs = com.ansu.anime.data.prefs.SearchHistoryPrefs(appContext)
+    val searchSession: com.ansu.anime.ui.search.SearchSession = com.ansu.anime.ui.search.SearchSession()
+
+    val aniListApi: AniListApi = AniListApi(
+        okHttpClient,
+        aniListAuthManager,
+        // Answers are kept between launches too, so a screen still opens with no connection.
+        cacheDir = java.io.File(appContext.filesDir, "anilist-cache"),
+        onNetworkSuccess = { apiErrorHandler.reportServiceUp() },
+    ) { appearancePrefs.titleLanguage.value }
+    val aniListRepository: AniListRepository = AniListRepository(aniListApi, aniListAuthManager, apiErrorHandler)
+
+    val aniSkipRepository: com.ansu.anime.data.repository.AniSkipRepository =
+        com.ansu.anime.data.repository.AniSkipRepository(okHttpClient)
+
+    val trailerRepository: com.ansu.anime.data.repository.TrailerRepository =
+        com.ansu.anime.data.repository.TrailerRepository(okHttpClient)
+
+    val localListRepository: LocalListRepository = LocalListRepository(database.localListDao())
+
+    val librarySyncRepository: LibrarySyncRepository = LibrarySyncRepository(localListRepository, aniListRepository)
+
+    val continueWatchingRepository: ContinueWatchingRepository = ContinueWatchingRepository(
+        database.continueWatchingDao(),
+        aniListRepository,
+        localListRepository,
+        appContext.getSharedPreferences("last_played_source", android.content.Context.MODE_PRIVATE),
+    )
+
+    val catalogRepository: CatalogRepository = CatalogRepository(extensionManager, aniListRepository)
+
+    /** One ani.zip client shared by the artwork and the episode details, so a title is asked about once. */
+    val aniZipSource: com.ansu.anime.data.repository.AniZipSource = com.ansu.anime.data.repository.AniZipSource(okHttpClient)
+    val episodeMetadataRepository: EpisodeMetadataRepository = EpisodeMetadataRepository(okHttpClient, aniListRepository, apiErrorHandler, aniZipSource)
+
+    val artworkRepository: ArtworkRepository = ArtworkRepository(okHttpClient, apiErrorHandler, com.ansu.anime.BuildConfig.TMDB_API_KEY, appContext.filesDir, aniZipSource)
+
+    val selectionHolder: SelectionHolder = SelectionHolder()
+
+    val contributorsRepository: ContributorsRepository = ContributorsRepository(appContext, okHttpClient, apiErrorHandler)
+
+    /** The changelog and the licence, read live from the repository the way the contributors are. */
+    val projectDocs: com.ansu.anime.data.docs.ProjectDocsRepository =
+        com.ansu.anime.data.docs.ProjectDocsRepository(appContext, okHttpClient, apiErrorHandler)
+
+    /** The counter behind About's nightly row: GitHub has no download count for a branch. */
+    val nightlyDownloads: com.ansu.anime.data.update.NightlyDownloads =
+        com.ansu.anime.data.update.NightlyDownloads(okHttpClient)
+
+    /** The downloads and stars counters About shows; read once per app run from the public GitHub API. */
+    val gitHubStats: com.ansu.anime.data.update.GitHubStats =
+        com.ansu.anime.data.update.GitHubStats(okHttpClient)
+
+    val updateManager: UpdateManager = UpdateManager(appContext, okHttpClient, diagnostics, nightlyDownloads)
+
+    /** What the user asked to be notified about (followed shows, Watching-list episodes) and the master switch. */
+    val notificationPrefs: com.ansu.anime.data.notify.NotificationPrefs = com.ansu.anime.data.notify.NotificationPrefs(appContext)
+    /** Everything the app notified about, listed by the bell on the home banner. */
+    val notificationHistory: com.ansu.anime.data.notify.NotificationHistory = com.ansu.anime.data.notify.NotificationHistory(appContext)
+    val releaseNotifier: com.ansu.anime.data.notify.ReleaseNotifier =
+        com.ansu.anime.data.notify.ReleaseNotifier(appContext, notificationHistory, diagnostics)
+
+    /** Follows or unfollows a show and returns whether it is followed now; following also triggers a first check. */
+    fun toggleFollow(anilistId: Int, status: String? = null): Boolean {
+        val following = notificationPrefs.toggleFollow(anilistId, status)
+        if (following) {
+            // Asking to be notified about a show is a clear "yes": switch notifications back on if they were off.
+            if (!notificationPrefs.enabled.value) {
+                notificationPrefs.setEnabled(true)
+                com.ansu.anime.data.notify.ReleaseCheckWorker.schedule(appContext)
+            }
+            com.ansu.anime.data.notify.ReleaseCheckWorker.runSoon(appContext)
+        }
+        return following
+    }
+
+    /** The automatic-backup switch and the time of its last run, shared with the scheduled worker. */
+    val backupPrefs: com.ansu.anime.data.prefs.BackupPrefs = com.ansu.anime.data.prefs.BackupPrefs(appContext)
+
+    /** Full settings + library backup and restore, written as one `.anisu` archive. */
+    val backupManager: com.ansu.anime.data.backup.BackupManager =
+        com.ansu.anime.data.backup.BackupManager(appContext, backupPrefs)
+
+    /** Shared on-disk media cache, read by the player and filled ahead of time by [prefetcher]. */
+    val mediaCache: com.ansu.anime.data.player.MediaCache = com.ansu.anime.data.player.MediaCache(appContext, streamClient)
+
+    /** Warms the last-watched episode into the media cache when the app opens. */
+    val prefetcher: com.ansu.anime.data.player.Prefetcher = com.ansu.anime.data.player.Prefetcher(
+        appContext,
+        continueWatchingRepository,
+        extensionManager,
+        aniListRepository,
+        mediaCache,
+        playerPrefs,
+        diagnostics,
+        streamClient,
+    )
+
+    /** Episode downloads for offline viewing (video plus every subtitle file the source offers). */
+    val downloads: com.ansu.anime.data.download.DownloadsRepository = com.ansu.anime.data.download.DownloadsRepository(
+        appContext,
+        extensionManager,
+        aniListRepository,
+        playerPrefs,
+        okHttpClient,
+        diagnostics,
+        streamClient,
+    )
+
+    init {
+        // Aniyomi/Keiyoushi extensions need the Injekt container filled in before they are instantiated.
+        // Do not swallow a failure silently: without this, every extension fails with "No registered instance".
+        // Requests an extension makes that fail go to the diagnostics log (extensions hide them otherwise).
+        // Capped per minute so a dead host cannot flood the log.
+        var failuresThisMinute = 0
+        var minuteStartedAt = 0L
+        com.ansu.anime.extension.aniyomi.AniyomiRuntime.failureLog = { line ->
+            val now = System.currentTimeMillis()
+            val allowed = synchronized(this) {
+                if (now - minuteStartedAt > 60_000L) { minuteStartedAt = now; failuresThisMinute = 0 }
+                failuresThisMinute++ <= 40
+            }
+            if (allowed) diagnostics.log(com.ansu.anime.core.diagnostics.LogCategory.PLAYBACK, line)
+        }
+        try {
+            com.ansu.anime.extension.aniyomi.AniyomiRuntime.install(appContext, okHttpClient)
+        } catch (t: Throwable) {
+            android.util.Log.e("AniyomiRuntime", "Injekt setup failed", t)
+        }
+        // CloudStream plugins make their requests through the library's global client; give it Anisu's.
+        try {
+            com.ansu.anime.extension.cloudstream.CloudStreamRuntime.install(okHttpClient)
+        } catch (t: Throwable) {
+            android.util.Log.e("CloudStreamRuntime", "CloudStream setup failed", t)
+        }
+        // Scanning the installed extensions reads every package on the phone and loads their code: on a phone
+        // with a few Keiyoushi extensions that is the slowest thing in onCreate, so it runs off the main thread
+        // while the first screen composes. Everything that needs a source waits on ExtensionManager.awaitLoaded().
+        backgroundScope.launch {
+            runCatching { extensionManager.reloadAll() }
+                .onFailure { android.util.Log.e("ExtensionManager", "Extension scan failed", it) }
+        }
+    }
+
+    /**
+     * Forgets everything the anime details page keeps: the saved episode lists, episode titles and thumbnails, logos
+     * and backdrops, trailer lists and the AniList answers. Nothing of the user's is touched (lists, progress, settings
+     * and backups); the next details page simply fetches it all again.
+     */
+    suspend fun clearAnimeDetailsCache() {
+        com.ansu.anime.extension.EpisodeListCache.clearAll()
+        episodeMetadataRepository.clearCache()
+        artworkRepository.clearCache()
+        trailerRepository.clearCache()
+        aniListApi.clearCache()
+    }
+}

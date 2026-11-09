@@ -1,0 +1,365 @@
+package com.ansu.anime.ui.home
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.ansu.anime.anilist.AniListFeed
+import com.ansu.anime.anilist.AniListNewRelease
+import com.ansu.anime.anilist.AniListRepository
+import com.ansu.anime.core.model.SAnime
+import com.ansu.anime.data.db.ContinueWatchingEntity
+import com.ansu.anime.ui.components.isFinished
+import com.ansu.anime.data.prefs.TitleLanguage
+import com.ansu.anime.data.repository.CatalogRepository
+import com.ansu.anime.data.repository.ContinueWatchingRepository
+import com.ansu.anime.data.repository.LocalListRepository
+import com.ansu.anime.data.repository.toSAnime
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.time.LocalDate
+
+/** How many titles each endless row fetches per page. */
+private const val FEED_PAGE_SIZE = 10
+
+/** How many rows the first prefetch request carries; the rest follow in a second one. */
+private const val PREFETCH_CHUNK = 4
+
+/** Paging state of one endless catalogue row. */
+data class FeedState(
+    val feed: AniListFeed,
+    val items: List<SAnime> = emptyList(),
+    val nextPage: Int = 1,
+    val hasNextPage: Boolean = true,
+    val isLoading: Boolean = false,
+    /** True once at least one page came back successfully. */
+    val hasLoaded: Boolean = false,
+    /** The last page request failed; cleared when a retry starts. */
+    val loadFailed: Boolean = false,
+)
+
+/** One "Your Next Watch" card: a title worth watching, and the show of the user's it was suggested by. */
+data class WatchPick(val anime: SAnime, val becauseOf: String)
+
+/** A show the user has been watching, which recommendations are drawn from. */
+private data class PickSeed(val id: Int, val title: String)
+
+data class HomeUiState(
+    val isLoading: Boolean = true,
+    val continueWatching: List<ContinueWatchingEntity> = emptyList(),
+    /** For Continue Watching entries whose episode is (almost) over: the next episode, or when it airs. Keyed by AniList id. */
+    val nextInfo: Map<Int, com.ansu.anime.ui.components.ResumeCardInfo> = emptyMap(),
+    val feeds: List<FeedState> = AniListFeed.entries.map { FeedState(it) },
+    val topPicks: List<SAnime> = emptyList(),
+    /** Recommendations built from what the user watches; empty until there is something to base them on. */
+    val picks: List<WatchPick> = emptyList(),
+    /** Series that premiered recently, today's first, at most seven; the caption says when ("Released today"). */
+    val newAnime: List<WatchPick> = emptyList(),
+    /** Movies that premiered recently, ordered the same way. */
+    val newMovies: List<WatchPick> = emptyList(),
+    val error: String? = null,
+) {
+    fun feed(feed: AniListFeed): FeedState = feeds.first { it.feed == feed }
+}
+
+private fun HomeUiState.withFeed(feed: AniListFeed, change: (FeedState) -> FeedState): HomeUiState =
+    copy(feeds = feeds.map { if (it.feed == feed) change(it) else it })
+
+class HomeViewModel(
+    private val catalogRepository: CatalogRepository,
+    private val continueWatchingRepository: ContinueWatchingRepository,
+    private val aniListRepository: AniListRepository,
+    titleLanguage: StateFlow<TitleLanguage>,
+    private val localListRepository: LocalListRepository,
+    private val episodeMetadataRepository: com.ansu.anime.data.repository.EpisodeMetadataRepository? = null,
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(HomeUiState())
+    val uiState: StateFlow<HomeUiState> = _uiState
+
+    private val _favouriteIds = MutableStateFlow<Set<Int>>(emptySet())
+
+    /** AniList ids of the titles the user has hearted (AniList's favourites when signed in, the device's otherwise); drives the hero banner's heart. */
+    val favouriteIds: StateFlow<Set<Int>> = _favouriteIds
+
+    init {
+        continueWatchingRepository.entries
+            .onEach { list ->
+                _uiState.update { it.copy(continueWatching = list) }
+                refreshNextInfo(list)
+            }
+            .launchIn(viewModelScope)
+        viewModelScope.launch {
+            // Re-read whenever the account changes or a heart is toggled on the device.
+            combine(aniListRepository.isLoggedIn, localListRepository.favourites) { loggedIn, local -> loggedIn to local }
+                // Signed in, the hearts are AniList's: a change in the device's own list says nothing new, so it
+                // must not ask AniList for every favourite again.
+                .distinctUntilChanged { old, new -> old.first && new.first }
+                .collectLatest { (loggedIn, local) ->
+                    _favouriteIds.value =
+                        if (loggedIn) aniListRepository.getLikedIds() else local.map { it.id }.toSet()
+                }
+        }
+        viewModelScope.launch { observePicks() }
+        refresh()
+        // Titles are fetched in the chosen language, so a change in Settings reloads the rows.
+        titleLanguage.drop(1)
+            .onEach { refresh() }
+            .launchIn(viewModelScope)
+    }
+
+    /**
+     * Rebuilds the "Your Next Watch" picks whenever the set of shows the user watches changes: what is in
+     * Continue Watching, plus their Watching and Completed lists (AniList's when signed in, the device's otherwise).
+     * Progress ticks do not change the seed ids, so the picks are not rebuilt while an episode plays.
+     */
+    private suspend fun observePicks() {
+        combine(
+            // Progress is saved every second while an episode plays; only a change of shows should restart the picks.
+            continueWatchingRepository.entries
+                .map { list -> list.take(4).map { PickSeed(it.anilistId, it.title) } }
+                .distinctUntilChanged(),
+            aniListRepository.isLoggedIn,
+            localListRepository.withStatus("CURRENT"),
+            localListRepository.withStatus("COMPLETED"),
+        ) { fromHistory, loggedIn, localCurrent, localCompleted ->
+            val fromLists = if (loggedIn) {
+                (aniListRepository.getCurrentlyWatching().take(4) + aniListRepository.getCompleted().take(4))
+                    .map { PickSeed(it.mediaId, it.media.title) }
+            } else {
+                (localCurrent.take(4) + localCompleted.take(4)).map { PickSeed(it.id, it.title) }
+            }
+            (fromHistory + fromLists).distinctBy { it.id }.take(6)
+        }
+            .distinctUntilChanged()
+            .collectLatest { seeds -> _uiState.update { it.copy(picks = buildPicks(seeds)) } }
+    }
+
+    private suspend fun buildPicks(seeds: List<PickSeed>): List<WatchPick> {
+        if (seeds.isEmpty()) return emptyList()
+        // One request for every seed's recommendations, not one per seed.
+        val byId = aniListRepository.getRecommendationsFor(seeds.map { it.id })
+        val perSeed = seeds.map { seed -> seed to byId[seed.id].orEmpty() }
+        val seen = seeds.map { it.id }.toMutableSet()
+        val picks = mutableListOf<WatchPick>()
+        // One suggestion from each show in turn, so a single favourite cannot fill the whole banner.
+        for (rank in 0 until 4) {
+            for ((seed, recs) in perSeed) {
+                val media = recs.getOrNull(rank) ?: continue
+                if (picks.size >= 8 || !seen.add(media.id)) continue
+                picks += WatchPick(media.toSAnime(), seed.title)
+            }
+        }
+        return picks
+    }
+
+    /** Hearts or un-hearts [anime]. The heart changes at once; a signed-in change that AniList refuses is put back. */
+    fun toggleFavourite(anime: SAnime) {
+        val id = anime.anilistId ?: return
+        viewModelScope.launch {
+            if (aniListRepository.isLoggedIn.value) {
+                val before = _favouriteIds.value
+                _favouriteIds.value = if (id in before) before - id else before + id
+                if (!aniListRepository.toggleFavourite(id)) _favouriteIds.value = before
+            } else {
+                // The device's own list is observed above, so the heart follows the database.
+                localListRepository.toggleFavourite(anime)
+            }
+        }
+    }
+
+    /** Episode number each running/finished lookup was made for, so a card is resolved once per episode. */
+    private val nextInfoJobs = HashMap<Int, Pair<Float, kotlinx.coroutines.Job>>()
+
+    /**
+     * Works out, for every show whose last episode has ~30 seconds or less left, what its card should show:
+     * the next episode (name + thumbnail), the countdown to it, or nothing when the show is over.
+     */
+    private fun refreshNextInfo(list: List<ContinueWatchingEntity>) {
+        val finished = list.filter { !it.isMovie && it.isFinished() }
+        val ids = finished.map { it.anilistId }.toSet()
+        _uiState.update { state ->
+            val kept = state.nextInfo.filterKeys { it in ids }
+            if (kept.size == state.nextInfo.size) state else state.copy(nextInfo = kept)
+        }
+        nextInfoJobs.keys.filter { it !in ids }.forEach { nextInfoJobs.remove(it)?.second?.cancel() }
+        finished.forEach { entry ->
+            val running = nextInfoJobs[entry.anilistId]
+            if (running != null && running.first == entry.episodeNumber) return@forEach
+            running?.second?.cancel()
+            // Started only after it is registered, so a lookup that fails at once cannot unregister itself too early.
+            val job = viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) { resolveNextInfo(entry) }
+            nextInfoJobs[entry.anilistId] = entry.episodeNumber to job
+            job.start()
+        }
+    }
+
+    private suspend fun resolveNextInfo(entry: ContinueWatchingEntity) {
+        val nextNumber = kotlin.math.floor(entry.episodeNumber.toDouble()).toInt() + 1
+        val airing = aniListRepository.getAiringInfo(entry.anilistId)
+        if (airing == null) {
+            // Offline or rate limited: leave the plain card and look again on the next change.
+            nextInfoJobs.remove(entry.anilistId)
+            return
+        }
+        val nextAiring = airing.nextEpisode
+        val airAt = airing.nextAiringAt
+        val info: com.ansu.anime.ui.components.ResumeCardInfo = when {
+            // The episode after the one just watched has not aired: count down to it.
+            nextAiring != null && airAt != null && nextNumber >= nextAiring ->
+                com.ansu.anime.ui.components.ResumeCardInfo.Countdown(nextAiring.toFloat(), airAt * 1000)
+            // The watched episode was the last one that will ever exist.
+            airing.episodes != null && nextNumber > airing.episodes ->
+                com.ansu.anime.ui.components.ResumeCardInfo.CaughtUp
+            // Still airing but nothing scheduled (break / hiatus): nothing to show yet.
+            nextAiring == null && (airing.status == "RELEASING" || airing.status == "HIATUS" || airing.status == "NOT_YET_RELEASED") ->
+                com.ansu.anime.ui.components.ResumeCardInfo.CaughtUp
+            else -> {
+                val meta = runCatching { episodeMetadataRepository?.getEpisodeMeta(entry.anilistId) }.getOrNull()?.get(nextNumber)
+                if (airing.episodes == null && meta == null) {
+                    // No count and no metadata for the next number: do not invent an episode.
+                    com.ansu.anime.ui.components.ResumeCardInfo.CaughtUp
+                } else {
+                    com.ansu.anime.ui.components.ResumeCardInfo.NextUp(nextNumber.toFloat(), meta?.title, meta?.thumbnailUrl)
+                }
+            }
+        }
+        _uiState.update { it.copy(nextInfo = it.nextInfo + (entry.anilistId to info)) }
+    }
+
+    fun removeContinueWatching(anilistId: Int) {
+        viewModelScope.launch { continueWatchingRepository.remove(anilistId) }
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(isLoading = true, error = null, feeds = AniListFeed.entries.map { f -> FeedState(f) })
+            }
+
+            // Trending's first page and both "new releases" rows are one request each (not one per row);
+            // every other row is then prefetched in a few combined requests instead of one per row.
+            val releases = async { aniListRepository.getNewReleasesBoth() }
+            val first = firstPages(listOf(AniListFeed.TRENDING_NOW))
+            val (anime, movies) = releases.await()
+            first.join()
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    newAnime = anime.map { r -> r.toPick() },
+                    newMovies = movies.map { r -> r.toPick() },
+                )
+            }
+            firstPages(AniListFeed.entries.filter { it != AniListFeed.TRENDING_NOW }.take(PREFETCH_CHUNK))
+                .join()
+            firstPages(AniListFeed.entries.filter { it != AniListFeed.TRENDING_NOW }.drop(PREFETCH_CHUNK))
+        }
+    }
+
+    /**
+     * Loads the first page of [feeds] with one combined request and fills their rows. The rows read as loading
+     * meanwhile, so a shelf scrolling into view does not start its own request; a row the batch did not return is
+     * marked failed, which lets the shelf load it alone.
+     */
+    private fun firstPages(feeds: List<AniListFeed>): Job {
+        val targets = feeds.filter { f -> _uiState.value.feed(f).let { !it.isLoading && !it.hasLoaded } }
+        if (targets.isEmpty()) return viewModelScope.launch { }
+        _uiState.update { state -> targets.fold(state) { acc, f -> acc.withFeed(f) { it.copy(isLoading = true, loadFailed = false) } } }
+        return viewModelScope.launch {
+            val pages = aniListRepository.getFeedFirstPages(targets, FEED_PAGE_SIZE)
+            _uiState.update { state ->
+                targets.fold(state) { acc, f ->
+                    val result = pages[f]
+                    acc.withFeed(f) { row ->
+                        if (result == null) {
+                            row.copy(isLoading = false, loadFailed = true)
+                        } else {
+                            row.copy(
+                                items = result.media.map { it.toSAnime() }.distinctBy { it.id },
+                                nextPage = 2,
+                                hasNextPage = result.hasNextPage,
+                                isLoading = false,
+                                hasLoaded = true,
+                                loadFailed = false,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Fetches the next [FEED_PAGE_SIZE] titles of [feed] — the first page if nothing
+     * is loaded yet. A no-op while a request for that row is in flight or once the
+     * row is exhausted. Returns the loading job, or null if nothing was started.
+     */
+    fun loadMore(feed: AniListFeed): Job? {
+        var started = false
+        _uiState.update { state ->
+            started = false
+            val row = state.feed(feed)
+            if (row.isLoading || !row.hasNextPage) {
+                state
+            } else {
+                started = true
+                state.withFeed(feed) { it.copy(isLoading = true, loadFailed = false) }
+            }
+        }
+        if (!started) return null
+
+        val page = _uiState.value.feed(feed).nextPage
+        return viewModelScope.launch {
+            val result = aniListRepository.getFeedPage(feed, page, FEED_PAGE_SIZE)
+            _uiState.update { state ->
+                state.withFeed(feed) { row ->
+                    if (result == null) {
+                        row.copy(isLoading = false, loadFailed = true)
+                    } else {
+                        row.copy(
+                            // AniList's ordering can shift between requests, so drop repeats.
+                            items = (row.items + result.media.map { it.toSAnime() }).distinctBy { it.id },
+                            nextPage = row.nextPage + 1,
+                            hasNextPage = result.hasNextPage,
+                            isLoading = false,
+                            hasLoaded = true,
+                            loadFailed = false,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A recent premiere as a banner card; the caption says how long ago it came out. */
+private fun AniListNewRelease.toPick(): WatchPick {
+    val days = java.time.temporal.ChronoUnit.DAYS.between(releasedOn, LocalDate.now()).coerceAtLeast(0)
+    val caption = when (days) {
+        0L -> "Released today"
+        1L -> "Released yesterday"
+        else -> "Released $days days ago"
+    }
+    return WatchPick(media.toSAnime(), caption)
+}
+
+/** The AniList season enum value + year for "right now", in the device's local time zone. */
+private fun currentSeason(): Pair<String, Int> {
+    val now = LocalDate.now()
+    val season = when (now.monthValue) {
+        12, 1, 2 -> "WINTER"
+        3, 4, 5 -> "SPRING"
+        6, 7, 8 -> "SUMMER"
+        else -> "FALL"
+    }
+    return season to now.year
+}
