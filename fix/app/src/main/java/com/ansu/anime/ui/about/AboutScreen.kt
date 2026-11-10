@@ -10,6 +10,8 @@ import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -109,6 +111,14 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
     var statsLoading by remember { mutableStateOf(true) }
     var nightlyDownloads by remember { mutableStateOf<Long?>(null) }
     var nightlyLoading by remember { mutableStateOf(false) }
+    // Seven quick taps on the logo switch Cast on (it is hidden until then); the taps count within two seconds of each other.
+    var logoTaps by remember { mutableStateOf(0) }
+    var lastLogoTap by remember { mutableStateOf(0L) }
+    val toastHolder = remember { arrayOfNulls<android.widget.Toast>(1) }
+    fun showToast(text: String) {
+        toastHolder[0]?.cancel()
+        toastHolder[0] = android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).also { it.show() }
+    }
 
     // Asked once when About opens; GitHubStats keeps the answer for the rest of the app run.
     LaunchedEffect(Unit) {
@@ -153,7 +163,25 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
         ) {
             Spacer(Modifier.height(12.dp))
 
-            HeroCard()
+            HeroCard(
+                onLogoTap = {
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    logoTaps = if (now - lastLogoTap > 2_000L) 1 else logoTaps + 1
+                    lastLogoTap = now
+                    when {
+                        logoTaps >= 7 -> {
+                            logoTaps = 0
+                            if (container.playerPrefs.castUnlocked.value) {
+                                showToast("Cast is already enabled")
+                            } else {
+                                container.playerPrefs.unlockCast()
+                                showToast("Cast enabled. The toggle is in Player and streaming")
+                            }
+                        }
+                        logoTaps >= 4 && !container.playerPrefs.castUnlocked.value -> showToast("${7 - logoTaps} more taps to enable Cast")
+                    }
+                },
+            )
 
             GlassGroupLabel("This build")
             GlassGroup {
@@ -325,7 +353,7 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
 
 /** The identity header: the logo, the name and the tagline, over a soft accent glow. No version here. */
 @Composable
-private fun HeroCard() {
+private fun HeroCard(onLogoTap: () -> Unit) {
     HeavyGlassCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
@@ -346,7 +374,11 @@ private fun HeroCard() {
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Box(
-                    modifier = Modifier.size(96.dp).clip(RoundedCornerShape(24.dp)).background(AnsuColors.Background),
+                    modifier = Modifier
+                        .size(96.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(AnsuColors.Background)
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onLogoTap() },
                     contentAlignment = Alignment.Center,
                 ) {
                     // A full-colour raster, so drawn with Image (a tint would paint it a single colour).

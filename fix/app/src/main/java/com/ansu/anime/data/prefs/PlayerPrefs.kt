@@ -123,6 +123,18 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putBoolean(KEY_CAST_BUTTON, value).apply()
     }
 
+    private val _castUnlocked = MutableStateFlow(prefs.getBoolean(KEY_CAST_UNLOCKED, false))
+
+    /** Cast stays hidden (no button, no toggle) until it is switched on by tapping the Anisu logo in About seven times. */
+    val castUnlocked: StateFlow<Boolean> = _castUnlocked
+
+    /** Unlocks Cast: the toggle shows up in Player and streaming and the player's Cast button is switched on. */
+    fun unlockCast() {
+        _castUnlocked.value = true
+        _castButton.value = true
+        prefs.edit().putBoolean(KEY_CAST_UNLOCKED, true).putBoolean(KEY_CAST_BUTTON, true).apply()
+    }
+
     private val _autoSourcePick = MutableStateFlow(prefs.getBoolean(KEY_AUTO_SOURCE_PICK, false))
 
     /**
@@ -367,6 +379,7 @@ class PlayerPrefs(context: Context) {
         const val SEEK_STYLE_CLASSIC = "classic"
         private const val KEY_HIDE_EPISODE_BUTTONS = "hide_episode_buttons"
         private const val KEY_CAST_BUTTON = "cast_button"
+        private const val KEY_CAST_UNLOCKED = "cast_unlocked"
         val SKIP_OPTIONS = listOf(5, 10, 15)
         /** "Any": no resolution is aimed for; playback starts on the first stream in the chosen language that answers. */
         const val QUALITY_ANY = 0

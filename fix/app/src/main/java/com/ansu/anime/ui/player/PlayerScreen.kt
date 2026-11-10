@@ -173,6 +173,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val castButtonEnabled by container.playerPrefs.castButton.collectAsStateWithLifecycle()
+    val castUnlocked by container.playerPrefs.castUnlocked.collectAsStateWithLifecycle()
     val cast = remember { CastController(context.applicationContext).also { it.diagnostics = container.diagnostics } }
     val castState by cast.state.collectAsStateWithLifecycle()
     val playbackTarget by viewModel.playbackTarget.collectAsStateWithLifecycle()
@@ -536,7 +537,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         onAutoplayNext = container.playerPrefs::setAutoplayNext,
         hideEpisodeButtons = hideEpisodeButtons,
         seekBarStyle = SeekBarStyle.fromKey(seekBarStyleKey),
-        showCastButton = castButtonEnabled,
+        showCastButton = castButtonEnabled && castUnlocked,
         castConnected = castState.connected,
         // The Casting panel (a bottom sheet in portrait) lists the TVs, or says it is searching / found none.
         onCast = { if (isLandscape) panel = PlayerPanel.CAST else sheet = PlayerSheet.CAST },

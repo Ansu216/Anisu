@@ -92,6 +92,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val holdSpeed by prefs.holdSpeed.collectAsStateWithLifecycle()
     val hideEpisodeButtons by prefs.hideEpisodeButtons.collectAsStateWithLifecycle()
     val castButton by prefs.castButton.collectAsStateWithLifecycle()
+    val castUnlocked by prefs.castUnlocked.collectAsStateWithLifecycle()
     val seekBarStyleKey by prefs.seekBarStyle.collectAsStateWithLifecycle()
     val brightness by prefs.brightnessGesture.collectAsStateWithLifecycle()
     val volume by prefs.volumeGesture.collectAsStateWithLifecycle()
@@ -230,12 +231,14 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                     checked = hideEpisodeButtons,
                     onCheckedChange = prefs::setHideEpisodeButtons,
                 )
-                GlassToggleRow(
-                    title = "Cast Button",
-                    description = "Show a Chromecast button in the player's top bar, between the autoplay switch and the lock",
-                    checked = castButton,
-                    onCheckedChange = prefs::setCastButton,
-                )
+                if (castUnlocked) {
+                    GlassToggleRow(
+                        title = "Cast Button",
+                        description = "Show a Chromecast button in the player's top bar, between the autoplay switch and the lock",
+                        checked = castButton,
+                        onCheckedChange = prefs::setCastButton,
+                    )
+                }
             }
 
             GlassGroupLabel("Preferred stream")

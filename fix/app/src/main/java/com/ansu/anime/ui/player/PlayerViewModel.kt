@@ -95,10 +95,19 @@ private const val REMEMBERED_GRACE_MS = 4_000L
 
 /**
  * Moving on to another episode (next button, autoplay, episode list): how long to wait for a stream with the same
- * language, resolution and subtitle kind as the one that was playing, once streams in that language have answered.
+ * language and resolution as the one that was playing, once streams in that language have answered.
  * The first stream that matches starts at once; this only bounds the wait when none does.
  */
 private const val CONTINUATION_GRACE_MS = 5_000L
+
+/** The next episode's streams are looked up in the background once the current one has played this long. */
+private const val PREFETCH_AFTER_MS = 20_000L
+
+/** The background lookup of the next episode's streams gives up after this long. */
+private const val PREFETCH_TIMEOUT_MS = 25_000L
+
+/** Streams looked up ahead of time are not trusted after this long (their links can expire). */
+private const val PREFETCH_MAX_AGE_MS = 10 * 60_000L
 
 /** Resolution in pixels of a stream, read from its label ("1080p", "4K"); null when the label does not say. */
 private fun PlayableSource.heightOrNull(): Int? = when (val chip = qualityChip()) {
@@ -136,23 +145,17 @@ private fun PlayableSource.meetsPreference(preferredLanguage: String, preferredH
     languageMiss(preferredLanguage) == 0 &&
         (preferredHeight == com.ansu.anime.data.prefs.PlayerPrefs.QUALITY_ANY || qualityMiss(preferredHeight) == 0)
 
-/** "Softsub" or "Hardsub" when the stream says so; null when it does not (a plain "Sub" label tells nothing). */
-private fun PlayableSource.subtitleKind(): String? = kindChip()?.takeIf { it == "Softsub" || it == "Hardsub" }
-
 /** What the stream that was playing looked like, so the next episode can start on one that looks the same. */
-internal data class PlaybackTraits(val isDub: Boolean, val height: Int?, val subtitleKind: String?)
+internal data class PlaybackTraits(val isDub: Boolean, val height: Int?)
 
 private fun PlayableSource.traits(): PlaybackTraits = PlaybackTraits(
     isDub = languageMiss(com.ansu.anime.data.prefs.PlayerPrefs.LANGUAGE_SUB) == 1,
     height = heightOrNull(),
-    subtitleKind = subtitleKind(),
 )
 
-/** Same language, same resolution and same subtitle kind; a trait the previous stream did not state is not held against this one. */
+/** Same language and same resolution (softsub or hardsub does not matter); a resolution the previous stream did not state is not held against this one. */
 private fun PlayableSource.matches(t: PlaybackTraits): Boolean =
-    sameLanguageAs(t) &&
-        (t.height == null || heightOrNull() == t.height) &&
-        (t.subtitleKind == null || subtitleKind() == t.subtitleKind)
+    sameLanguageAs(t) && (t.height == null || heightOrNull() == t.height)
 
 private fun PlayableSource.sameLanguageAs(t: PlaybackTraits): Boolean =
     (languageMiss(com.ansu.anime.data.prefs.PlayerPrefs.LANGUAGE_SUB) == 1) == t.isDub
@@ -360,6 +363,55 @@ class PlayerViewModel(
 
     /** Set when the person moves to another episode: what the stream that was playing looked like. Read once by [loadSources]. */
     private var continuation: PlaybackTraits? = null
+
+    // The next episode's streams, looked up while the current one plays so the switch does not start from nothing.
+    private var prefetchKey: String? = null
+    private val prefetchBuffer = mutableListOf<PlayableSource>()
+    private var prefetchDone = false
+    private var prefetchAt = 0L
+    private var prefetchJob: kotlinx.coroutines.Job? = null
+
+    private fun episodeKey(e: SEpisode) = "${e.id}|${e.episodeNumber}"
+
+    /** Starts looking up the next episode's streams in the background (once per episode). Touches no state of the episode now playing. */
+    private fun prefetchNextEpisode() {
+        if (backgrounded || selectionHolder.offlineDownloadId != null) return
+        val anime = _uiState.value.anime ?: return
+        val next = nextEpisode() ?: return
+        val key = episodeKey(next)
+        if (key == prefetchKey) return
+        prefetchKey = key
+        prefetchBuffer.clear()
+        prefetchDone = false
+        prefetchAt = android.os.SystemClock.elapsedRealtime()
+        prefetchJob?.cancel()
+        diagnostics?.log(LogCategory.PLAYBACK, "Looking up streams for E${next.episodeNumber} ahead of time")
+        prefetchJob = viewModelScope.launch {
+            try {
+                val finished = kotlinx.coroutines.withTimeoutOrNull(PREFETCH_TIMEOUT_MS) {
+                    resolveSources(anime, next, onBatch = { batch -> if (prefetchKey == key) prefetchBuffer += batch }, track = false)
+                    true
+                }
+                if (finished == true && prefetchKey == key) prefetchDone = true
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                diagnostics?.log(LogCategory.PLAYBACK, "Looking ahead failed: ${e::class.simpleName}: ${e.message}")
+            }
+        }
+    }
+
+    /** What the background lookup found for [episode] (and whether it finished), taken once; empty when it was for another episode or is too old. */
+    private fun takePrefetched(episode: SEpisode): Pair<List<PlayableSource>, Boolean> {
+        if (prefetchKey != episodeKey(episode)) return emptyList<PlayableSource>() to false
+        val fresh = android.os.SystemClock.elapsedRealtime() - prefetchAt < PREFETCH_MAX_AGE_MS
+        val result = if (fresh) prefetchBuffer.toList() to prefetchDone else emptyList<PlayableSource>() to false
+        prefetchJob?.cancel()
+        prefetchKey = null
+        prefetchBuffer.clear()
+        prefetchDone = false
+        return result
+    }
 
     /**
      * The entry of the Sources list that was last selected. A source listed without a URL is resolved when it plays,
@@ -670,6 +722,8 @@ class PlayerViewModel(
         }
 
         diagnostics?.log(LogCategory.PLAYBACK, "Resolving sources for ${anime.title} E${episode.episodeNumber} (ep id='${episode.id}')")
+        val (seed, seedDone) = takePrefetched(episode)
+        if (seed.isNotEmpty()) diagnostics?.log(LogCategory.PLAYBACK, "Using ${seed.size} stream(s) looked up ahead of time")
         loadJob?.cancel()
         graceJob?.cancel()
         expectedSourceIds = emptyList()
@@ -726,7 +780,7 @@ class PlayerViewModel(
                 val rememberedId = remembered?.sourceId
                 val isManual = manualPick != null
                 // Moving on to another episode: the first stream that looks like the one that was playing (same
-                // language, resolution and subtitle kind) starts at once, whichever source it comes from.
+                // language and resolution) starts at once, whichever source it comes from.
                 if (continuing != null && !isManual) {
                     val match = collected.firstOrNull { it.matches(continuing) }
                     if (match != null) {
@@ -776,8 +830,12 @@ class PlayerViewModel(
                     startAfter(PRIORITY_GRACE_MS, "Waiting briefly for the highest-priority source")
                 }
             }
+            // Unresolved streams from the look-ahead: the same stream listed again by the live lookup is not added twice.
+            val seededKeys = HashSet<String>()
             val onBatch: (List<PlayableSource>) -> Unit = { batch ->
-                val fresh = batch.filter { b -> b.url.isBlank() || collected.none { it.url == b.url } }
+                val fresh = batch.filter { b ->
+                    if (b.url.isBlank()) triedKey(b) !in seededKeys else collected.none { it.url == b.url }
+                }
                 if (fresh.isNotEmpty()) {
                     collected += fresh
                     // The list follows the person's source priority; within one source, arrival order is kept.
@@ -795,7 +853,12 @@ class PlayerViewModel(
                 }
             }
             try {
-                resolveSources(anime, episode, onBatch)
+                if (seed.isNotEmpty()) {
+                    seed.filter { it.url.isBlank() }.forEach { seededKeys += triedKey(it) }
+                    onBatch(seed)
+                }
+                // The look-ahead finished and a stream already started from it: nothing more to ask.
+                if (!(seedDone && !first)) resolveSources(anime, episode, onBatch)
                 // Every source has answered: if the first pick was waiting (for a dub that never came), start now.
                 if (first && collected.isNotEmpty()) startNow()
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -924,7 +987,7 @@ class PlayerViewModel(
      * alternates (Continue Watching), the title search that finds it in the other sources runs alongside, and each
      * source it finds starts listing its streams the moment it answers - nothing waits for the slowest search.
      */
-    private suspend fun resolveSources(anime: SAnime, episode: SEpisode, onBatch: (List<PlayableSource>) -> Unit) {
+    private suspend fun resolveSources(anime: SAnime, episode: SEpisode, onBatch: (List<PlayableSource>) -> Unit, track: Boolean = true) {
         val origin = anime.origin as? MediaOrigin.Extension ?: return
         kotlinx.coroutines.coroutineScope {
             val started = HashSet<Long>()
@@ -932,13 +995,13 @@ class PlayerViewModel(
             fun startSource(candidate: SEpisode) {
                 val sourceId = candidate.sourceId ?: origin.sourceId
                 if (!synchronized(started) { started.add(sourceId) }) return
-                expectedSourceIds = expectedSourceIds + sourceId
+                if (track) expectedSourceIds = expectedSourceIds + sourceId
                 launch { listStreams(sourceId, candidate, onBatch) }
             }
             startSource(episode.copy(alternates = emptyList()))
             episode.alternates.forEach { startSource(it) }
             if (episode.alternates.isEmpty() && episode.id.isNotBlank()) {
-                discoveryPending = true
+                if (track) discoveryPending = true
                 launch {
                     try {
                         extensionManager.findEpisodesByTitle(
@@ -956,7 +1019,7 @@ class PlayerViewModel(
                     } catch (e: Exception) {
                         diagnostics?.log(LogCategory.PLAYBACK, "Title search for other sources failed: ${e.message}")
                     } finally {
-                        discoveryPending = false
+                        if (track) discoveryPending = false
                     }
                 }
             }
@@ -1630,6 +1693,7 @@ class PlayerViewModel(
                         positionSeconds = player.currentPosition / 1000,
                         durationSeconds = duration / 1000,
                     )
+                    if (player.isPlaying && player.currentPosition > PREFETCH_AFTER_MS) prefetchNextEpisode()
                 }
             }
         }
