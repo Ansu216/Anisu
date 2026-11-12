@@ -359,9 +359,12 @@ hand-written copies:
 
 - **Write the entry once, in `CHANGELOG.dev.md`, then run
   `python scripts/split_changelog.py`.** The script keeps the headings, blank
-  lines and notes, reduces every entry to its head, drops the continuation
-  lines, and leaves the sections that only exist in `CHANGELOG.md` (releases cut
-  before the file was generated) untouched and in order.
+  lines and notes, reduces every entry to its head and drops the continuation
+  lines. **Every section lives in the dev file**, including the releases cut
+  before the script existed: they were migrated once and the short file is now
+  generated in full, so the script keeps nothing from it. Any section it cannot
+  generate (a stray `## ` heading) is copied from `CHANGELOG.md` untouched, in
+  order.
 - **Never edit `CHANGELOG.md` by hand.** A change made there is gone at the next
   run — which is exactly what keeps the two from drifting.
 - **Every bullet is tagged with the surface it changes and none is left
