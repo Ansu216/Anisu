@@ -514,7 +514,7 @@ private fun Modifier.revealWith(progress: Animatable<Float, *>, density: Density
 
 @Composable
 private fun ActionMenu(onGoToDetails: () -> Unit, onPlayManually: () -> Unit, onRemove: () -> Unit) {
-    FrostedGlassCard(
+    HeavyGlassCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         tintAlpha = 0.66f,

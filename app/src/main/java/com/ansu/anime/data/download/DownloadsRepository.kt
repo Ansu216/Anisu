@@ -1,10 +1,6 @@
 package com.ansu.anime.data.download
 
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.os.BatteryManager
 import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.media3.common.C
@@ -56,6 +52,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -132,16 +129,11 @@ class DownloadsRepository(
     private val retryNotes = MutableStateFlow<Map<String, String>>(emptyMap())
 
     private val userPaused = MutableStateFlow(prefs.getBoolean(KEY_PAUSED, false))
-    private val batteryLow = MutableStateFlow(false)
 
-    /** Whether the whole queue is on hold, and why: Pause all, or a low battery with that setting on. */
-    val pauseState: StateFlow<PauseState> = combine(userPaused, batteryLow, playerPrefs.downloadPauseLowBattery) { user, low, guard ->
-        when {
-            user -> PauseState.User
-            guard && low -> PauseState.Battery
-            else -> PauseState.None
-        }
-    }.stateIn(scope, SharingStarted.Eagerly, if (userPaused.value) PauseState.User else PauseState.None)
+    /** Whether the whole queue is on hold: only when the person pressed Pause all. */
+    val pauseState: StateFlow<PauseState> = userPaused
+        .map { user -> if (user) PauseState.User else PauseState.None }
+        .stateIn(scope, SharingStarted.Eagerly, if (userPaused.value) PauseState.User else PauseState.None)
 
     private val listedItems = combine(entries, preparing, media3States, waitingIds, retryNotes) { saved, prep, states, waiting, notes ->
         val all = saved.map { entry ->
@@ -179,7 +171,7 @@ class DownloadsRepository(
         if (pause == PauseState.None) {
             list
         } else {
-            val why = if (pause == PauseState.Battery) "Paused: battery is low" else "Paused"
+            val why = "Paused"
             list.map { item ->
                 val phase = item.status.phase
                 if (phase == DownloadPhase.Downloading || (phase == DownloadPhase.Queued && item.status.queuePosition == 0)) {
@@ -321,7 +313,6 @@ class DownloadsRepository(
             if (saved.any { it.state == Download.STATE_QUEUED || it.state == Download.STATE_DOWNLOADING }) startProgressPolling()
         }
         watchSettings()
-        watchBattery()
     }
 
     // ---- the public API ------------------------------------------------------------------------------------
@@ -470,7 +461,7 @@ class DownloadsRepository(
         if (id in waitingIds.value) waitingIds.value = listOf(id) + waitingIds.value.filter { it != id }
     }
 
-    /** Pause all / Resume all. A low battery can hold the queue as well; see [pauseState]. */
+    /** Pause all / Resume all; see [pauseState]. */
     fun setPausedAll(paused: Boolean) {
         userPaused.value = paused
         prefs.edit().putBoolean(KEY_PAUSED, paused).apply()
@@ -507,24 +498,6 @@ class DownloadsRepository(
             }
         }
         scope.launch { pauseState.collect { applyPause() } }
-    }
-
-    /** Follows the battery level, so the "pause on low battery" setting can hold the queue. */
-    private fun watchBattery() {
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) = updateBattery(intent)
-        }
-        updateBattery(appContext.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED)))
-    }
-
-    private fun updateBattery(intent: Intent?) {
-        if (intent == null) return
-        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-        val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-        val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
-        val percent = if (level >= 0 && scale > 0) level * 100 / scale else 100
-        batteryLow.value = percent <= LOW_BATTERY_PERCENT && !charging
     }
 
     // ---- retrying ------------------------------------------------------------------------------------------
@@ -1291,8 +1264,5 @@ class DownloadsRepository(
 
         /** Pause before each automatic retry after Media3 gave up: three tries, each waiting longer. */
         val RETRY_BACKOFF_MS = longArrayOf(5_000L, 15_000L, 45_000L)
-
-        /** The battery level (percent) at or under which "pause on low battery" holds the queue, when not charging. */
-        const val LOW_BATTERY_PERCENT = 15
     }
 }

@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -56,6 +57,8 @@ fun StartingScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    /** What is going on right now, oldest first ("AniLab: 2 servers found", "Reading the stream (HLS)…"); the newest is the brightest. */
+    steps: List<String> = emptyList(),
 ) {
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
         Box(
@@ -105,6 +108,26 @@ fun StartingScreen(
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 1.sp,
                 )
+                if (steps.isNotEmpty()) {
+                    Spacer(Modifier.height(if (compact) 6.dp else 14.dp))
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.animateContentSize(),
+                    ) {
+                        steps.forEachIndexed { index, step ->
+                            // The line being worked on is the brightest; earlier ones fade away above it.
+                            val fromNewest = steps.lastIndex - index
+                            Text(
+                                text = step,
+                                color = Color.White.copy(alpha = (0.85f - fromNewest * 0.22f).coerceAtLeast(0.2f)),
+                                fontSize = if (compact) 10.sp else 13.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 24.dp),
+                            )
+                        }
+                    }
+                }
             }
             if (!compact) {
                 Box(

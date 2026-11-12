@@ -23,6 +23,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -57,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ansu.anime.data.translate.SubtitleTranslator
 import com.ansu.anime.ui.theme.AnsuColors
 import kotlin.math.roundToInt
 
@@ -170,6 +174,7 @@ internal fun SubtitlesPanel(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     sheet: Boolean = false,
+    translation: SubtitleTranslationControls? = null,
 ) {
     PlayerSidePanelFrame(title = "Subtitle settings", progress = progress, onClose = onClose, modifier = modifier, sheet = sheet) {
         var languagesOpen by remember { mutableStateOf(false) }
@@ -228,6 +233,9 @@ internal fun SubtitlesPanel(
                         }
                     }
                 }
+            }
+            if (translation != null) {
+                item { SubtitleTranslationCard(translation) }
             }
             // Boxes 2-4: one box per adjustment, as in the sketch.
             item {
@@ -307,6 +315,84 @@ internal fun SubtitlesPanel(
 
 private const val OFFSET_STEP_MS = 100L
 
+/** What the Subtitles panel's translation card shows and does; built once in the player screen for both layouts. */
+internal data class SubtitleTranslationControls(
+    val enabled: Boolean,
+    /** The language code lines are translated into ("ar", "es"). */
+    val target: String,
+    val status: SubtitleTranslator.Status,
+    val onToggle: (Boolean) -> Unit,
+    val onTarget: (String) -> Unit,
+)
+
+/** "Translate subtitles" box: a switch, the language to translate into, and what the language pack is doing. */
+@Composable
+private fun SubtitleTranslationCard(controls: SubtitleTranslationControls) {
+    var languagesOpen by remember { mutableStateOf(false) }
+    val languages = remember {
+        SubtitleTranslator.supportedLanguages().sortedBy { SubtitleTranslator.displayName(it) }
+    }
+    val targetCode = SubtitleTranslator.toLanguageCode(controls.target) ?: controls.target
+    PanelCard(modifier = Modifier.animateContentSize(tween(220))) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                Text("Translate subtitles", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("Needs an internet connection", color = PanelMuted, fontSize = 11.sp)
+            }
+            Switch(
+                checked = controls.enabled,
+                onCheckedChange = controls.onToggle,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = AnsuColors.OnAccent,
+                    checkedTrackColor = AnsuColors.Accent,
+                    uncheckedThumbColor = Color.White.copy(alpha = 0.7f),
+                    uncheckedTrackColor = Color.White.copy(alpha = 0.15f),
+                    uncheckedBorderColor = Color.Transparent,
+                ),
+            )
+        }
+        if (controls.enabled) {
+            PanelDivider()
+            PanelValueRow(
+                label = "Into",
+                value = SubtitleTranslator.displayName(targetCode),
+                expandable = true,
+                expanded = languagesOpen,
+                onClick = { languagesOpen = !languagesOpen },
+            )
+            AnimatedVisibility(visible = languagesOpen) {
+                Column(
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .heightIn(max = 240.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    languages.forEach { code ->
+                        PanelChoiceRow(
+                            text = SubtitleTranslator.displayName(code),
+                            selected = code == targetCode,
+                            onClick = {
+                                controls.onTarget(code)
+                                languagesOpen = false
+                            },
+                        )
+                    }
+                }
+            }
+            val statusText = when (val status = controls.status) {
+                SubtitleTranslator.Status.Idle -> null
+                is SubtitleTranslator.Status.Ready ->
+                    "${SubtitleTranslator.displayName(status.source)} to ${SubtitleTranslator.displayName(status.target)}"
+                is SubtitleTranslator.Status.Failed -> status.message
+            }
+            if (statusText != null) {
+                Text(statusText, color = PanelMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Sources
 // ---------------------------------------------------------------------------------------------
@@ -325,8 +411,10 @@ internal fun SourcesPanel(
     val groups = remember(state.sources) { state.sources.mapNotNull { it.extensionName }.distinct() }
     var filter by remember { mutableStateOf<String?>(null) }
     val activeFilter = filter?.takeIf { it in groups }
+    // Highest quality first, under "All" and under every extension's chip.
     val shown = remember(state.sources, activeFilter) {
-        if (activeFilter == null) state.sources else state.sources.filter { it.extensionName == activeFilter }
+        val list = if (activeFilter == null) state.sources else state.sources.filter { it.extensionName == activeFilter }
+        list.byQualityDescending()
     }
 
     PlayerSidePanelFrame(

@@ -60,6 +60,11 @@ class AniListApi(
      */
     val savedDataAt: StateFlow<Long?> = _savedDataAt
 
+    /** Hides the "saved data" notice. It is set again the next time a screen is served from the disk cache. */
+    fun dismissSavedNotice() {
+        _savedDataAt.value = null
+    }
+
     private val networkRequests = AtomicInteger()
     private val cachedAnswers = AtomicInteger()
 

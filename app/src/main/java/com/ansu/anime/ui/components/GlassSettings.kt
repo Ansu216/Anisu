@@ -91,7 +91,7 @@ fun GlassGroup(
     tintAlpha: Float = 0.4f,
     content: @Composable () -> Unit,
 ) {
-    FrostedGlassCard(
+    HeavyGlassCard(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
         tintAlpha = tintAlpha,

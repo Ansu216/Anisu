@@ -123,14 +123,16 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putBoolean(KEY_CAST_BUTTON, value).apply()
     }
 
-    private val _ambientMode = MutableStateFlow(prefs.getBoolean(KEY_AMBIENT_MODE, true))
+    private val _castUnlocked = MutableStateFlow(prefs.getBoolean(KEY_CAST_UNLOCKED, false))
 
-    /** The portrait player glows under the video in the colours of what is playing. */
-    val ambientMode: StateFlow<Boolean> = _ambientMode
+    /** Cast stays hidden (no button, no toggle) until it is switched on by tapping the Anisu logo in About seven times. */
+    val castUnlocked: StateFlow<Boolean> = _castUnlocked
 
-    fun setAmbientMode(value: Boolean) {
-        _ambientMode.value = value
-        prefs.edit().putBoolean(KEY_AMBIENT_MODE, value).apply()
+    /** Unlocks Cast: the toggle shows up in Player and streaming and the player's Cast button is switched on. */
+    fun unlockCast() {
+        _castUnlocked.value = true
+        _castButton.value = true
+        prefs.edit().putBoolean(KEY_CAST_UNLOCKED, true).putBoolean(KEY_CAST_BUTTON, true).apply()
     }
 
     private val _autoSourcePick = MutableStateFlow(prefs.getBoolean(KEY_AUTO_SOURCE_PICK, false))
@@ -190,26 +192,6 @@ class PlayerPrefs(context: Context) {
         prefs.edit()
             .putString("$KEY_MANUAL_PICK$anilistId", "$sourceId\t${clean(serverName)}\t${clean(label)}\t${System.currentTimeMillis()}")
             .apply()
-    }
-
-    private val _pauseScreen = MutableStateFlow(prefs.getBoolean(KEY_PAUSE_SCREEN, true))
-
-    /** Pause screen: a few seconds after pausing, the video dims and shows what is being watched. */
-    val pauseScreen: StateFlow<Boolean> = _pauseScreen
-
-    fun setPauseScreen(value: Boolean) {
-        _pauseScreen.value = value
-        prefs.edit().putBoolean(KEY_PAUSE_SCREEN, value).apply()
-    }
-
-    private val _prefetchEnabled = MutableStateFlow(prefs.getBoolean(KEY_PREFETCH, true))
-
-    /** Pre-load about a minute of the last-watched episode into the media cache when the app opens. */
-    val prefetchEnabled: StateFlow<Boolean> = _prefetchEnabled
-
-    fun setPrefetchEnabled(value: Boolean) {
-        _prefetchEnabled.value = value
-        prefs.edit().putBoolean(KEY_PREFETCH, value).apply()
     }
 
     private val _episodeGrid = MutableStateFlow(prefs.getBoolean(KEY_EPISODE_GRID, false))
@@ -315,14 +297,26 @@ class PlayerPrefs(context: Context) {
         return if (index >= 0) index else list.size
     }
 
-    private val _subtitleAutoScale = MutableStateFlow(prefs.getBoolean(KEY_SUBTITLE_AUTO_SCALE, true))
+    private val _translateSubtitles = MutableStateFlow(prefs.getBoolean(KEY_TRANSLATE_SUBTITLES, false))
 
-    /** True: subtitle text grows and shrinks with the video picture (small in the portrait player, large in fullscreen). */
-    val subtitleAutoScale: StateFlow<Boolean> = _subtitleAutoScale
+    /** True: subtitle lines are translated on the phone into [translateTarget] (Subtitles panel). Off by default. */
+    val translateSubtitles: StateFlow<Boolean> = _translateSubtitles
 
-    fun setSubtitleAutoScale(value: Boolean) {
-        _subtitleAutoScale.value = value
-        prefs.edit().putBoolean(KEY_SUBTITLE_AUTO_SCALE, value).apply()
+    fun setTranslateSubtitles(value: Boolean) {
+        _translateSubtitles.value = value
+        prefs.edit().putBoolean(KEY_TRANSLATE_SUBTITLES, value).apply()
+    }
+
+    private val _translateTarget = MutableStateFlow(
+        prefs.getString(KEY_TRANSLATE_TARGET, null) ?: java.util.Locale.getDefault().language,
+    )
+
+    /** The language subtitles are translated into, as a language code ("ar", "es"); starts as the phone's language. */
+    val translateTarget: StateFlow<String> = _translateTarget
+
+    fun setTranslateTarget(value: String) {
+        _translateTarget.value = value
+        prefs.edit().putString(KEY_TRANSLATE_TARGET, value).apply()
     }
 
     private val _raceSources = MutableStateFlow(prefs.getBoolean(KEY_RACE_SOURCES, true))
@@ -343,16 +337,6 @@ class PlayerPrefs(context: Context) {
     fun setDownloadWifiOnly(value: Boolean) {
         _downloadWifiOnly.value = value
         prefs.edit().putBoolean(KEY_DOWNLOAD_WIFI_ONLY, value).apply()
-    }
-
-    private val _downloadPauseLowBattery = MutableStateFlow(prefs.getBoolean(KEY_DOWNLOAD_LOW_BATTERY, false))
-
-    /** True: downloads pause while the battery is low and the phone is not charging, and carry on after. */
-    val downloadPauseLowBattery: StateFlow<Boolean> = _downloadPauseLowBattery
-
-    fun setDownloadPauseLowBattery(value: Boolean) {
-        _downloadPauseLowBattery.value = value
-        prefs.edit().putBoolean(KEY_DOWNLOAD_LOW_BATTERY, value).apply()
     }
 
     private val _downloadParallel = MutableStateFlow(prefs.getInt(KEY_DOWNLOAD_PARALLEL, DEFAULT_DOWNLOAD_PARALLEL).coerceIn(DOWNLOAD_PARALLEL_RANGE))
@@ -385,7 +369,7 @@ class PlayerPrefs(context: Context) {
         const val SEEK_STYLE_CLASSIC = "classic"
         private const val KEY_HIDE_EPISODE_BUTTONS = "hide_episode_buttons"
         private const val KEY_CAST_BUTTON = "cast_button"
-        private const val KEY_AMBIENT_MODE = "ambient_mode"
+        private const val KEY_CAST_UNLOCKED = "cast_unlocked"
         val SKIP_OPTIONS = listOf(5, 10, 15)
         /** "Any": no resolution is aimed for; playback starts on the first stream in the chosen language that answers. */
         const val QUALITY_ANY = 0
@@ -408,10 +392,10 @@ class PlayerPrefs(context: Context) {
         val DOWNLOAD_QUALITY_OPTIONS = listOf(DOWNLOAD_QUALITY_ASK, DOWNLOAD_QUALITY_SAME, 1080, 720, 480, 360)
         val DOWNLOAD_PARALLEL_RANGE = 1..3
         const val DEFAULT_DOWNLOAD_PARALLEL = 2
-        private const val KEY_SUBTITLE_AUTO_SCALE = "subtitle_auto_scale"
+        private const val KEY_TRANSLATE_SUBTITLES = "translate_subtitles"
+        private const val KEY_TRANSLATE_TARGET = "translate_target"
         private const val KEY_RACE_SOURCES = "race_sources"
         private const val KEY_DOWNLOAD_WIFI_ONLY = "download_wifi_only"
-        private const val KEY_DOWNLOAD_LOW_BATTERY = "download_pause_low_battery"
         private const val KEY_DOWNLOAD_PARALLEL = "download_parallel"
         private const val KEY_DOWNLOAD_QUALITY = "download_quality"
         private const val KEY_DOUBLE_TAP = "double_tap_seek"
@@ -427,8 +411,6 @@ class PlayerPrefs(context: Context) {
         private const val KEY_AUTO_SOURCE_PICK = "auto_source_pick"
         private const val KEY_PREFERRED_QUALITY = "preferred_quality"
         private const val KEY_PREFERRED_LANGUAGE = "preferred_language"
-        private const val KEY_PAUSE_SCREEN = "pause_screen"
-        private const val KEY_PREFETCH = "prefetch_enabled"
         private const val KEY_EPISODE_GRID = "episode_grid"
         private const val KEY_SKIP_SECONDS = "skip_seconds"
         private const val KEY_SOURCE_PRIORITY = "source_priority"

@@ -101,7 +101,7 @@ fun NextWatchBanner(
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 28.dp),
+            contentPadding = PaddingValues(horizontal = bannerSidePadding()),
             pageSpacing = 12.dp,
         ) { page ->
             val pick = picks[page % picks.size]
@@ -198,4 +198,15 @@ private fun NextWatchCard(
                 .graphicsLayer(lag),
         )
     }
+}
+
+/**
+ * Side padding of the banner pager: 28 dp on a phone. In Tablet mode the centred card is held to about 640 dp wide
+ * (the neighbours peek in on both sides), instead of one very wide, flat card across the tablet.
+ */
+@androidx.compose.runtime.Composable
+private fun bannerSidePadding(): androidx.compose.ui.unit.Dp {
+    if (!com.ansu.anime.ui.components.LocalTabletMode.current) return 28.dp
+    val available = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp - com.ansu.anime.ui.components.TabletRailWidth
+    return ((available - 640.dp) / 2).coerceAtLeast(28.dp)
 }

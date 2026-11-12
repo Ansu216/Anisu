@@ -1,10 +1,17 @@
 package com.ansu.anime.cast
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
+import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
+import com.google.android.gms.cast.CastMediaControlIntent
+import com.ansu.anime.core.diagnostics.Diagnostics
+import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.core.model.SubtitleTrack
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaLoadRequestData
@@ -42,6 +49,10 @@ data class CastUiState(
     val activeSubtitleId: Long? = null,
     /** Every Cast device the network answered with, for the Casting panel. */
     val devices: List<CastDeviceOption> = emptyList(),
+    /** Why nothing may show up (not on Wi-Fi, a VPN is on); null when the network looks fine. */
+    val hint: String? = null,
+    /** What the last scan saw, for the "No device found" screen, e.g. "4 routes seen, 0 Cast". */
+    val scanInfo: String? = null,
 )
 
 data class CastTrackOption(val id: Long, val label: String)
@@ -75,6 +86,11 @@ class CastController(private val context: Context) {
     private var subtitleServer: CastSubtitleServer? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var router: MediaRouter? = null
+    private var routeSelector: MediaRouteSelector? = null
+    /** Set by the player so cast events land in the exported diagnostics report. */
+    var diagnostics: Diagnostics? = null
+    private var lastRoutesLog: String? = null
+    private fun logCast(message: String) { runCatching { diagnostics?.log(LogCategory.PLAYBACK, "Cast: $message") } }
     // Keeps the Casting panel's device list live: a TV appearing, going away or changing state refreshes it.
     private val discoveryCallback = object : MediaRouter.Callback() {
         override fun onRouteAdded(router: MediaRouter, route: MediaRouter.RouteInfo) = refreshDevices()
@@ -83,15 +99,32 @@ class CastController(private val context: Context) {
         override fun onProviderChanged(router: MediaRouter, provider: MediaRouter.ProviderInfo) = refreshDevices()
     }
 
+    // The router only tells us about changes, so this re-reads the device list every couple of seconds as well:
+    // a TV found before our callback was in place, or an update we were never told about, still shows up.
+    private val pollRefresh = object : Runnable {
+        override fun run() {
+            if (released) return
+            if (router != null) refreshDevices()
+            mainHandler.postDelayed(this, POLL_INTERVAL_MS)
+        }
+    }
+
     private val sessionListener = object : SessionManagerListener<CastSession> {
         override fun onSessionStarting(session: CastSession) = Unit
         override fun onSessionStarted(session: CastSession, sessionId: String) = bind(session)
-        override fun onSessionStartFailed(session: CastSession, error: Int) = Unit
+        override fun onSessionStartFailed(session: CastSession, error: Int) {
+            Log.w("AnisuCast", "Session start failed, code $error"); logCast("session start failed, code $error")
+            _state.update { it.copy(hint = "Couldn't connect to the TV (error $error). Check it is on the same Wi-Fi and try again.") }
+            refreshDevices()
+        }
         override fun onSessionEnding(session: CastSession) = Unit
         override fun onSessionEnded(session: CastSession, error: Int) = unbind()
         override fun onSessionResuming(session: CastSession, sessionId: String) = Unit
         override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) = bind(session)
-        override fun onSessionResumeFailed(session: CastSession, error: Int) = Unit
+        override fun onSessionResumeFailed(session: CastSession, error: Int) {
+            Log.w("AnisuCast", "Session resume failed, code $error"); logCast("session resume failed, code $error")
+            refreshDevices()
+        }
         override fun onSessionSuspended(session: CastSession, reason: Int) = Unit
     }
 
@@ -111,25 +144,28 @@ class CastController(private val context: Context) {
 
     /** Starts the Cast framework. Safe to call without Google Play services: it just leaves Cast unavailable. */
     fun attach() {
+        logCast("build marker: probe-3 (queries + mDNS probe)")
+        logCast("attach, Play services ${if (CastBootstrap.isAvailable(context)) "ok" else "MISSING"}, nearby-devices permission ${if (android.os.Build.VERSION.SDK_INT < 33) "n/a" else if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.NEARBY_WIFI_DEVICES) == android.content.pm.PackageManager.PERMISSION_GRANTED) "granted" else "DENIED"}")
+        if (!CastBootstrap.isAvailable(context)) {
+            _state.update { it.copy(ready = false, available = false, hint = "Google Play services is missing or needs an update, so Chromecast can't work.") }
+            return
+        }
         runCatching {
             CastContext.getSharedInstance(context, initExecutor)
                 .addOnSuccessListener { ctx -> if (!released) onContextReady(ctx) }
-                .addOnFailureListener { _state.update { it.copy(ready = false, available = false) } }
+                .addOnFailureListener { logCast("CastContext failed: ${it.message}"); _state.update { s -> s.copy(ready = false, available = false) } }
         }
     }
 
     private fun onContextReady(ctx: CastContext) {
         castContext = ctx
+        probeEnvironment()
+        logCast("CastContext ready, cast state ${ctx.castState}, selector ${ctx.mergedSelector}")
         // The framework only looks for TVs by itself while a route button is on screen, and the player draws its own
         // icon, so it would never have searched. Asking the router for an active scan while the player is open is what
         // makes devices show up.
-        ctx.mergedSelector?.let { selector ->
-            runCatching {
-                val mediaRouter = MediaRouter.getInstance(context)
-                mediaRouter.addCallback(selector, discoveryCallback, MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN)
-                router = mediaRouter
-            }
-        }
+        startDiscovery(ctx)
+        mainHandler.postDelayed(pollRefresh, POLL_INTERVAL_MS)
         ctx.sessionManager.addSessionManagerListener(sessionListener, CastSession::class.java)
         ctx.addCastStateListener(castStateListener)
         _state.update { it.copy(ready = true, available = ctx.castState != CastState.NO_DEVICES_AVAILABLE) }
@@ -137,7 +173,55 @@ class CastController(private val context: Context) {
         ctx.sessionManager.currentCastSession?.takeIf { it.isConnected }?.let(::bind)
     }
 
+    /** Asks the router to look for Cast devices (both flags: plain discovery and an active scan). */
+    private fun startDiscovery(ctx: CastContext) {
+        // Our own selector for the Default Media Receiver, merged with the framework's, so discovery never depends
+        // on the framework's selector alone (it can come back empty before its first scan).
+        val selector = MediaRouteSelector.Builder()
+            .addControlCategory(CastMediaControlIntent.categoryForCast(CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID))
+            .apply { ctx.mergedSelector?.let { addSelector(it) } }
+            .build()
+        runCatching {
+            val mediaRouter = MediaRouter.getInstance(context)
+            mediaRouter.removeCallback(discoveryCallback)
+            mediaRouter.addCallback(
+                selector,
+                discoveryCallback,
+                MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY or
+                    MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN or
+                    MediaRouter.CALLBACK_FLAG_FORCE_DISCOVERY,
+            )
+            router = mediaRouter
+            routeSelector = selector
+        }.onFailure { Log.w("AnisuCast", "startDiscovery failed", it); logCast("startDiscovery failed: ${it.message}") }
+    }
+
+    /** Starts the search over again (the Casting panel does this when it opens and on "Search again"). */
+    fun rescan() {
+        logCast("rescan requested")
+        val ctx = castContext ?: return
+        if (released) return
+        startDiscovery(ctx)
+        refreshDevices()
+    }
+
+    private fun networkHint(): String? {
+        return runCatching {
+            val manager = context.getSystemService(ConnectivityManager::class.java) ?: return@runCatching null
+            val caps = manager.getNetworkCapabilities(manager.activeNetwork)
+                ?: return@runCatching "No network connection."
+            when {
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ->
+                    "A VPN is on, which can hide TVs on your Wi-Fi. Turn it off and search again."
+                !caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) && !caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ->
+                    "You're not on Wi-Fi. Connect to the same Wi-Fi as your TV."
+                else -> null
+            }
+        }.getOrNull()
+    }
+
     private fun bind(session: CastSession) {
+        logCast("session connected to ${session.castDevice?.friendlyName}")
         detachRemote()
         val client = session.remoteMediaClient
         remote = client
@@ -150,16 +234,21 @@ class CastController(private val context: Context) {
     private fun unbind() {
         detachRemote()
         stopSubtitleServer()
-        _state.update { CastUiState(ready = it.ready, available = it.available, devices = it.devices) }
+        _state.update { CastUiState(ready = it.ready, available = it.available, devices = it.devices, hint = it.hint, scanInfo = it.scanInfo) }
         refreshDevices()
     }
 
     /** Re-reads the Cast devices the router knows, so the Casting panel lists them with who is connected. */
     private fun refreshDevices() {
         val mediaRouter = router ?: return
-        val selector = castContext?.mergedSelector ?: return
+        val selector = routeSelector ?: castContext?.mergedSelector ?: return
+        var seen = 0
+        var matching = 0
         val devices = runCatching {
-            mediaRouter.routes
+            val all = mediaRouter.routes
+            seen = all.size
+            matching = all.count { it.matchesSelector(selector) }
+            all
                 .filter { it.isEnabled && it.matchesSelector(selector) }
                 .map { route ->
                     val connecting = route.connectionState == MediaRouter.RouteInfo.CONNECTION_STATE_CONNECTING
@@ -173,13 +262,25 @@ class CastController(private val context: Context) {
                 }
                 .sortedBy { it.name.lowercase() }
         }.getOrDefault(emptyList())
-        _state.update { it.copy(devices = devices) }
+        val names = runCatching { mediaRouter.routes.joinToString { "${it.name} [${it.provider.packageName}]" } }.getOrDefault("?")
+        Log.i("AnisuCast", "routes: $names")
+        if (names != lastRoutesLog) { lastRoutesLog = names; logCast("routes now: $names (matching Cast: $matching)") }
+        val info = "$seen routes seen, $matching Cast, ${devices.size} usable"
+        _state.update { it.copy(devices = devices, hint = networkHint() ?: it.hint?.takeIf { h -> h.startsWith("Couldn't connect") }, scanInfo = info) }
     }
 
     /** Connects to the device with [id] from the Casting panel (the framework starts the session by itself). */
     fun connect(id: String) {
         val mediaRouter = router ?: return
-        mediaRouter.routes.firstOrNull { it.id == id }?.let { runCatching { mediaRouter.selectRoute(it) } }
+        _state.update { it.copy(hint = null) }
+        val route = mediaRouter.routes.firstOrNull { it.id == id } ?: return
+        runCatching {
+            // A route left selected from an earlier failed attempt ignores a second select; reset to the phone first.
+            if (!route.isSelected && mediaRouter.selectedRoute != mediaRouter.defaultRoute) {
+                mediaRouter.unselect(MediaRouter.UNSELECT_REASON_STOPPED)
+            }
+            mediaRouter.selectRoute(route)
+        }.onFailure { Log.w("AnisuCast", "selectRoute failed", it) }
     }
 
     private fun detachRemote() {
@@ -332,9 +433,46 @@ class CastController(private val context: Context) {
         castContext?.sessionManager?.endCurrentSession(true)
     }
 
+    // ---- Diagnostics only: tells "the router can't see Google's Cast provider" apart from "the phone can't hear the TV". ----
+    private var nsdManager: android.net.nsd.NsdManager? = null
+    private var nsdListener: android.net.nsd.NsdManager.DiscoveryListener? = null
+
+    private fun probeEnvironment() {
+        runCatching {
+            val pm = context.packageManager
+            val gms = runCatching { pm.getPackageInfo("com.google.android.gms", 0).versionName }.getOrNull()
+            logCast("GMS package visible: ${gms ?: "NO (hidden from the app)"}")
+            val providers = pm.queryIntentServices(android.content.Intent("android.media.MediaRouteProviderService"), 0)
+                .joinToString { it.serviceInfo.packageName }
+            logCast("route provider services visible: ${providers.ifEmpty { "none" }}")
+        }.onFailure { logCast("environment probe failed: ${it.message}") }
+        runCatching {
+            val nsd = context.getSystemService(Context.NSD_SERVICE) as android.net.nsd.NsdManager
+            val listener = object : android.net.nsd.NsdManager.DiscoveryListener {
+                override fun onDiscoveryStarted(serviceType: String) = logCast("mDNS search started ($serviceType)")
+                override fun onServiceFound(info: android.net.nsd.NsdServiceInfo) = logCast("mDNS found: ${info.serviceName}")
+                override fun onServiceLost(info: android.net.nsd.NsdServiceInfo) = logCast("mDNS lost: ${info.serviceName}")
+                override fun onDiscoveryStopped(serviceType: String) = Unit
+                override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) = logCast("mDNS start failed, code $errorCode")
+                override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
+            }
+            nsd.discoverServices("_googlecast._tcp.", android.net.nsd.NsdManager.PROTOCOL_DNS_SD, listener)
+            nsdManager = nsd
+            nsdListener = listener
+        }.onFailure { logCast("mDNS probe failed: ${it.message}") }
+    }
+
+    private fun stopProbe() {
+        runCatching { nsdListener?.let { nsdManager?.stopServiceDiscovery(it) } }
+        nsdListener = null
+    }
+
+
     /** Leaving the player ends the session, so the TV does not keep playing something the phone no longer shows. */
     fun release() {
         released = true
+        stopProbe()
+        mainHandler.removeCallbacks(pollRefresh)
         runCatching { router?.removeCallback(discoveryCallback) }
         router = null
         castContext?.let { ctx ->
@@ -349,6 +487,7 @@ class CastController(private val context: Context) {
 
     private companion object {
         const val PROGRESS_INTERVAL_MS = 1000L
+        const val POLL_INTERVAL_MS = 2000L
 
         /** The Cast framework starts on a background thread; one shared thread is enough for every player screen. */
         val initExecutor by lazy { Executors.newSingleThreadExecutor() }

@@ -89,7 +89,7 @@ import com.ansu.anime.data.repository.pickHeroImage
 import com.ansu.anime.data.repository.seasonLabel
 import com.ansu.anime.data.prefs.TitleLanguage
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.HeavyGlassCard
 import com.ansu.anime.ui.components.GenreChip
 import com.ansu.anime.ui.components.PersonCard
 import com.ansu.anime.ui.components.PosterGlassLabel
@@ -751,7 +751,7 @@ private fun PlayLikeRow(
                 modifier = Modifier.padding(start = 8.dp),
             )
         }
-        FrostedGlassCard(modifier = Modifier.size(50.dp), shape = CircleShape, tintAlpha = 0.5f) {
+        HeavyGlassCard(modifier = Modifier.size(50.dp), shape = CircleShape, tintAlpha = 0.5f) {
             IconButton(onClick = { onToggleLike() }, modifier = Modifier.fillMaxSize()) {
                 Icon(
                     imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
@@ -763,7 +763,7 @@ private fun PlayLikeRow(
         if (showListButton) {
             var menuOpen by remember { mutableStateOf(false) }
             Box {
-                FrostedGlassCard(modifier = Modifier.size(50.dp), shape = CircleShape, tintAlpha = 0.5f) {
+                HeavyGlassCard(modifier = Modifier.size(50.dp), shape = CircleShape, tintAlpha = 0.5f) {
                     IconButton(onClick = { menuOpen = true }, modifier = Modifier.fillMaxSize()) {
                         Icon(
                             imageVector = if (listStatus != null) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,

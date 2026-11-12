@@ -190,6 +190,8 @@ fun AppBottomBar(
  */
 @Composable
 fun AppBottomBarReserve(modifier: Modifier = Modifier) {
+    // Tablet mode has a side rail instead of the bottom bar, so there is no bar height to keep clear of.
+    if (LocalTabletMode.current) return
     Box(
         modifier = modifier
             .fillMaxWidth()

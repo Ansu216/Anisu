@@ -59,7 +59,7 @@ import com.ansu.anime.data.download.DownloadItem
 import com.ansu.anime.data.download.DownloadPhase
 import com.ansu.anime.data.download.PauseState
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.HeavyGlassCard
 import com.ansu.anime.ui.components.GlassAlertDialog
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
@@ -134,14 +134,6 @@ fun DownloadsScreen(container: AppContainer, navController: NavHostController) {
                 color = AnsuColors.TextSecondary,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
             )
-            if (pause == PauseState.Battery) {
-                Text(
-                    text = "Downloads are paused because the battery is low. They carry on when it is charging or has recovered.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AnsuColors.Accent,
-                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
-                )
-            }
             if (items.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 48.dp), contentAlignment = Alignment.TopCenter) {
                     Text(
@@ -202,7 +194,7 @@ private fun DownloadCard(
     val entry = item.entry
     val status = item.status
     val playable = status.phase == DownloadPhase.Completed
-    FrostedGlassCard(
+    HeavyGlassCard(
         modifier = Modifier.fillMaxWidth().then(if (playable) Modifier.clickable(onClick = onPlay) else Modifier),
         shape = RoundedCornerShape(16.dp),
         tintAlpha = 0.4f,

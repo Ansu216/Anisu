@@ -70,7 +70,7 @@ import com.ansu.anime.data.update.UpdateChannel
 import com.ansu.anime.data.update.UpdateCheckResult
 import com.ansu.anime.data.update.UpdateState
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.HeavyGlassCard
 import com.ansu.anime.ui.components.GlassDisclosureRow
 import com.ansu.anime.ui.components.GlassGroup
 import com.ansu.anime.ui.components.GlassRow
@@ -300,7 +300,7 @@ private fun StatusCard(
     modifier: Modifier = Modifier,
 ) {
     val available = state.result as? UpdateCheckResult.Available
-    FrostedGlassCard(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), tintAlpha = 0.4f) {
+    HeavyGlassCard(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), tintAlpha = 0.4f) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -456,7 +456,7 @@ private const val CHANGELOG_URL = "https://github.com/Ansu216/Anisu/blob/main/CH
  */
 @Composable
 private fun InlineChannelSelector(channel: UpdateChannel, onChannelChange: (UpdateChannel) -> Unit) {
-    FrostedGlassCard(
+    HeavyGlassCard(
         modifier = Modifier.width(150.dp).height(34.dp),
         shape = RoundedCornerShape(17.dp),
         tintAlpha = 0.3f,

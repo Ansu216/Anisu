@@ -48,7 +48,7 @@ import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.ansu.anime.data.contributors.Contributor
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.HeavyGlassCard
 import com.ansu.anime.ui.theme.AnsuColors
 
 /**
@@ -138,7 +138,7 @@ fun ContributorsScreen(container: AppContainer, navController: NavHostController
 
 @Composable
 private fun ContributorCard(contributor: Contributor, onClick: () -> Unit) {
-    FrostedGlassCard(
+    HeavyGlassCard(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
         tintAlpha = 0.4f,

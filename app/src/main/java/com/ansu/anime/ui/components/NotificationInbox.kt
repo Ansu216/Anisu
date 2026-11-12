@@ -112,7 +112,7 @@ fun NotificationInbox(
     }
 
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
-        FrostedGlassCard(
+        HeavyGlassCard(
             modifier = Modifier.size(38.dp),
             shape = CircleShape,
             tintAlpha = 0.5f,

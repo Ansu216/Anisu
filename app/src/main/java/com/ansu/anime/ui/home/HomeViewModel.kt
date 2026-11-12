@@ -8,6 +8,8 @@ import com.ansu.anime.anilist.AniListRepository
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.data.db.ContinueWatchingEntity
 import com.ansu.anime.ui.components.isFinished
+import com.ansu.anime.ui.components.PHONE_FEED_PAGE_SIZE
+import com.ansu.anime.ui.components.TABLET_FEED_PAGE_SIZE
 import com.ansu.anime.data.prefs.TitleLanguage
 import com.ansu.anime.data.repository.CatalogRepository
 import com.ansu.anime.data.repository.ContinueWatchingRepository
@@ -28,15 +30,19 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
-/** How many titles each endless row fetches per page. */
-private const val FEED_PAGE_SIZE = 10
-
-/** How many rows the first prefetch request carries; the rest follow in a second one. */
+/**
+ * How many rows one prefetch request carries. A request's weight is rows x titles per page, so Tablet mode (15 titles
+ * a page) carries fewer rows per request than a phone (10): 3 x 15 = 45 titles against 4 x 10 = 40, which keeps every
+ * request about as heavy as it always was and well clear of a timeout.
+ */
 private const val PREFETCH_CHUNK = 4
+private const val TABLET_PREFETCH_CHUNK = 3
 
 /** Paging state of one endless catalogue row. */
 data class FeedState(
     val feed: AniListFeed,
+    /** Titles per page this row was loaded with; a page request must use the same size to continue where the last one ended. */
+    val pageSize: Int = PHONE_FEED_PAGE_SIZE,
     val items: List<SAnime> = emptyList(),
     val nextPage: Int = 1,
     val hasNextPage: Boolean = true,
@@ -81,7 +87,12 @@ class HomeViewModel(
     titleLanguage: StateFlow<TitleLanguage>,
     private val localListRepository: LocalListRepository,
     private val episodeMetadataRepository: com.ansu.anime.data.repository.EpisodeMetadataRepository? = null,
+    /** Tablet mode (Appearance): rows load 15 titles per page instead of 10. */
+    private val tabletMode: StateFlow<Boolean> = MutableStateFlow(false),
 ) : ViewModel() {
+
+    /** Titles per page for a row that has not loaded yet: 15 in Tablet mode, 10 otherwise. */
+    private val feedPageSize: Int get() = if (tabletMode.value) TABLET_FEED_PAGE_SIZE else PHONE_FEED_PAGE_SIZE
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState
@@ -90,6 +101,11 @@ class HomeViewModel(
 
     /** AniList ids of the titles the user has hearted (AniList's favourites when signed in, the device's otherwise); drives the hero banner's heart. */
     val favouriteIds: StateFlow<Set<Int>> = _favouriteIds
+
+    private val _savedIds = MutableStateFlow<Set<Int>>(emptySet())
+
+    /** AniList ids of the titles saved to the Planning list (AniList's when signed in, the device's otherwise); drives the tablet banner's save button. */
+    val savedIds: StateFlow<Set<Int>> = _savedIds
 
     init {
         continueWatchingRepository.entries
@@ -109,10 +125,23 @@ class HomeViewModel(
                         if (loggedIn) aniListRepository.getLikedIds() else local.map { it.id }.toSet()
                 }
         }
+        viewModelScope.launch {
+            // Same idea as the hearts above: AniList's Planning list when signed in, the device's own otherwise.
+            combine(aniListRepository.isLoggedIn, localListRepository.withStatus(com.ansu.anime.data.repository.ListStatus.PLANNING)) { loggedIn, local -> loggedIn to local }
+                .distinctUntilChanged { old, new -> old.first && new.first }
+                .collectLatest { (loggedIn, local) ->
+                    _savedIds.value =
+                        if (loggedIn) aniListRepository.getPlanning().map { it.mediaId }.toSet() else local.map { it.id }.toSet()
+                }
+        }
         viewModelScope.launch { observePicks() }
         refresh()
         // Titles are fetched in the chosen language, so a change in Settings reloads the rows.
         titleLanguage.drop(1)
+            .onEach { refresh() }
+            .launchIn(viewModelScope)
+        // Turning Tablet mode on or off changes the page size, so the rows start over with the new size.
+        tabletMode.drop(1)
             .onEach { refresh() }
             .launchIn(viewModelScope)
     }
@@ -173,6 +202,22 @@ class HomeViewModel(
             } else {
                 // The device's own list is observed above, so the heart follows the database.
                 localListRepository.toggleFavourite(anime)
+            }
+        }
+    }
+
+    /** Saves [anime] to the Planning list, or takes it out again when it is already there. */
+    fun toggleSaved(anime: SAnime) {
+        val id = anime.anilistId ?: return
+        viewModelScope.launch {
+            val status = if (id in _savedIds.value) null else com.ansu.anime.data.repository.ListStatus.PLANNING
+            if (aniListRepository.isLoggedIn.value) {
+                val before = _savedIds.value
+                _savedIds.value = if (status == null) before - id else before + id
+                if (!aniListRepository.setListStatus(id, status)) _savedIds.value = before
+            } else {
+                // The device's own list is observed above, so the button follows the database.
+                localListRepository.setStatus(anime, status)
             }
         }
     }
@@ -259,9 +304,10 @@ class HomeViewModel(
                     newMovies = movies.map { r -> r.toPick() },
                 )
             }
-            firstPages(AniListFeed.entries.filter { it != AniListFeed.TRENDING_NOW }.take(PREFETCH_CHUNK))
-                .join()
-            firstPages(AniListFeed.entries.filter { it != AniListFeed.TRENDING_NOW }.drop(PREFETCH_CHUNK))
+            // The rest in a few combined requests, one after the other; a request never carries more titles than a
+            // phone's does, so a tablet's bigger pages cannot make one time out.
+            val chunk = if (tabletMode.value) TABLET_PREFETCH_CHUNK else PREFETCH_CHUNK
+            AniListFeed.entries.filter { it != AniListFeed.TRENDING_NOW }.chunked(chunk).forEach { firstPages(it).join() }
         }
     }
 
@@ -275,7 +321,15 @@ class HomeViewModel(
         if (targets.isEmpty()) return viewModelScope.launch { }
         _uiState.update { state -> targets.fold(state) { acc, f -> acc.withFeed(f) { it.copy(isLoading = true, loadFailed = false) } } }
         return viewModelScope.launch {
-            val pages = aniListRepository.getFeedFirstPages(targets, FEED_PAGE_SIZE)
+            val size = feedPageSize
+            val bigPages = size > PHONE_FEED_PAGE_SIZE
+            // A tablet's bigger page is tried first and quietly: if it fails (a slow connection, a timeout) the rows
+            // it missed are asked again with the phone's lighter 10-title page, so the person sees rows, not errors.
+            var pages = aniListRepository.getFeedFirstPages(targets, size, quiet = bigPages)
+            val retried = if (bigPages) targets.filter { it !in pages } else emptyList()
+            if (retried.isNotEmpty()) {
+                pages = pages + aniListRepository.getFeedFirstPages(retried, PHONE_FEED_PAGE_SIZE)
+            }
             _uiState.update { state ->
                 targets.fold(state) { acc, f ->
                     val result = pages[f]
@@ -284,6 +338,7 @@ class HomeViewModel(
                             row.copy(isLoading = false, loadFailed = true)
                         } else {
                             row.copy(
+                                pageSize = if (f in retried) PHONE_FEED_PAGE_SIZE else size,
                                 items = result.media.map { it.toSAnime() }.distinctBy { it.id },
                                 nextPage = 2,
                                 hasNextPage = result.hasNextPage,
@@ -299,7 +354,7 @@ class HomeViewModel(
     }
 
     /**
-     * Fetches the next [FEED_PAGE_SIZE] titles of [feed] — the first page if nothing
+     * Fetches the next page (10 titles, 15 in Tablet mode) of [feed] — the first page if nothing
      * is loaded yet. A no-op while a request for that row is in flight or once the
      * row is exhausted. Returns the loading job, or null if nothing was started.
      */
@@ -317,9 +372,12 @@ class HomeViewModel(
         }
         if (!started) return null
 
-        val page = _uiState.value.feed(feed).nextPage
+        val current = _uiState.value.feed(feed)
+        val page = current.nextPage
+        // A row keeps the page size it started with, so page 2 begins exactly where page 1 ended.
+        val size = if (current.hasLoaded) current.pageSize else feedPageSize
         return viewModelScope.launch {
-            val result = aniListRepository.getFeedPage(feed, page, FEED_PAGE_SIZE)
+            val result = aniListRepository.getFeedPage(feed, page, size)
             _uiState.update { state ->
                 state.withFeed(feed) { row ->
                     if (result == null) {

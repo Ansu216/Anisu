@@ -369,7 +369,7 @@ private fun TagCategory(
             .fillMaxWidth()
             .padding(bottom = 10.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(AnsuColors.SurfaceGlassBase.copy(alpha = 0.35f)),
+            .background(AnsuColors.SurfaceGlassBase.copy(alpha = 0.6f)),
     ) {
         Row(
             modifier = Modifier

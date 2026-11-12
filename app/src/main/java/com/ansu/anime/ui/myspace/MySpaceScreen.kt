@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -79,7 +80,7 @@ import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.AppBottomBarReserve
 import com.ansu.anime.ui.components.BackdropState
 import com.ansu.anime.ui.components.backdropSource
-import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.HeavyGlassCard
 import com.ansu.anime.ui.components.PosterOriginHandle
 import com.ansu.anime.ui.components.posterTransitionAnchor
 import com.ansu.anime.ui.components.posterTransitionTrigger
@@ -250,6 +251,23 @@ fun MySpaceScreen(
                     if (isLoggedIn) "Nothing in ${selected.label} yet."
                     else "Nothing in ${selected.label} yet. Open any anime and use the heart or bookmark button to save it on this device.",
                 )
+                // Tablet mode: the list cards sit in two columns instead of one stretched row each.
+                com.ansu.anime.ui.components.LocalTabletMode.current -> androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                    columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxSize().padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        start = 32.dp,
+                        top = 4.dp,
+                        end = 32.dp,
+                        bottom = 4.dp + padding.calculateBottomPadding(),
+                    ),
+                ) {
+                    gridItems(shown, key = { it.id }) { media ->
+                        ListItemRow(media = media, onDetails = { onAnimeSelected(media.toSAnime()) })
+                    }
+                }
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(top = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -364,7 +382,7 @@ private fun ShiftingGradient(modifier: Modifier = Modifier) {
 /** A full-width frosted box with an icon, a label and an arrow; a tap opens [label]'s screen. */
 @Composable
 private fun ShortcutBox(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    FrostedGlassCard(
+    HeavyGlassCard(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         tintAlpha = 0.4f,
@@ -384,7 +402,7 @@ private fun ShortcutBox(icon: androidx.compose.ui.graphics.vector.ImageVector, l
 /** Small frosted pill with a sync icon; shows a spinner while a sync is running. */
 @Composable
 private fun SyncButton(syncing: Boolean, onClick: () -> Unit) {
-    FrostedGlassCard(modifier = Modifier.clickable(onClick = onClick), shape = RoundedCornerShape(20.dp), tintAlpha = 0.45f) {
+    HeavyGlassCard(modifier = Modifier.clickable(onClick = onClick), shape = RoundedCornerShape(20.dp), tintAlpha = 0.45f) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -410,7 +428,7 @@ private fun ListChip(text: String, selected: Boolean, onClick: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) { Text(text, color = AnsuColors.OnAccent, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
     } else {
-        FrostedGlassCard(modifier = Modifier.clickable(onClick = onClick), shape = shape, tintAlpha = 0.45f) {
+        HeavyGlassCard(modifier = Modifier.clickable(onClick = onClick), shape = shape, tintAlpha = 0.45f) {
             Text(
                 text,
                 color = AnsuColors.TextSecondary,
@@ -428,7 +446,7 @@ private fun ListChip(text: String, selected: Boolean, onClick: () -> Unit) {
 private fun ListItemRow(media: AniListMedia, onDetails: () -> Unit) {
     // A tap anywhere on the card opens the page out of its poster, not only a tap on the poster itself.
     val originHandle = remember { PosterOriginHandle() }
-    FrostedGlassCard(
+    HeavyGlassCard(
         modifier = Modifier.fillMaxWidth().posterTransitionTrigger(originHandle, media.posterUrl, 10.dp).clickable(onClick = onDetails),
         shape = RoundedCornerShape(16.dp),
         tintAlpha = 0.4f,

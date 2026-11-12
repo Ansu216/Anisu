@@ -190,8 +190,8 @@ class AniListRepository(
         guarded("Loading this season's top picks", emptyList()) { api.getTopThisSeason(season, seasonYear) }
 
     /** First page of several home rows in one request. Rows missing from the map failed to load. */
-    suspend fun getFeedFirstPages(feeds: List<AniListFeed>, perPage: Int): Map<AniListFeed, AniListMediaPage> =
-        guarded("Loading catalogues", emptyMap<AniListFeed, AniListMediaPage>()) { api.getFeedPages(feeds, perPage) }
+    suspend fun getFeedFirstPages(feeds: List<AniListFeed>, perPage: Int, quiet: Boolean = false): Map<AniListFeed, AniListMediaPage> =
+        guarded("Loading catalogues", emptyMap<AniListFeed, AniListMediaPage>(), quiet = quiet) { api.getFeedPages(feeds, perPage) }
 
     /** Recent series and movie premieres in one request, each ordered and trimmed like [getNewReleases]. */
     suspend fun getNewReleasesBoth(days: Long = 30, limit: Int = 7): Pair<List<AniListNewRelease>, List<AniListNewRelease>> {

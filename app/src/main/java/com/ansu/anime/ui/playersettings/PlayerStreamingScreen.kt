@@ -92,27 +92,23 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val holdSpeed by prefs.holdSpeed.collectAsStateWithLifecycle()
     val hideEpisodeButtons by prefs.hideEpisodeButtons.collectAsStateWithLifecycle()
     val castButton by prefs.castButton.collectAsStateWithLifecycle()
+    val castUnlocked by prefs.castUnlocked.collectAsStateWithLifecycle()
     val seekBarStyleKey by prefs.seekBarStyle.collectAsStateWithLifecycle()
     val brightness by prefs.brightnessGesture.collectAsStateWithLifecycle()
     val volume by prefs.volumeGesture.collectAsStateWithLifecycle()
     val skipSeconds by prefs.skipSeconds.collectAsStateWithLifecycle()
     val pip by prefs.pipEnabled.collectAsStateWithLifecycle()
-    val ambient by prefs.ambientMode.collectAsStateWithLifecycle()
-    val pauseScreen by prefs.pauseScreen.collectAsStateWithLifecycle()
     val autoSourcePick by prefs.autoSourcePick.collectAsStateWithLifecycle()
     val preferredQuality by prefs.preferredQuality.collectAsStateWithLifecycle()
     val preferredLanguage by prefs.preferredLanguage.collectAsStateWithLifecycle()
-    val prefetch by prefs.prefetchEnabled.collectAsStateWithLifecycle()
     val subSize by prefs.subtitleSize.collectAsStateWithLifecycle()
     val subHeight by prefs.subtitleHeight.collectAsStateWithLifecycle()
     val subColor by prefs.subtitleColor.collectAsStateWithLifecycle()
     val subBgColor by prefs.subtitleBgColor.collectAsStateWithLifecycle()
     val subBgOpacity by prefs.subtitleBgOpacity.collectAsStateWithLifecycle()
     val subRoundedBg by prefs.subtitleRoundedBg.collectAsStateWithLifecycle()
-    val subAutoScale by prefs.subtitleAutoScale.collectAsStateWithLifecycle()
     val raceSources by prefs.raceSources.collectAsStateWithLifecycle()
     val downloadWifiOnly by prefs.downloadWifiOnly.collectAsStateWithLifecycle()
-    val downloadLowBattery by prefs.downloadPauseLowBattery.collectAsStateWithLifecycle()
     val downloadParallel by prefs.downloadParallel.collectAsStateWithLifecycle()
     val downloadQuality by prefs.downloadQuality.collectAsStateWithLifecycle()
 
@@ -234,12 +230,14 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                     checked = hideEpisodeButtons,
                     onCheckedChange = prefs::setHideEpisodeButtons,
                 )
-                GlassToggleRow(
-                    title = "Cast Button",
-                    description = "Show a Chromecast button in the player's top bar, between the autoplay switch and the lock",
-                    checked = castButton,
-                    onCheckedChange = prefs::setCastButton,
-                )
+                if (castUnlocked) {
+                    GlassToggleRow(
+                        title = "Cast Button",
+                        description = "Show a Chromecast button in the player's top bar, between the autoplay switch and the lock",
+                        checked = castButton,
+                        onCheckedChange = prefs::setCastButton,
+                    )
+                }
             }
 
             GlassGroupLabel("Preferred stream")
@@ -293,28 +291,6 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                 }
             }
 
-            GlassGroupLabel("Pause screen")
-            GlassGroup {
-                GlassToggleRow(
-                    title = "Pause Screen",
-                    description = "Dim the video and show what you're watching when paused",
-                    checked = pauseScreen,
-                    onCheckedChange = prefs::setPauseScreen,
-                    showDivider = false,
-                )
-            }
-
-            GlassGroupLabel("Portrait player")
-            GlassGroup {
-                GlassToggleRow(
-                    title = "Ambient Mode",
-                    description = "The area under the video glows in the colours of what is playing",
-                    checked = ambient,
-                    onCheckedChange = prefs::setAmbientMode,
-                    showDivider = false,
-                )
-            }
-
             GlassGroupLabel("Picture in picture")
             GlassGroup {
                 GlassToggleRow(
@@ -326,17 +302,6 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                 )
             }
 
-            GlassGroupLabel("Preload")
-            GlassGroup {
-                GlassToggleRow(
-                    title = "Preload Last Episode",
-                    description = "Loads a minute ahead for an instant start. Uses data",
-                    checked = prefetch,
-                    onCheckedChange = prefs::setPrefetchEnabled,
-                    showDivider = false,
-                )
-            }
-
             GlassGroupLabel("Downloads")
             GlassGroup {
                 GlassToggleRow(
@@ -344,12 +309,6 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                     description = "Downloads wait for Wi-Fi and never use mobile data",
                     checked = downloadWifiOnly,
                     onCheckedChange = prefs::setDownloadWifiOnly,
-                )
-                GlassToggleRow(
-                    title = "Pause On Low Battery",
-                    description = "Downloads pause when the battery is low and the phone is not charging, and carry on afterwards",
-                    checked = downloadLowBattery,
-                    onCheckedChange = prefs::setDownloadPauseLowBattery,
                 )
                 GlassContentRow(
                     title = "Downloads At Once",
@@ -424,12 +383,6 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                     description = "Soft bars behind each line. Off gives a plain box",
                     checked = subRoundedBg,
                     onCheckedChange = prefs::setSubtitleRoundedBg,
-                )
-                GlassToggleRow(
-                    title = "Scale With Video",
-                    description = "Subtitles grow and shrink with the picture: smaller in the portrait player, larger when the video is big. Text Size below is the size on a phone held sideways",
-                    checked = subAutoScale,
-                    onCheckedChange = prefs::setSubtitleAutoScale,
                 )
                 GlassSliderRow(
                     title = "Text Size",

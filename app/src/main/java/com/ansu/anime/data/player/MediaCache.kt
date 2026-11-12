@@ -14,9 +14,9 @@ import okhttp3.OkHttpClient
 import java.io.File
 
 /**
- * One on-disk media cache shared by the player and the [Prefetcher]. The prefetcher writes segments
- * here ahead of time and the player reads them back, so a resumed episode starts already filled
- * instead of waiting on the network. The player's own RAM window (its LoadControl) is separate.
+ * One on-disk media cache for the player: segments that were already fetched are read back from here
+ * instead of the network, so a resumed episode and a seek back both start already filled. The
+ * player's own RAM window (its LoadControl) is separate.
  */
 @OptIn(UnstableApi::class)
 class MediaCache(context: Context, private val client: OkHttpClient? = null) {

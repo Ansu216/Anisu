@@ -6,7 +6,7 @@ repository. Claude Code loads this file automatically.
 **Read the whole file before your first edit.** Section 4 is the exact build
 procedure — following it is what keeps the build green. Section 5 lists the traps
 that have broken this build before. Section 7 is mandatory: every change touches
-`CHANGELOG.md`.
+`CHANGELOG.md` and `CHANGELOG.dev.md`.
 
 ## Before you start
 
@@ -16,8 +16,8 @@ that have broken this build before. Section 7 is mandatory: every change touches
    start a feature on top of a red build.
 2. Fix the user's actual request. Do not refactor, rename or "tidy up" working
    code that the request does not need (§6).
-3. When you are done: green build (§4), APK identity unchanged (§4.4), a
-   `CHANGELOG.md` entry (§7), and no commit unless the user asked for one (§8).
+3. When you are done: green build (§4), APK identity unchanged (§4.4), entries in
+   `CHANGELOG.md` **and** `CHANGELOG.dev.md` (§7), and no commit unless the user asked for one (§8).
 
 ## 1. Project overview
 
@@ -134,9 +134,12 @@ This is the procedure that produces a green build. Do not improvise around it.
 ### 4.1 Environment
 
 - **JDK 21.** The Gradle toolchain requires it. `java -version` must report 21
-  (Temurin works). On a machine with several JDKs, point Gradle at it with
-  `org.gradle.java.home` in the **gitignored** `local.properties` — never commit
-  a machine path.
+  (Temurin works). On a machine with several JDKs, set `JAVA_HOME` to the 21 one
+  (or put `org.gradle.java.home` in a **gitignored** `gradle.properties`) — never
+  commit a machine path. `local.properties` does **not** work for this: Gradle
+  reads `org.gradle.java.home` from `gradle.properties` only, so a Gradle started
+  on JDK 25 dies inside the Kotlin DSL before configuring, with
+  `java.lang.IllegalArgumentException: 25.0.5`.
 - **Android SDK** with `platforms;android-35` and `build-tools;35.0.0`.
   `local.properties` must contain `sdk.dir=<path>` (or export
   `ANDROID_SDK_ROOT`). `local.properties` is machine-local and **gitignored** —
@@ -220,7 +223,7 @@ means the manifest and the package name have drifted — that is an instant
 - [ ] `aapt dump badging` still reports `com.ansu.anime` / `Anisu`.
 - [ ] No new `com.kernel.anime` / `Anisu` / `StreamHub` name anywhere (§5).
 - [ ] No duplicate top-level symbols were introduced (§4.3.2).
-- [ ] `CHANGELOG.md` `## [Unreleased]` updated (§7).
+- [ ] `CHANGELOG.md` **and** `CHANGELOG.dev.md` `## [Unreleased]` updated (§7).
 - [ ] A version change touched `version.txt` **only** (plus that changelog entry) —
       no copy of the version or the version code is left behind in another file
       (§7.4).
@@ -341,13 +344,24 @@ that could break existing behaviour, and ask when in doubt.
 ## 7. Versioning and the changelog — MANDATORY
 
 **Every change that alters behaviour, the UI, the build, the CI or the docs is
-added to `CHANGELOG.md` in the same commit.** A change with no changelog entry is
-an incomplete change.
+added to `CHANGELOG.md` and `CHANGELOG.dev.md` in the same commit.** A change
+with no entry in both is an incomplete change.
 
-### 7.1 The file
+### 7.1 The two files
 
-`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+The changelog method is the one `PiBOH/vivi-music-de` uses: **two files at the
+repository root, both written in the same change.**
+
+| File | Reader | What a bullet says |
+|---|---|---|
+| `CHANGELOG.md` | the person installing the APK | what changed for them and why — no file paths, class names or Gradle tasks |
+| `CHANGELOG.dev.md` | the next developer or agent | the same change technically: the files and functions touched, the dependency coordinates, the constraint that was kept |
+
+Both follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+- Both files carry the same headings, the same categories in the same order, and
+  the same version sections: a version that exists in one exists in the other.
 
 - New work goes under `## [Unreleased]`, in the right category, in the right
   order:
@@ -355,7 +369,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `### Security`.
 - If a category does not exist under `## [Unreleased]`, create it — do not
   invent a new one.
-- At release time the entries are moved under a new heading,
+- At release time the entries are moved, in **both** files, under a new heading,
   `## [<version>] - <YYYY-MM-DD>` (inserted directly under `## [Unreleased]`),
   and `## [Unreleased]` is left empty for the next cycle. **`<version>` is the
   tag without its `v`**: tag `v1.2.3` → `## [1.2.3]`.
@@ -399,6 +413,10 @@ change, in this shape:
 - No commit hashes, no file-path-only bullets, no "various fixes".
 - Group related changes into one entry rather than listing one bullet per file.
 - English only, like the commit messages (§8).
+- `CHANGELOG.dev.md` uses the same shape with the technical half of the story:
+  the file or function, the dependency and its version, the Gradle task that
+  failed. It is the six-months-later explanation, so it can be duller and more
+  specific than the `CHANGELOG.md` bullet — but still a sentence, not a diff.
 
 ### 7.4 `version.txt` — the version file
 
@@ -422,9 +440,10 @@ nightly     # line 3 - channel
   than the installed one — the installer reports that to the user as an "invalid
   package" and the update simply cannot be installed — so never let it decrease, and
   never "simplify" it back to a small number.
-- **Line 3** is the channel, and it is what makes the naming decision: `nightly`
-  makes every build `<version>-nightly` (e.g. `0.3.0-nightly`), anything else (`beta`,
-  `stable`) leaves the plain `<version>`. No timestamp goes into the name: CI passes the
+- **Line 3** is the channel of a release build: `nightly` makes a build
+  `<version>-nightly` (e.g. `0.3.0-nightly`), anything else (`beta`, `stable`) leaves the
+  plain `<version>`. The nightly workflow ignores it and always builds a nightly, because
+  everything it publishes goes to `apk-nightly` (see §9). No timestamp goes into the name: CI passes the
   commit as `-PbuildCommit`, the app exposes it as `BuildConfig.BUILD_COMMIT`, and that
   is what the updater compares — `stage-nightly.sh` likewise identifies a run by the run
   id it writes into `nightly.json`, not by the now-shared version name.
@@ -437,14 +456,15 @@ None of them carries a copy of the number:
 | Reader | How it reads `version.txt` |
 |---|---|
 | `app/build.gradle.kts` | lines 1-2-3 into `versionName`, `versionCode` and `BuildConfig.RELEASE_CHANNEL`; each is overridable per build with `-PversionName` / `-PversionCode` / `-Pchannel`, and a missing or non-integer line fails the build with an explicit message instead of a default |
-| `.github/workflows/apk-nightly.yml` | the `plan` job checks the repository out, drops the `#` lines, reads lines 1-2-3, refuses a code that is not an integer, and hands `-PversionName` / `-PversionCode` to **both** matrix legs so they carry one name |
+| `.github/workflows/apk-nightly.yml` | the `plan` job checks the repository out, drops the `#` lines, reads lines 1 and 2, refuses a code that is not an integer, and hands `-PversionName` / `-PversionCode` / `-Pchannel=nightly` to **both** matrix legs so they carry one name. **Line 3 is deliberately not read**: this workflow only publishes nightlies, so the channel is forced to `nightly` whatever the file says |
 | `.github/workflows/release-apk.yml` | **line 2 for the version code, always**; a manual run with no tag typed in takes the version from line 1 and tags it `v<line 1>`, so the release matches its own `## [<version>]` heading instead of a date that no changelog section carries. A tag typed in or pushed still decides the release name |
 | `.github/scripts/stage-nightly.sh` | receives `VERSION_NAME` / `VERSION_CODE` from the `plan` job (never recomputes them) and copies `version.txt` into the published branch |
 | the app at runtime | `BuildConfig.VERSION_NAME` / `VERSION_CODE` in About and Updates, and `BuildConfig.BUILD_COMMIT` for the updater's comparison |
 
 What follows from it:
 
-- **An update edits `version.txt` and `CHANGELOG.md`** — nothing else. The number to
+- **An update edits `version.txt`, `CHANGELOG.md` and `CHANGELOG.dev.md`** —
+  nothing else. The number to
   put on line 1 is chosen with §7.2, the entry is written with §7.3. A version
   repeated in a README, a code comment, a workflow or a Kotlin constant is a second
   source of truth, and it goes stale the moment the next update lands.
@@ -460,7 +480,8 @@ What follows from it:
 
 ### 7.5 Where the changelog ends up
 
-`release-apk.yml` extracts the `## [<version>]` section from `CHANGELOG.md` on the
+`release-apk.yml` extracts the `## [<version>]` section from `CHANGELOG.md` (the
+user-facing file; `CHANGELOG.dev.md` never reaches a release body) on the
 tagged commit, plus the commits since the previous tag, and uses both as the
 GitHub Release body. If the section is missing the workflow does **not** fail —
 it emits a warning annotation and publishes a placeholder body — but that release
@@ -637,6 +658,7 @@ folder, described below:
 - `.gitignore`;
 - `AGENTS.md`;
 - `CHANGELOG.md`;
+- `CHANGELOG.dev.md`;
 - `gradle.properties`;
 - `build.gradle.kts` (the root build script);
 - `gradlew`;
@@ -652,8 +674,8 @@ Rules:
 - **No `build/` directory anywhere**, and no `.gradle/`, `.kotlin/` or other local
   build output.
 - `local.properties` is included for local builds and must contain **only**
-  `sdk.dir` (and optionally `org.gradle.java.home`) — never a token, key or
-  secret. Everything else (`gradle.properties`, sources) is what the build needs.
+  `sdk.dir` — never a token, key or secret, and not `org.gradle.java.home`,
+  which Gradle does not read from there (§4.1). Everything else (`gradle.properties`, sources) is what the build needs.
 - GitHub refuses to let the workflow token write `.github/workflows/**`, so the
   archive does not need to carry that folder; when a chat changes a workflow the
   user pushes it by hand.

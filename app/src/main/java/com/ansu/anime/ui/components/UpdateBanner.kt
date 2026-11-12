@@ -81,7 +81,7 @@ fun UpdateBanner(
                 }
             },
     ) {
-        FrostedGlassCard(
+        HeavyGlassCard(
             modifier = Modifier.fillMaxWidth(),
             shape = BannerShape,
             tintAlpha = 0.92f,

@@ -99,6 +99,9 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
     val backdropBlur by container.appearancePrefs.navBarBackdropBlur.collectAsStateWithLifecycle()
     val amoled by container.appearancePrefs.amoledBlack.collectAsStateWithLifecycle()
     val backgroundStyle by container.appearancePrefs.backgroundStyle.collectAsStateWithLifecycle()
+    val tabletUnlocked by container.appearancePrefs.tabletUnlocked.collectAsStateWithLifecycle()
+    val tabletMode by container.appearancePrefs.tabletMode.collectAsStateWithLifecycle()
+    val railRight by container.appearancePrefs.tabletRailRight.collectAsStateWithLifecycle()
     var showBackgroundPicker by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     if (showBackgroundPicker) {
         BackgroundAnimationPicker(
@@ -148,6 +151,26 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp),
         ) {
+            if (tabletUnlocked) {
+                GlassGroupLabel("Layout")
+                GlassGroup {
+                    GlassToggleRow(
+                        title = "Tablet Mode",
+                        description = "Side navigation rail, wider banner and bigger posters, with 15 titles per row page",
+                        checked = tabletMode,
+                        onCheckedChange = { container.appearancePrefs.setTabletMode(it) },
+                    )
+                    GlassToggleRow(
+                        title = "Navigation rail on the right",
+                        description = "Moves the rail to the right edge and mirrors the banner to match",
+                        checked = railRight,
+                        onCheckedChange = { container.appearancePrefs.setTabletRailRight(it) },
+                        enabled = tabletMode,
+                        showDivider = false,
+                    )
+                }
+            }
+
             GlassGroupLabel("Titles")
             GlassGroup {
                 GlassContentRow(

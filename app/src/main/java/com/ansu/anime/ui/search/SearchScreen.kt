@@ -116,7 +116,7 @@ import com.ansu.anime.ui.components.AgeRatingChip
 import com.ansu.anime.ui.components.AppBottomBarReserve
 import com.ansu.anime.ui.components.BackdropState
 import com.ansu.anime.ui.components.backdropSource
-import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.HeavyGlassCard
 import com.ansu.anime.ui.components.PosterOriginHandle
 import com.ansu.anime.ui.components.posterTransitionAnchor
 import com.ansu.anime.ui.components.posterTransitionOrigin
@@ -210,9 +210,11 @@ fun SearchScreen(
         listState.scrollToItem(0)
     }
 
-    val nearEnd by remember(isGrid) {
+    // Tablet mode lays list results out in a grid too, so the grid's scroll state is the one to watch there.
+    val gridInUse = isGrid || com.ansu.anime.ui.components.LocalTabletMode.current
+    val nearEnd by remember(gridInUse) {
         derivedStateOf {
-            if (isGrid) {
+            if (gridInUse) {
                 val info = gridState.layoutInfo
                 info.totalItemsCount > 0 && (info.visibleItemsInfo.lastOrNull()?.index ?: -1) >= info.totalItemsCount - 4
             } else {
@@ -376,9 +378,14 @@ fun SearchScreen(
                         title = "No results found",
                         body = "Try a different title or loosen some filters.",
                     )
-                    isGrid -> LazyVerticalGrid(
+                    // Tablet mode: the grid fits as many posters as the width allows, and list mode becomes two columns.
+                    isGrid || com.ansu.anime.ui.components.LocalTabletMode.current -> LazyVerticalGrid(
                         state = gridState,
-                        columns = GridCells.Fixed(3),
+                        columns = when {
+                            !com.ansu.anime.ui.components.LocalTabletMode.current -> GridCells.Fixed(3)
+                            isGrid -> GridCells.Adaptive(minSize = 150.dp)
+                            else -> GridCells.Fixed(2)
+                        },
                         contentPadding = contentPadding,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -388,7 +395,11 @@ fun SearchScreen(
                             ResultsHeader(isTrending)
                         }
                         items(results, key = { it.resultKey() }) { anime ->
-                            SearchGridCard(anime = anime, onClick = { openResult(anime) })
+                            if (isGrid) {
+                                SearchGridCard(anime = anime, onClick = { openResult(anime) })
+                            } else {
+                                SearchListItem(anime = anime, onClick = { openResult(anime) })
+                            }
                         }
                         if (hasNext || moreFailed) {
                             item(span = { GridItemSpan(maxLineSpan) }) {
@@ -545,7 +556,7 @@ private fun SearchField(
         keyboardActions = KeyboardActions(onSearch = { onSearch() }),
         modifier = modifier.onFocusChanged { if (it.isFocused) onFocused() },
         decorationBox = { innerTextField ->
-            FrostedGlassCard(modifier = Modifier.fillMaxSize(), shape = CircleShape, tintAlpha = 0.55f) {
+            HeavyGlassCard(modifier = Modifier.fillMaxSize(), shape = CircleShape, tintAlpha = 0.55f) {
                 Row(
                     modifier = Modifier.fillMaxSize().padding(start = 8.dp, end = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -890,7 +901,7 @@ private fun GlassIconButton(
     badgeCount: Int = 0,
 ) {
     Box(modifier = modifier.size(52.dp)) {
-        FrostedGlassCard(modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(18.dp), tintAlpha = 0.55f) {
+        HeavyGlassCard(modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(18.dp), tintAlpha = 0.55f) {
             Box(
                 modifier = Modifier.fillMaxSize().clickable(onClick = onClick),
                 contentAlignment = Alignment.Center,

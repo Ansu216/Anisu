@@ -68,10 +68,14 @@ internal fun CastPanel(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     sheet: Boolean = false,
+    onRescan: () -> Unit = {},
 ) {
     // The first seconds count as searching, so the panel never claims "No device found" before the network has answered.
     var searchedLongEnough by remember { mutableStateOf(false) }
-    LaunchedEffect(state.devices.isEmpty(), state.ready) {
+    var scanRound by remember { mutableStateOf(0) }
+    // Opening the panel starts a fresh search, so a scan that went quiet earlier does not leave it empty.
+    LaunchedEffect(scanRound) { onRescan() }
+    LaunchedEffect(state.devices.isEmpty(), state.ready, scanRound) {
         searchedLongEnough = false
         if (state.devices.isEmpty() && state.ready) {
             delay(SEARCH_WINDOW_MS)
@@ -93,7 +97,14 @@ internal fun CastPanel(
                 text = "Chromecast isn't available on this device",
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
-            searchedLongEnough -> CastStatus(searching = false, text = "No device found", modifier = Modifier.fillMaxWidth().weight(1f))
+            searchedLongEnough -> CastStatus(
+                searching = false,
+                text = "No device found",
+                detail = state.hint ?: "Make sure the TV is on and on the same Wi-Fi as this phone.",
+                info = state.scanInfo,
+                onRetry = { scanRound++ },
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            )
             else -> CastStatus(searching = true, text = "Searching\u2026", modifier = Modifier.fillMaxWidth().weight(1f))
         }
     }
@@ -138,7 +149,14 @@ private fun CastDeviceCard(device: CastDeviceOption, onClick: () -> Unit) {
 
 /** The searching / nothing-found look: a rounded Cast icon (with a magnifier, or crossed out) and a line of text. */
 @Composable
-private fun CastStatus(searching: Boolean, text: String, modifier: Modifier = Modifier) {
+private fun CastStatus(
+    searching: Boolean,
+    text: String,
+    modifier: Modifier = Modifier,
+    detail: String? = null,
+    info: String? = null,
+    onRetry: (() -> Unit)? = null,
+) {
     Column(
         modifier = modifier.padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.Center,
@@ -196,5 +214,20 @@ private fun CastStatus(searching: Boolean, text: String, modifier: Modifier = Mo
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 12.dp),
         )
+        if (detail != null) {
+            Text(detail, color = PanelMuted, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
+        }
+        if (onRetry != null) {
+            Text(
+                "Search again",
+                color = AnsuColors.Accent,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 14.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onRetry).padding(horizontal = 14.dp, vertical = 8.dp),
+            )
+        }
+        if (info != null) {
+            Text(info, color = PanelMuted.copy(alpha = 0.6f), fontSize = 11.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+        }
     }
 }

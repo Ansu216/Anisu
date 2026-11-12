@@ -61,6 +61,7 @@ import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.GlassDropdownMenu
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.player.PlayableSource
+import com.ansu.anime.ui.player.byQualityDescending
 import com.ansu.anime.ui.player.kindChip
 import com.ansu.anime.ui.player.qualityChip
 import com.ansu.anime.ui.theme.AnsuColors
@@ -187,7 +188,8 @@ fun SourcePickerScreen(container: AppContainer, navController: NavHostController
                         modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 10.dp),
                     )
                 }
-                list.forEachIndexed { index, source ->
+                // Highest quality first inside every extension.
+                list.byQualityDescending().forEachIndexed { index, source ->
                     item(key = "source:$extension:$index:${source.serverName}:${source.label}") {
                         Box(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp)) {
                             SourceCard(

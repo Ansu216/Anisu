@@ -75,12 +75,14 @@ fun HomeScreen(
                     container.appearancePrefs.titleLanguage,
                     container.localListRepository,
                     container.episodeMetadataRepository,
+                    container.appearancePrefs.tabletMode,
                 )
             }
         },
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val favouriteIds by viewModel.favouriteIds.collectAsStateWithLifecycle()
+    val savedIds by viewModel.savedIds.collectAsStateWithLifecycle()
     val notifications by container.notificationHistory.entries.collectAsStateWithLifecycle()
     val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
     // Stable until the language changes, so the carousel re-resolves its logos exactly then.
@@ -139,6 +141,8 @@ fun HomeScreen(
                             posterFor = posterLookup,
                             favouriteIds = favouriteIds,
                             onToggleFavourite = viewModel::toggleFavourite,
+                            savedIds = savedIds,
+                            onToggleSave = viewModel::toggleSaved,
                             notifications = notifications,
                             onOpenNotification = { entry ->
                                 selectAnime(
@@ -332,7 +336,7 @@ fun HomeScreen(
 
 /**
  * One endless catalogue row: header, a placeholder until the first page arrives, then
- * a [PagedPosterRow] that keeps fetching ten titles at a time as it is scrolled.
+ * a [PagedPosterRow] that keeps fetching a page (ten titles, fifteen in Tablet mode) at a time as it is scrolled.
  * Hidden entirely if the feed loaded but had nothing in it.
  */
 @Composable
@@ -360,10 +364,10 @@ private fun FeedShelf(
                 )
             } else {
                 Row(
-                    modifier = Modifier.padding(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(horizontal = com.ansu.anime.ui.components.tabletDp(20.dp, 32.dp)),
+                    horizontalArrangement = Arrangement.spacedBy(com.ansu.anime.ui.components.tabletDp(12.dp, 16.dp)),
                 ) {
-                    repeat(3) {
+                    repeat(if (com.ansu.anime.ui.components.LocalTabletMode.current) 6 else 3) {
                         Box(
                             modifier = Modifier
                                 .weight(1f)

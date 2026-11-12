@@ -14,9 +14,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
@@ -25,10 +31,12 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -108,6 +116,31 @@ object PosterTransition {
     /** A tap's touch-down and the navigation it triggers are far closer than this; older origins are stale. */
     private const val PENDING_TTL_MILLIS = 1500L
 
+    /**
+     * The back-stack entry of the page UNDER a details page that is opening or closing, and how far along that
+     * motion is (0 closed, 1 open). The page under reads it through [posterBlurBehind] and blurs itself by that
+     * much, the way a phone's home screen softens behind an app that opens from an icon and sharpens again as
+     * it closes. Null when nothing is animating, so no other page is ever blurred.
+     */
+    internal var blurBehindEntryId: String? by mutableStateOf(null)
+    internal var blurProgress: Float by mutableFloatStateOf(0f)
+
+    /** The page under blurs by this much (in dp) when the details page is fully open. */
+    internal val BLUR_RADIUS_DP = 18.dp
+
+    /**
+     * The blur radius in px for a motion [amount] (0..1). It reaches full strength by the halfway point (the details
+     * page covers the screen soon after, so later blur is never seen) and moves in a few steps instead of smoothly:
+     * a blur that changes every frame is re-rendered over the whole page every frame, which is what made the open and
+     * close stutter, while an unchanged radius is drawn from the cached result.
+     */
+    internal fun blurRadiusPx(amount: Float, density: Float): Float {
+        val t = (amount / 0.5f).coerceIn(0f, 1f)
+        val step = Math.round(t * BLUR_STEPS) / BLUR_STEPS.toFloat()
+        return BLUR_RADIUS_DP.value * density * step
+    }
+    private const val BLUR_STEPS = 5
+
     private var pending: Origin? = null
     private var pendingAt = 0L
     private val claimed = HashMap<String, Origin?>()
@@ -158,6 +191,23 @@ object PosterTransition {
  * once the motion has finished. True by default, for any screen not hosted by [PosterExpandContainer].
  */
 val LocalPosterSettled = compositionLocalOf { true }
+
+/**
+ * Blurs this page while a details page opens over it or closes back to it, following the poster animation, and
+ * leaves it sharp otherwise. [entryId] is this page's back-stack entry id: only the page directly under the
+ * animating details page reacts. It is always on (there is no switch for it), and does nothing below Android 12, which
+ * cannot blur a layer (the page is then only dimmed, as before).
+ */
+fun Modifier.posterBlurBehind(entryId: String): Modifier =
+    if (!backdropBlurSupported) {
+        this
+    } else {
+        graphicsLayer {
+            val amount = if (PosterTransition.blurBehindEntryId == entryId) PosterTransition.blurProgress else 0f
+            val radius = PosterTransition.blurRadiusPx(amount, density)
+            renderEffect = if (radius > 0.5f) BlurEffect(radius, radius, TileMode.Clamp) else null
+        }
+    }
 
 /**
  * Marks a poster (or any tappable card) as the starting point of the details open/close animation.
@@ -316,6 +366,8 @@ private fun windowCornerPx(posterPx: Float, screenPx: Float, p: Float): Float {
 fun AnimatedContentScope.PosterExpandContainer(
     entryId: String,
     isOnBackStack: () -> Boolean,
+    /** The back-stack entry of the page this one opened over; it blurs while this page opens and closes. Null: no blur. */
+    behindEntryId: String? = null,
     content: @Composable () -> Unit,
 ) {
     // Order matters: the first open is read before originFor() records the entry as opened.
@@ -355,6 +407,25 @@ fun AnimatedContentScope.PosterExpandContainer(
     // True while the page is being popped (back press / back gesture) rather than covered by another page.
     // The close shrinks the whole page into the poster; the open is left exactly as it was.
     val closing = transition.targetState == EnterExitState.PostExit && !isOnBackStack()
+
+    // The page under blurs as this one opens and sharpens as it closes. Only the growing-window animation does this
+    // (the black bars and the plain fade have nothing to look through).
+    if (behindEntryId != null && canCover && backdropBlurSupported) {
+        LaunchedEffect(entryId, behindEntryId) {
+            snapshotFlow { progress.value }.collect { p ->
+                PosterTransition.blurBehindEntryId = behindEntryId
+                PosterTransition.blurProgress = p
+            }
+        }
+        DisposableEffect(entryId, behindEntryId) {
+            onDispose {
+                if (PosterTransition.blurBehindEntryId == behindEntryId) {
+                    PosterTransition.blurBehindEntryId = null
+                    PosterTransition.blurProgress = 0f
+                }
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -421,6 +492,14 @@ fun AnimatedContentScope.PosterExpandContainer(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
+                    // A details page opened from this one (a recommendation): this page is the one under it.
+                    val behindAmount = if (backdropBlurSupported && PosterTransition.blurBehindEntryId == entryId) {
+                        PosterTransition.blurProgress.coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    }
+                    val behindRadius = PosterTransition.blurRadiusPx(behindAmount, density.density)
+                    renderEffect = if (behindRadius > 0.5f) BlurEffect(behindRadius, behindRadius, TileMode.Clamp) else null
                     if (bars) {
                         // Hidden until the bars have covered the screen, then shown in as they pull away; on close
                         // the page goes first and the bars close over the empty screen.

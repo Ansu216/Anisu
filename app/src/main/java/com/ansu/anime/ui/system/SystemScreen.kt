@@ -53,7 +53,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.HeavyGlassCard
 import com.ansu.anime.ui.components.GlassGroup
 import com.ansu.anime.ui.components.GlassGroupLabel
 import com.ansu.anime.ui.components.GlassRow

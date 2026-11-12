@@ -87,7 +87,9 @@ import com.ansu.anime.cast.CastController
 import com.ansu.anime.cast.isCastableUrl
 import androidx.media3.ui.SubtitleView
 import androidx.navigation.NavHostController
+import com.ansu.anime.core.diagnostics.friendlyPlaybackStep
 import com.ansu.anime.data.repository.AnimeArtwork
+import com.ansu.anime.data.repository.ArtworkRepository
 import com.ansu.anime.di.AppContainer
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -108,6 +110,30 @@ private const val SKIP_BUTTON_SECONDS = 10
 
 /** How long the video must sit paused before the pause screen fades in. */
 private const val PAUSE_SCREEN_DELAY_MS = 2500L
+
+/** The buffering screen lists playback steps from this long ago, and at most this many of them. */
+private const val STARTING_STEPS_WINDOW_MS = 60_000L
+private const val STARTING_STEPS_SHOWN = 4
+
+/** How many times the show's artwork is asked for again when the answer comes back empty, and the wait before the first retry. */
+private const val ARTWORK_RETRIES = 3
+private const val ARTWORK_RETRY_DELAY_MS = 2_500L
+
+/**
+ * The artwork for the pause and buffering screens. A lookup that fails (a slow or blocked network) answers with an
+ * empty artwork that is not kept, so the logo, the backdrop and the season would stay missing for the whole
+ * session; asking again a few times, a little later each time, fills them in once the network cooperates.
+ */
+private suspend fun ArtworkRepository.getWithRetry(anilistId: Int): AnimeArtwork {
+    var art = get(anilistId)
+    var attempt = 0
+    while (art == AnimeArtwork() && attempt < ARTWORK_RETRIES) {
+        attempt++
+        delay(ARTWORK_RETRY_DELAY_MS * attempt)
+        art = get(anilistId)
+    }
+    return art
+}
 
 private val Speeds = listOf(0.5f, 1f, 1.25f, 1.5f, 2f)
 
@@ -147,7 +173,8 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val castButtonEnabled by container.playerPrefs.castButton.collectAsStateWithLifecycle()
-    val cast = remember { CastController(context.applicationContext) }
+    val castUnlocked by container.playerPrefs.castUnlocked.collectAsStateWithLifecycle()
+    val cast = remember { CastController(context.applicationContext).also { it.diagnostics = container.diagnostics } }
     val castState by cast.state.collectAsStateWithLifecycle()
     val playbackTarget by viewModel.playbackTarget.collectAsStateWithLifecycle()
     DisposableEffect(cast) {
@@ -207,13 +234,20 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     val subtitleHeight by container.playerPrefs.subtitleHeight.collectAsStateWithLifecycle()
     val episodeGrid by container.playerPrefs.episodeGrid.collectAsStateWithLifecycle()
     val pipEnabled by container.playerPrefs.pipEnabled.collectAsStateWithLifecycle()
-    val ambientMode by container.playerPrefs.ambientMode.collectAsStateWithLifecycle()
     val subtitleColor by container.playerPrefs.subtitleColor.collectAsStateWithLifecycle()
     val subtitleBgColor by container.playerPrefs.subtitleBgColor.collectAsStateWithLifecycle()
     val subtitleBgOpacity by container.playerPrefs.subtitleBgOpacity.collectAsStateWithLifecycle()
     val subtitleRoundedBg by container.playerPrefs.subtitleRoundedBg.collectAsStateWithLifecycle()
-    val subtitleAutoScale by container.playerPrefs.subtitleAutoScale.collectAsStateWithLifecycle()
-    val pauseScreenEnabled by container.playerPrefs.pauseScreen.collectAsStateWithLifecycle()
+    val translateOn by container.playerPrefs.translateSubtitles.collectAsStateWithLifecycle()
+    val translateTarget by container.playerPrefs.translateTarget.collectAsStateWithLifecycle()
+    val translateStatus by viewModel.translationStatus.collectAsStateWithLifecycle()
+    val translation = SubtitleTranslationControls(
+        enabled = translateOn,
+        target = translateTarget,
+        status = translateStatus,
+        onToggle = container.playerPrefs::setTranslateSubtitles,
+        onTarget = container.playerPrefs::setTranslateTarget,
+    )
     val titleLanguage by container.appearancePrefs.titleLanguage.collectAsStateWithLifecycle()
     var locked by remember { mutableStateOf(false) }
     var fitIndex by remember { mutableIntStateOf(0) }
@@ -359,8 +393,12 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
     // leave and the picture dims under the title being watched. Touching the screen only dismisses it; anything that restarts
     // playback, a seek, an opened panel or any touch puts the timer back to zero. A touch on the pause screen only
     // takes it away (and shows the controls); it never starts the video, the play button does.
-    val resting = !state.isPlaying && !state.isBuffering && !state.isLoadingSources && state.error == null && state.durationMs > 0L
-    val pauseEligible = pauseScreenEnabled && resting && panel == null && sheet == null && !locked && !inPip && !castState.connected
+    // A paused HLS stream keeps loading ahead and flips to "buffering" again and again; that must not hold the pause
+    // screen back. Buffering only counts while playback is meant to be running (a stall mid-play).
+    val resting = !state.isPlaying && (!state.isBuffering || !state.playWhenReady) && !state.isLoadingSources && state.error == null && state.durationMs > 0L
+    // A finger on the screen (dragging the seek bar, swiping to seek) keeps the pause screen away until it lifts.
+    var fingerDown by remember { mutableStateOf(false) }
+    val pauseEligible = resting && !fingerDown && panel == null && sheet == null && !locked && !inPip && !castState.connected
     var pauseIdle by remember { mutableStateOf(false) }
     // Counts touches anywhere on the player (see the root layout): every one puts the pause screen's timer back to zero.
     var pauseTouchTick by remember { mutableIntStateOf(0) }
@@ -376,20 +414,65 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         if (showPauseScreen && state.showControls) viewModel.toggleControls()
     }
     val anilistIdForArt = state.anime?.anilistId
-    val pausedArtwork by produceState<AnimeArtwork?>(initialValue = null, anilistIdForArt, pauseScreenEnabled) {
-        value = if (pauseScreenEnabled) anilistIdForArt?.let { container.artworkRepository.get(it) } else null
+    val pausedArtwork by produceState<AnimeArtwork?>(initialValue = null, anilistIdForArt) {
+        value = anilistIdForArt?.let { container.artworkRepository.getWithRetry(it) }
     }
-    val pausedInfo = remember(state.anime, state.episode, pausedArtwork, titleLanguage) {
-        buildPausedInfo(state.anime, state.episode, pausedArtwork, titleLanguage)
+    // The episode's own synopsis. The episode handed to the player only has one when the page it came from already had
+    // the episode details (a free service that sometimes times out; opening from Continue Watching never has them), so
+    // it is looked up here too, and asked again a few times when it answers empty.
+    val episodeNumberForMeta = state.episode?.episodeNumber?.takeIf { it % 1f == 0f }?.toInt()
+    val pausedOverview by produceState<String?>(initialValue = null, anilistIdForArt, episodeNumberForMeta) {
+        val id = anilistIdForArt ?: return@produceState
+        val number = episodeNumberForMeta ?: return@produceState
+        var attempt = 0
+        while (attempt <= ARTWORK_RETRIES) {
+            val text = try {
+                container.episodeMetadataRepository.getEpisodeMeta(id)[number]?.overview
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            if (!text.isNullOrBlank()) {
+                value = text
+                break
+            }
+            attempt++
+            if (attempt <= ARTWORK_RETRIES) delay(ARTWORK_RETRY_DELAY_MS * attempt)
+        }
+    }
+    val pausedEpisode = remember(state.episode, state.episodes, pausedOverview) {
+        state.episode?.let { ep ->
+            if (!ep.description.isNullOrBlank()) {
+                ep
+            } else {
+                val fromList = state.episodes.firstOrNull { it.id == ep.id }?.description
+                ep.copy(description = fromList?.takeIf { it.isNotBlank() } ?: pausedOverview)
+            }
+        }
+    }
+    val pausedInfo = remember(state.anime, pausedEpisode, pausedArtwork, titleLanguage) {
+        buildPausedInfo(state.anime, pausedEpisode, pausedArtwork, titleLanguage)
     }
     // Touching the pause screen brings the controls up instead of resuming; the timer restarts from the touch.
     val onPauseScreenTouch = { if (!state.showControls) viewModel.toggleControls() }
     // The buffering screen: shown from the moment a stream is chosen until its first picture is out.
     val startingArtwork by produceState<AnimeArtwork?>(initialValue = null, anilistIdForArt) {
-        value = anilistIdForArt?.let { container.artworkRepository.get(it) }
+        value = anilistIdForArt?.let { container.artworkRepository.getWithRetry(it) }
     }
-    val startingInfo = remember(state.anime, state.episode, startingArtwork, titleLanguage) {
-        buildPausedInfo(state.anime, state.episode, startingArtwork, titleLanguage)
+    // What is going on while the stream starts, from the playback log, in plain words: the last few distinct steps
+    // of the last minute.
+    val playbackFeed by container.diagnostics.playbackFeed.collectAsStateWithLifecycle()
+    val startingSteps = remember(playbackFeed) {
+        val since = System.currentTimeMillis() - STARTING_STEPS_WINDOW_MS
+        playbackFeed.asSequence()
+            .filter { it.millis >= since }
+            .mapNotNull { friendlyPlaybackStep(it.message) }
+            .fold(emptyList<String>()) { acc, step -> if (acc.lastOrNull() == step) acc else acc + step }
+            .takeLast(STARTING_STEPS_SHOWN)
+    }
+    val startingInfo = remember(state.anime, pausedEpisode, startingArtwork, titleLanguage) {
+        buildPausedInfo(state.anime, pausedEpisode, startingArtwork, titleLanguage)
     }
     val startingBackdrop = startingBackdrop(startingArtwork, state.anime?.bannerUrl ?: state.anime?.posterUrl)
     val showStarting = !inPip && state.error == null && (state.isLoadingSources || state.isStarting)
@@ -454,7 +537,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
         onAutoplayNext = container.playerPrefs::setAutoplayNext,
         hideEpisodeButtons = hideEpisodeButtons,
         seekBarStyle = SeekBarStyle.fromKey(seekBarStyleKey),
-        showCastButton = castButtonEnabled,
+        showCastButton = castButtonEnabled && castUnlocked,
         castConnected = castState.connected,
         // The Casting panel (a bottom sheet in portrait) lists the TVs, or says it is searching / found none.
         onCast = { if (isLandscape) panel = PlayerPanel.CAST else sheet = PlayerSheet.CAST },
@@ -462,7 +545,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
 
     // The video view of the portrait layout, read by the ambient glow for the colours under the video.
     var portraitPlayerView by remember { mutableStateOf<PlayerView?>(null) }
-    val ambientOn = ambientMode && !isLandscape && !inPip
+    val ambientOn = !isLandscape && !inPip
     val ambientColors = rememberAmbientColors(portraitPlayerView, ambientOn, state.isPlaying, state.episode?.id)
 
     Box(
@@ -475,6 +558,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
+                        fingerDown = event.changes.any { it.pressed }
                         if (event.type == PointerEventType.Press || event.type == PointerEventType.Release) pauseTouchTick++
                     }
                 }
@@ -501,7 +585,6 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 subtitleBgColor = subtitleBgColor,
                 subtitleBgOpacity = subtitleBgOpacity,
                 subtitleRoundedBg = subtitleRoundedBg,
-                subtitleAutoScale = subtitleAutoScale,
                 panelWidth = panelWidth,
                 panelProgress = { panelProgress.value },
             ) {
@@ -570,7 +653,6 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     subtitleBgColor = subtitleBgColor,
                     subtitleBgOpacity = subtitleBgOpacity,
                     subtitleRoundedBg = subtitleRoundedBg,
-                    subtitleAutoScale = subtitleAutoScale,
                     onPlayerView = { portraitPlayerView = it },
                 ) {
                     if (inPip) {
@@ -614,6 +696,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     title = startingInfo.title,
                     onBack = { navController.popBackStack() },
                     compact = true,
+                    steps = startingSteps,
                 )
                 }
                 if (!inPip) {
@@ -636,6 +719,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 logoUrl = startingInfo.logoUrl,
                 title = startingInfo.title,
                 onBack = { navController.popBackStack() },
+                steps = startingSteps,
             )
         }
 
@@ -673,6 +757,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     onTextColor = container.playerPrefs::setSubtitleColor,
                     onBgColor = container.playerPrefs::setSubtitleBgColor,
                     onBgOpacity = container.playerPrefs::setSubtitleBgOpacity,
+                    translation = translation,
                     onClose = close,
                     modifier = panelModifier,
                 )
@@ -701,6 +786,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                     onSelect = { cast.connect(it.id) },
                     onClose = close,
                     modifier = panelModifier,
+                    onRescan = cast::rescan,
                 )
             }
         }
@@ -736,6 +822,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 onTextColor = container.playerPrefs::setSubtitleColor,
                 onBgColor = container.playerPrefs::setSubtitleBgColor,
                 onBgOpacity = container.playerPrefs::setSubtitleBgOpacity,
+                translation = translation,
                 onClose = { sheet = null },
                 sheet = true,
             )
@@ -757,6 +844,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                 onSelect = { cast.connect(it.id) },
                 onClose = { sheet = null },
                 sheet = true,
+                onRescan = cast::rescan,
             )
             PlayerSheet.SETTINGS -> SettingsMenuSheet(
                 fitLabel = fitLabel,
@@ -801,8 +889,6 @@ private fun PlayerSurface(
     subtitleBgColor: Int = 0xFF000000.toInt(),
     subtitleBgOpacity: Int = 50,
     subtitleRoundedBg: Boolean = true,
-    /** True: the subtitle text grows and shrinks with the size of the video picture on screen. */
-    subtitleAutoScale: Boolean = true,
     /** Width of the side panel that slides in from the right; 0 for layouts that have none. */
     panelWidth: Dp = 0.dp,
     /** 0 = panel closed, 1 = open. Read inside layout/graphics blocks only, so animating it never recomposes. */
@@ -884,7 +970,8 @@ private fun PlayerSurface(
             } else {
                 0f
             }
-            val subtitleScale = if (subtitleAutoScale && shownPictureHeightPx > 0f) {
+            // The subtitle text grows and shrinks with the size of the video picture on screen.
+            val subtitleScale = if (shownPictureHeightPx > 0f) {
                 val ratio = (shownPictureHeightPx / density.density) / SUBTITLE_REFERENCE_HEIGHT_DP
                 ratio.toDouble().pow(SUBTITLE_SCALE_CURVE).toFloat().coerceIn(SUBTITLE_MIN_SCALE, SUBTITLE_MAX_SCALE)
             } else {

@@ -1,6 +1,7 @@
 package com.ansu.anime
 
 import android.Manifest
+import com.ansu.anime.cast.CastBootstrap
 import android.content.Intent
 import android.app.PendingIntent
 import android.app.PictureInPictureParams
@@ -41,6 +42,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.data.update.UpdateCheckResult
@@ -68,6 +70,16 @@ class MainActivity : FragmentActivity() {
             if (granted) container.updateManager.checkIfEnabled()
         }
 
+    /** Android 13+: finding a TV on the Wi-Fi counts as "nearby devices"; without it Cast can see no TVs. */
+    private val nearbyPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    private fun requestNearbyDevicesPermissionIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.NEARBY_WIFI_DEVICES) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!granted) nearbyPermission.launch(Manifest.permission.NEARBY_WIFI_DEVICES)
+    }
+
     /** Set by a tap on the update notification, then consumed once the nav graph is ready. */
     private val openUpdatesRequest = mutableStateOf(false)
 
@@ -76,16 +88,16 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Cast framework must start with the Activity (before the player opens), or it never sees the app come
+        // to the foreground and its device discovery stays idle. Cloudstream does the same in MainActivity.onCreate.
+        CastBootstrap.start(this)
+        requestNearbyDevicesPermissionIfNeeded()
         enableEdgeToEdge()
         handleIntent(intent)
         requestNotificationPermissionIfNeeded()
 
         // Automatic update check; a no-op when the user turned it off in Updates/About.
         container.updateManager.checkIfEnabled()
-
-        // Warm about a minute of the last-watched episode into the media cache; a no-op when the
-        // "Pre-load" switch in Settings > Player and streaming is off.
-        container.prefetcher.prefetchOnLaunch()
 
         // Keep the signed-in lists (Watching, Planning, ..., favourites) cached while the app is on screen, so
         // My Space and the home banner's hearts open instantly. Stops when the app goes to the background.
@@ -178,7 +190,16 @@ class MainActivity : FragmentActivity() {
 
                         // The content on screen came from the disk cache: say so until a request works again.
                         val savedDataAt by container.aniListApi.savedDataAt.collectAsStateWithLifecycle()
-                        if (savedDataAt != null) {
+                        // It used to stay until an AniList request worked, so someone offline (watching downloads)
+                        // never lost it, and it sat over the video. It now goes by itself after a few seconds.
+                        LaunchedEffect(savedDataAt) {
+                            if (savedDataAt != null) {
+                                delay(6_000L)
+                                container.aniListApi.dismissSavedNotice()
+                            }
+                        }
+                        val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+                        if (savedDataAt != null && currentRoute != Dest.PLAYER) {
                             com.ansu.anime.ui.components.SavedDataNotice(
                                 modifier = Modifier
                                     .align(Alignment.TopCenter)

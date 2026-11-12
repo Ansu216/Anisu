@@ -51,7 +51,7 @@ import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.GlassToggleRow
-import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.HeavyGlassCard
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
 
@@ -139,7 +139,7 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                 SettingsRow(
                     icon = Icons.Filled.PlayCircle,
                     title = "Playback",
-                    subtitle = "Gestures, PiP, preload, subtitles, sources",
+                    subtitle = "Gestures, PiP, subtitles, sources",
                     showDivider = false,
                     onClick = { navController.navigate(Dest.PLAYER_STREAMING) },
                 )
@@ -206,7 +206,7 @@ private fun SettingsGroup(title: String, content: @Composable () -> Unit) {
             color = AnsuColors.TextSecondary,
             modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 10.dp),
         )
-        FrostedGlassCard(
+        HeavyGlassCard(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
             tintAlpha = 0.5f,

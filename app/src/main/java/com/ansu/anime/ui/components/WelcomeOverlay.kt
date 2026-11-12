@@ -113,7 +113,7 @@ private fun WelcomeGlassCard(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    FrostedGlassCard(
+    HeavyGlassCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(32.dp),
         tintAlpha = 0.88f,

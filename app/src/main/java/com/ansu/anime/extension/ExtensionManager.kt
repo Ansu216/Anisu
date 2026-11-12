@@ -9,6 +9,7 @@ import androidx.core.content.pm.PackageInfoCompat
 import com.ansu.anime.core.util.ContentFilter
 import com.ansu.anime.extension.aniyomi.AniyomiExtensionLoader
 import com.ansu.anime.extension.api.AnimeCatalogueSource
+import com.ansu.anime.extension.cloudstream.CloudStreamExtensionLoader
 import dalvik.system.PathClassLoader
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +35,8 @@ data class InstalledExtension(
     val versionCode: Long = 0,
     /** True when the APK was downloaded inside Ansu and lives in its private storage, not installed on the phone. */
     val isPrivate: Boolean = false,
+    /** True for a CloudStream plugin (`.cs3`), as opposed to an Ansu or Aniyomi APK. */
+    val isCloudStreamFormat: Boolean = false,
     val icon: Drawable? = null,
 ) {
     val isValid: Boolean get() = loadError == null && sources.isNotEmpty()
@@ -72,6 +75,8 @@ class ExtensionManager(private val context: Context) {
         private const val PRIVATE_DIR = "exts"
         private const val PRIVATE_SUFFIX = ".ext"
     }
+
+    private val cloudStreamLoader by lazy { CloudStreamExtensionLoader(context) }
 
     private val privateDir: File get() = File(context.filesDir, PRIVATE_DIR).apply { mkdirs() }
 
@@ -194,6 +199,7 @@ class ExtensionManager(private val context: Context) {
      * Android 14+ refuses to load code from a writable file, so the stored copy is made read-only.
      */
     fun installPrivate(apk: File): Result<InstalledExtension> = runCatching {
+        cloudStreamLoader.readManifest(apk)?.let { return@runCatching installCloudStream(apk, it) }
         val info = readArchive(apk) ?: error("The downloaded file is not a valid extension")
         val meta = info.applicationInfo?.metaData
         val isExtension = info.reqFeatures?.any { it.name == ANIYOMI_FEATURE } == true ||
@@ -218,6 +224,30 @@ class ExtensionManager(private val context: Context) {
         loaded.firstOrNull { it.packageName == info.packageName }
             ?: error("Extension could not be loaded, or was blocked by the built-in 18+ content filter")
     }
+
+    /** Stores a downloaded CloudStream plugin (`.cs3`) in the private folder, like an APK, and loads it. */
+    private fun installCloudStream(file: File, manifest: CloudStreamExtensionLoader.Manifest): InstalledExtension {
+        if (ContentFilter.isAdultName(manifest.name)) {
+            file.delete()
+            error("18+ extensions are blocked by the built-in content filter")
+        }
+        val target = privateFile(manifest.packageName)
+        if (target.exists()) {
+            target.setWritable(true)
+            target.delete()
+        }
+        file.copyTo(target, overwrite = true)
+        file.delete()
+        target.setReadOnly()
+        val loaded = reloadAll()
+        return loaded.firstOrNull { it.packageName == manifest.packageName }
+            ?: error("Plugin could not be loaded, or was blocked by the built-in 18+ content filter")
+    }
+
+    /** Every CloudStream plugin in the private folder, with its manifest. */
+    private fun findPrivateCloudStream(): List<Pair<File, CloudStreamExtensionLoader.Manifest>> =
+        privateDir.listFiles { f -> f.isFile && f.name.endsWith(PRIVATE_SUFFIX) }.orEmpty()
+            .mapNotNull { file -> cloudStreamLoader.readManifest(file)?.let { file to it } }
 
     /**
      * Re-scans the device and the private folder and (re)loads every discoverable extension. Call off the main thread.
@@ -251,12 +281,34 @@ class ExtensionManager(private val context: Context) {
             }
             ext
         }
+        // CloudStream plugins keep no Android package, so they are scanned separately. Every plugin is unregistered
+        // first (the plugin registry is global) and then loaded again.
+        cloudStreamLoader.unloadAll()
+        val cloudStream = findPrivateCloudStream().mapNotNull { (file, manifest) ->
+            val ext = runCatching { cloudStreamLoader.load(file, manifest) }.getOrElse {
+                InstalledExtension(
+                    packageName = manifest.packageName,
+                    displayName = manifest.name,
+                    versionName = manifest.version.toString(),
+                    sources = emptyList(),
+                    loadError = it.message ?: it::class.simpleName,
+                    versionCode = manifest.version.toLong(),
+                    isCloudStreamFormat = true,
+                )
+            }
+            if (ext.isNsfw || ext.sources.any { ContentFilter.isAdultName(it.name) }) {
+                deletePrivate(manifest.packageName)
+                return@mapNotNull null
+            }
+            ext.copy(isPrivate = true)
+        }
+        val everything = loaded + cloudStream
         val next = LinkedHashMap<Long, AnimeCatalogueSource>()
         builtInSources.forEach { next[it.id] = it }
-        loaded.forEach { ext -> ext.sources.forEach { next[it.id] = it } }
+        everything.forEach { ext -> ext.sources.forEach { next[it.id] = it } }
         sourcesById = next
-        _extensions.update { loaded }
-        return loaded
+        _extensions.update { everything }
+        return everything
     }
 
     /** True for an extension that flags itself 18+ in its manifest, or whose package or app name says so. */

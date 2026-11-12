@@ -53,7 +53,7 @@ class AppContainer(context: Context) {
         .build()
 
     /**
-     * The client every video byte goes through (playback, pre-loading and downloads). Media3 used to open its own
+     * The client every video byte goes through (playback and downloads). Media3 used to open its own
      * plain HTTP connection per request; sharing one OkHttp client gives HTTP/2, connection reuse across segments
      * and a larger connection pool, which is what keeps HLS segment fetches from stalling on a new handshake each time.
      * The request logger is left out: it would log every segment.
@@ -165,20 +165,8 @@ class AppContainer(context: Context) {
     val backupManager: com.ansu.anime.data.backup.BackupManager =
         com.ansu.anime.data.backup.BackupManager(appContext, backupPrefs)
 
-    /** Shared on-disk media cache, read by the player and filled ahead of time by [prefetcher]. */
+    /** Shared on-disk media cache, read and written by the player. */
     val mediaCache: com.ansu.anime.data.player.MediaCache = com.ansu.anime.data.player.MediaCache(appContext, streamClient)
-
-    /** Warms the last-watched episode into the media cache when the app opens. */
-    val prefetcher: com.ansu.anime.data.player.Prefetcher = com.ansu.anime.data.player.Prefetcher(
-        appContext,
-        continueWatchingRepository,
-        extensionManager,
-        aniListRepository,
-        mediaCache,
-        playerPrefs,
-        diagnostics,
-        streamClient,
-    )
 
     /** Episode downloads for offline viewing (video plus every subtitle file the source offers). */
     val downloads: com.ansu.anime.data.download.DownloadsRepository = com.ansu.anime.data.download.DownloadsRepository(
@@ -210,6 +198,12 @@ class AppContainer(context: Context) {
             com.ansu.anime.extension.aniyomi.AniyomiRuntime.install(appContext, okHttpClient)
         } catch (t: Throwable) {
             android.util.Log.e("AniyomiRuntime", "Injekt setup failed", t)
+        }
+        // CloudStream plugins make their requests through the library's global client; give it Anisu's.
+        try {
+            com.ansu.anime.extension.cloudstream.CloudStreamRuntime.install(okHttpClient)
+        } catch (t: Throwable) {
+            android.util.Log.e("CloudStreamRuntime", "CloudStream setup failed", t)
         }
         // Scanning the installed extensions reads every package on the phone and loads their code: on a phone
         // with a few Keiyoushi extensions that is the slowest thing in onCreate, so it runs off the main thread

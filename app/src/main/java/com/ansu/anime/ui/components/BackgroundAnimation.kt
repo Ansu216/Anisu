@@ -62,7 +62,9 @@ fun BackgroundAnimation(
         suspend fun tick() {
             var last = 0L
             while (true) withFrameNanos { frame ->
-                if (frame - last >= FRAME_INTERVAL_NANOS) {
+                // Held still while a details page opens or closes: the drift is a few pixels, and every redraw here
+                // would otherwise re-blur the page under that animation on every frame.
+                if (PosterTransition.blurBehindEntryId == null && frame - last >= FRAME_INTERVAL_NANOS) {
                     last = frame
                     frameNanos.longValue = frame
                 }
@@ -114,7 +116,6 @@ fun BackgroundAnimation(
                     }
                     BackgroundStyle.SAKURA -> drawPetal(paths[0], r, item, t)
                     BackgroundStyle.SNOW -> drawSnow(r, item, angle, density)
-                    BackgroundStyle.HALLOWEEN -> drawHalloween(paths, r, item, angle, t)
                     BackgroundStyle.BREAD -> drawBread(paths[0], r, item, t)
                     BackgroundStyle.NONE -> Unit
                 }
@@ -158,7 +159,6 @@ private fun makeItems(style: BackgroundStyle): List<Item> {
             BackgroundStyle.TRIANGLES -> 23
             BackgroundStyle.SAKURA -> 51
             BackgroundStyle.SNOW -> 67
-            BackgroundStyle.HALLOWEEN -> 83
             BackgroundStyle.BREAD -> 97
             else -> 37
         },
@@ -201,31 +201,6 @@ private fun makeItems(style: BackgroundStyle): List<Item> {
                 phase = between(0f, 6.28f), alpha = if (flake) between(0.3f, 0.5f) else between(0.35f, 0.7f),
                 kind = if (flake) 1 else 0, sway = 0.02f,
             )
-        }
-        BackgroundStyle.HALLOWEEN -> List(12) { i ->
-            when (i % 3) {
-                // Pumpkins hover and tilt a little.
-                0 -> Item(
-                    x = rnd.nextFloat(), y = rnd.nextFloat(),
-                    vx = between(-0.004f, 0.004f), vy = between(-0.012f, -0.004f),
-                    sizeDp = between(70f, 110f), rot = between(-14f, 14f), spin = 0f,
-                    phase = between(0f, 6.28f), alpha = 1f, kind = 0, sway = 0.01f,
-                )
-                // Bats cross the screen, flapping.
-                1 -> Item(
-                    x = rnd.nextFloat(), y = rnd.nextFloat(),
-                    vx = between(0.012f, 0.03f) * sign(), vy = between(-0.004f, 0.004f),
-                    sizeDp = between(50f, 90f), rot = 0f, spin = 0f,
-                    phase = between(0f, 6.28f), alpha = 1f, kind = 1, sway = 0.012f,
-                )
-                // Ghosts drift upward and wobble.
-                else -> Item(
-                    x = rnd.nextFloat(), y = rnd.nextFloat(),
-                    vx = between(-0.004f, 0.004f), vy = between(-0.015f, -0.006f),
-                    sizeDp = between(60f, 100f), rot = 0f, spin = 0f,
-                    phase = between(0f, 6.28f), alpha = 1f, kind = 2, sway = 0.03f,
-                )
-            }
         }
         // Slices of toast and round buns with sleepy little faces, drifting up and wobbling; two of the fourteen are sandwiches.
         BackgroundStyle.BREAD -> List(14) { i ->
@@ -278,45 +253,6 @@ private fun unitPaths(style: BackgroundStyle): List<Path> = when (style) {
             close()
         },
     )
-    BackgroundStyle.HALLOWEEN -> listOf(
-        // 0: bat
-        Path().apply {
-            moveTo(0f, -0.3f)
-            lineTo(0.12f, -0.6f); lineTo(0.2f, -0.28f)
-            cubicTo(0.5f, -0.55f, 0.85f, -0.5f, 1.0f, -0.2f)
-            quadraticTo(0.85f, -0.05f, 0.7f, 0.1f)
-            quadraticTo(0.62f, -0.05f, 0.5f, 0.15f)
-            quadraticTo(0.42f, 0.0f, 0.25f, 0.3f)
-            quadraticTo(0.1f, 0.5f, 0f, 0.55f)
-            quadraticTo(-0.1f, 0.5f, -0.25f, 0.3f)
-            quadraticTo(-0.42f, 0.0f, -0.5f, 0.15f)
-            quadraticTo(-0.62f, -0.05f, -0.7f, 0.1f)
-            quadraticTo(-0.85f, -0.05f, -1.0f, -0.2f)
-            cubicTo(-0.85f, -0.5f, -0.5f, -0.55f, -0.2f, -0.28f)
-            lineTo(-0.12f, -0.6f)
-            close()
-        },
-        // 1: ghost
-        Path().apply {
-            moveTo(-0.7f, 0.8f)
-            lineTo(-0.7f, -0.2f)
-            cubicTo(-0.7f, -0.95f, 0.7f, -0.95f, 0.7f, -0.2f)
-            lineTo(0.7f, 0.8f)
-            quadraticTo(0.47f, 0.55f, 0.23f, 0.8f)
-            quadraticTo(0f, 0.55f, -0.23f, 0.8f)
-            quadraticTo(-0.47f, 0.55f, -0.7f, 0.8f)
-            close()
-        },
-        // 2: jack-o'-lantern face (eyes, nose, jagged mouth)
-        Path().apply {
-            moveTo(-0.55f, -0.1f); lineTo(-0.2f, -0.1f); lineTo(-0.38f, -0.42f); close()
-            moveTo(0.2f, -0.1f); lineTo(0.55f, -0.1f); lineTo(0.38f, -0.42f); close()
-            moveTo(0f, 0.02f); lineTo(-0.1f, 0.18f); lineTo(0.1f, 0.18f); close()
-            moveTo(-0.6f, 0.3f); lineTo(-0.35f, 0.2f); lineTo(-0.2f, 0.4f); lineTo(0f, 0.25f)
-            lineTo(0.2f, 0.4f); lineTo(0.35f, 0.2f); lineTo(0.6f, 0.3f)
-            lineTo(0.4f, 0.6f); lineTo(0f, 0.7f); lineTo(-0.4f, 0.6f); close()
-        },
-    )
     BackgroundStyle.BREAD -> listOf(
         // 0: a slice of toast with the two puffy shoulders.
         Path().apply {
@@ -335,17 +271,11 @@ private fun unitPaths(style: BackgroundStyle): List<Path> = when (style) {
     else -> emptyList()
 }
 
-// ---- Cherry blossom, snow and Halloween ----
-// These keep their own colours (pink, white, orange/purple) instead of following the accent, because the look is the point.
+// ---- Cherry blossom and snow ----
+// These keep their own colours (pink, white) instead of following the accent, because the look is the point.
 
 private val PetalColors = listOf(Color(0xFFF7B9D0), Color(0xFFF2A0BF), Color(0xFFE57BA3))
 private val SnowColor = Color(0xFFEAF3FF)
-// Halloween shapes are solid and dim (pre-blended against the dark page), so overlapping parts never add up brighter.
-private val PumpkinOuter = Color(0xFF7A3A0C)
-private val PumpkinCentre = Color(0xFF9A4A10)
-private val PumpkinStem = Color(0xFF2E5A24)
-private val BatColor = Color(0xFF4B3578)
-private val GhostColor = Color(0xFF3F4252)
 
 /** A petal that spins and tumbles (its width squeezes and opens like it is turning in the air). */
 private fun DrawScope.drawPetal(path: Path, r: Float, item: Item, t: Float) {
@@ -376,32 +306,7 @@ private fun DrawScope.drawSnow(r: Float, item: Item, angle: Float, density: Floa
     }
 }
 
-private fun DrawScope.drawHalloween(paths: List<Path>, r: Float, item: Item, angle: Float, t: Float) {
-    when (item.kind) {
-        0 -> rotate(angle, Offset.Zero) {
-            scale(r, r, Offset.Zero) {
-                drawOval(PumpkinOuter, topLeft = Offset(-1f, -0.75f), size = Size(1.1f, 1.5f))
-                drawOval(PumpkinOuter, topLeft = Offset(-0.1f, -0.75f), size = Size(1.1f, 1.5f))
-                drawOval(PumpkinCentre, topLeft = Offset(-0.55f, -0.85f), size = Size(1.1f, 1.7f))
-                drawRoundRect(PumpkinStem, topLeft = Offset(-0.1f, -1.1f), size = Size(0.2f, 0.3f), cornerRadius = CornerRadius(0.06f))
-                drawPath(paths[2], AnsuColors.Background)
-            }
-        }
-        1 -> {
-            // Wings beat: the bat squashes and stretches vertically.
-            val flap = 0.7f + 0.3f * cos(t * 4f + item.phase)
-            scale(r, r * flap, Offset.Zero) { drawPath(paths[0], BatColor) }
-        }
-        else -> scale(r, r, Offset.Zero) {
-            drawPath(paths[1], GhostColor)
-            drawOval(AnsuColors.Background, topLeft = Offset(-0.36f, -0.3f), size = Size(0.16f, 0.26f))
-            drawOval(AnsuColors.Background, topLeft = Offset(0.2f, -0.3f), size = Size(0.16f, 0.26f))
-            drawOval(AnsuColors.Background, topLeft = Offset(-0.1f, 0.12f), size = Size(0.2f, 0.26f))
-        }
-    }
-}
-
-// Bread is drawn in solid, dim browns (like the Halloween shapes) so overlaps never add up brighter.
+// Bread is drawn in solid, dim browns (pre-blended against the dark page) so overlaps never add up brighter.
 private val BreadCrust = Color(0xFF6A4220)
 private val BreadCrumb = Color(0xFF93703F)
 private val BreadFace = Color(0xFF3A2410)

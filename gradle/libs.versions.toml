@@ -14,7 +14,6 @@ kotlinxCoroutines = "1.8.1"
 coil = "2.7.0"
 media3 = "1.5.0"
 playServicesCast = "21.5.0"
-mediarouter = "1.7.0"
 fragment = "1.8.5"
 browser = "1.8.0"
 datastore = "1.1.1"
@@ -26,6 +25,15 @@ jsoup = "1.17.2"
 injekt = "1.16.1"
 quickjs = "0.9.2"
 nanohttpd = "2.3.1"
+# CloudStream plugin API (MainAPI, extractors, nicehttp), published through JitPack. 4.5.3 is built against
+# compileSdk 35 / Kotlin 2.1, which this project matches; master and 4.6+ need compileSdk 36+ and a newer Android Gradle Plugin.
+# JitPack only serves the tags it managed to build: 4.5.4 is listed in its metadata but has no artifact (the "v" form
+# has none either), so the coordinate below is one it really publishes. Do not move to 4.6+ without the toolchain bump.
+cloudstream = "4.5.3"
+# The HTTP client the CloudStream library is built on. The library declares it `implementation`, so it is on the runtime
+# path but not the compile one, while Anisu touches it directly (`CloudStreamRuntime` installs its OkHttp client into
+# `app.baseClient`). Same version that library 4.5.3 was published against.
+niceHttp = "0.4.13"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -54,6 +62,8 @@ rxjava = { group = "io.reactivex", name = "rxjava", version.ref = "rxjava" }
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 injekt-core = { group = "uy.kohesive.injekt", name = "injekt-core", version.ref = "injekt" }
 nanohttpd = { group = "org.nanohttpd", name = "nanohttpd", version.ref = "nanohttpd" }
+cloudstream-library = { group = "com.github.recloudstream.cloudstream", name = "library", version.ref = "cloudstream" }
+nicehttp = { group = "com.github.Blatzar", name = "NiceHttp", version.ref = "niceHttp" }
 quickjs-android = { group = "app.cash.quickjs", name = "quickjs-android", version.ref = "quickjs" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-dnsoverhttps = { group = "com.squareup.okhttp3", name = "okhttp-dnsoverhttps", version.ref = "okhttp" }
@@ -70,7 +80,6 @@ media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "medi
 media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasource-okhttp", version.ref = "media3" }
 play-services-cast-framework = { group = "com.google.android.gms", name = "play-services-cast-framework", version.ref = "playServicesCast" }
-androidx-mediarouter = { group = "androidx.mediarouter", name = "mediarouter", version.ref = "mediarouter" }
 androidx-fragment = { group = "androidx.fragment", name = "fragment", version.ref = "fragment" }
 
 [plugins]

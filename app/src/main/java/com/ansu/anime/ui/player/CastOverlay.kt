@@ -3,10 +3,7 @@ package com.ansu.anime.ui.player
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -45,11 +42,13 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -57,6 +56,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -76,6 +76,7 @@ import com.ansu.anime.core.util.formatEpisodeNumber
 import com.ansu.anime.ui.theme.AnsuColors
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -88,8 +89,8 @@ internal fun castEpisodeLine(episode: SEpisode?, info: PausedInfo): String? {
 
 /**
  * Shown in place of the player controls while the video plays on a Chromecast: the phone's own player stays paused,
- * and these controls drive the TV instead. From the sketch: the banner's colours flow over black
- * like water, a Cast badge and "Casting to <TV>" sit over it, then the title logo and "Ep 12 : name".
+ * and these controls drive the TV instead. From the sketch: the banner's colours flow with black
+ * patches like water, a Cast badge and "Casting to <TV>" sit over it, then the title logo and "Ep 12 : name".
  * [compact] is the small 16:9 box of the portrait layout.
  */
 @Composable
@@ -277,10 +278,16 @@ fun CastOverlay(
 }
 
 /**
- * The casting screen's background: black with the banner's own colours flowing through it like water. Six colours are
- * read from the banner (see [bannerColors]) and each becomes a big soft light that drifts on its own slow looping path,
- * swelling and shrinking, with the lights adding up where they cross. No blur is used, so it looks the same on every
- * Android version. With no banner (or none readable) the lights take the app's accent colour.
+ * The casting screen's background, in the style of a music player's now-playing screen: a soft mesh of the banner's
+ * own colours spread over the whole screen, with black patches wandering through it, so colour and black keep flowing
+ * into each other like water. Six colours are read from the banner (see [bannerColors]); each is a big soft light and
+ * three black patches move over them.
+ *
+ * Nothing repeats, so no pattern can be picked out. Every light and patch moves on two sine waves whose speeds are
+ * not whole multiples of each other (so the path never closes), its shape is an ellipse that keeps turning and
+ * changing proportions, and every cast session starts from a different random phase, speed and shape. Time just runs
+ * on, with no loop to restart. No blur is used, so it looks the same on every Android version. The colours cross-fade
+ * when they change, and with no banner (or none readable) the lights take the app's accent colour.
  */
 @Composable
 private fun CastGlowBackdrop(backdropUrl: String?) {
@@ -289,44 +296,88 @@ private fun CastGlowBackdrop(backdropUrl: String?) {
         value = backdropUrl?.let { bannerColors(context, it) }
     }
     val palette = sampled ?: List(FLOW_LIGHTS.size) { AnsuColors.Accent }
-    val flow = rememberInfiniteTransition(label = "castFlow").animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(FLOW_LOOP_MS, easing = LinearEasing), RepeatMode.Restart),
-        label = "castFlowTime",
-    )
+    // Each colour eases to its new value, so the banner's colours fade in over the accent, and a new picture fades too.
+    val colors = palette.mapIndexed { index, color ->
+        animateColorAsState(color, tween<Color>(COLOR_FADE_MS, easing = LinearEasing), label = "castFlowColor$index")
+    }
+    // A fresh random start for every light and patch each time the casting screen appears.
+    val seeds = remember {
+        List(FLOW_LIGHTS.size + FLOW_DARKS.size) {
+            FlowSeed(
+                phase = Random.nextFloat() * TWO_PI,
+                speed = 0.75f + Random.nextFloat() * 0.5f,
+                stretch = 0.7f + Random.nextFloat() * 0.8f,
+            )
+        }
+    }
+    // Seconds since the screen appeared; it only ever grows. Read in the draw step below, so each frame redraws just
+    // this canvas and recomposes nothing.
+    var seconds by remember { mutableStateOf(0f) }
+    LaunchedEffect(Unit) {
+        var last = 0L
+        while (true) {
+            withFrameNanos { now ->
+                if (last != 0L) seconds += ((now - last) / 1_000_000_000f).coerceAtMost(0.1f)
+                last = now
+            }
+        }
+    }
     // Clipped, because the lights drift past the edges and must not bleed into the page around the video.
     Canvas(modifier = Modifier.fillMaxSize().clipToBounds()) {
         drawRect(Color.Black)
-        // Read here, in the draw step, so the animation redraws only this canvas and never recomposes anything.
-        val t = flow.value * TWO_PI
+        val t = seconds
         val reach = maxOf(size.width, size.height)
         FLOW_LIGHTS.forEachIndexed { index, light ->
-            val color = palette[index % palette.size]
-            val center = Offset(
-                size.width * (light.x + light.driftX * cos(t * light.speedX + light.phase)),
-                size.height * (light.y + light.driftY * sin(t * light.speedY + light.phase * 1.7f)),
-            )
-            val radius = reach * (light.size + 0.07f * sin(t * light.speedSize + light.phase))
-            drawCircle(
-                brush = Brush.radialGradient(
-                    0f to color.copy(alpha = 0.7f),
-                    0.55f to color.copy(alpha = 0.26f),
-                    1f to Color.Transparent,
-                    center = center,
+            val color = colors[index % colors.size].value
+            val seed = seeds[index]
+            val center = light.centerAt(t, seed, size.width, size.height)
+            val radius = reach * light.sizeAt(t, seed)
+            withTransform({
+                rotate(light.turnAt(t, seed), pivot = center)
+                scale(light.stretchAt(t, seed), 1f / light.stretchAt(t, seed), pivot = center)
+            }) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        0f to color.copy(alpha = 0.6f),
+                        0.6f to color.copy(alpha = 0.28f),
+                        1f to Color.Transparent,
+                        center = center,
+                        radius = radius,
+                    ),
                     radius = radius,
-                ),
-                radius = radius,
-                center = center,
-                blendMode = BlendMode.Screen,
-            )
+                    center = center,
+                    blendMode = BlendMode.Screen,
+                )
+            }
         }
-        // Darker towards the bottom, where the seek bar and buttons need to stay readable.
+        // The black patches, drawn over the colour: where one passes, the colour sinks into black and comes back after.
+        FLOW_DARKS.forEachIndexed { index, dark ->
+            val seed = seeds[FLOW_LIGHTS.size + index]
+            val center = dark.centerAt(t, seed, size.width, size.height)
+            val radius = reach * dark.sizeAt(t, seed)
+            withTransform({
+                rotate(dark.turnAt(t, seed), pivot = center)
+                scale(dark.stretchAt(t, seed), 1f / dark.stretchAt(t, seed), pivot = center)
+            }) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        0f to Color.Black.copy(alpha = 0.88f),
+                        0.6f to Color.Black.copy(alpha = 0.4f),
+                        1f to Color.Transparent,
+                        center = center,
+                        radius = radius,
+                    ),
+                    radius = radius,
+                    center = center,
+                )
+            }
+        }
+        // A little darker at the bottom, where the seek bar and buttons need to stay readable.
         drawRect(
             Brush.verticalGradient(
-                0f to Color.Black.copy(alpha = 0.15f),
-                0.55f to Color.Black.copy(alpha = 0.3f),
-                1f to Color.Black.copy(alpha = 0.78f),
+                0f to Color.Transparent,
+                0.6f to Color.Black.copy(alpha = 0.12f),
+                1f to Color.Black.copy(alpha = 0.5f),
             ),
         )
     }
@@ -334,25 +385,54 @@ private fun CastGlowBackdrop(backdropUrl: String?) {
 
 private const val TWO_PI = 6.2831855f
 
-/** One loop of the flow; every light's speed is a whole number of turns per loop, so the loop joins without a jump. */
-private const val FLOW_LOOP_MS = 26_000
+/** How long a colour takes to ease into its new value. */
+private const val COLOR_FADE_MS = 1_000
 
-/** Where a light starts (fractions of the width and height), how far it drifts, how fast (turns per loop), its size. */
+/** What is random about one light or patch in one casting session: where it is in its movement, how fast, how stretched. */
+private class FlowSeed(val phase: Float, val speed: Float, val stretch: Float)
+
+/**
+ * One light or patch: it wanders around its home ([x], [y], fractions of the width and height) by up to [driftX] and
+ * [driftY]. [rate] is its base speed in radians per second. Each movement is two sine waves, the second at an
+ * irrational multiple of the first's speed, so the path never closes and never repeats.
+ */
 private class FlowLight(
     val x: Float, val y: Float,
     val driftX: Float, val driftY: Float,
-    val speedX: Int, val speedY: Int, val speedSize: Int,
-    val size: Float, val phase: Float,
+    val rate: Float,
+    val size: Float,
+) {
+    fun centerAt(t: Float, seed: FlowSeed, width: Float, height: Float): Offset {
+        val a = t * rate * seed.speed
+        val dx = 0.62f * sin(a + seed.phase) + 0.38f * sin(a * 1.618f + seed.phase * 2.3f)
+        val dy = 0.62f * cos(a * 1.272f + seed.phase * 1.7f) + 0.38f * sin(a * 2.236f + seed.phase * 0.6f)
+        return Offset(width * (x + driftX * dx), height * (y + driftY * dy))
+    }
+
+    fun sizeAt(t: Float, seed: FlowSeed): Float = size * (1f + 0.12f * sin(t * rate * seed.speed * 1.414f + seed.phase * 1.3f))
+
+    /** How far the ellipse is rotated, in degrees; it keeps turning, slowly and for ever. */
+    fun turnAt(t: Float, seed: FlowSeed): Float = Math.toDegrees((t * rate * seed.speed * 0.37f + seed.phase).toDouble()).toFloat()
+
+    /** Width over height of the ellipse, always changing between about 0.55 and 1.8 (its height is the inverse). */
+    fun stretchAt(t: Float, seed: FlowSeed): Float = seed.stretch * (1f + 0.25f * sin(t * rate * seed.speed * 0.83f + seed.phase * 2.9f))
+}
+
+/** Six colour lights, one per region of the banner (3 across, 2 down), each starting near its own region and then wandering. */
+private val FLOW_LIGHTS = listOf(
+    FlowLight(0.17f, 0.25f, 0.34f, 0.32f, 0.27f, 0.70f),
+    FlowLight(0.50f, 0.25f, 0.30f, 0.36f, 0.33f, 0.66f),
+    FlowLight(0.83f, 0.25f, 0.34f, 0.32f, 0.24f, 0.70f),
+    FlowLight(0.17f, 0.75f, 0.36f, 0.30f, 0.31f, 0.68f),
+    FlowLight(0.50f, 0.75f, 0.30f, 0.34f, 0.22f, 0.72f),
+    FlowLight(0.83f, 0.75f, 0.34f, 0.32f, 0.29f, 0.68f),
 )
 
-/** Six lights, one per region of the banner (3 across, 2 down), each starting over its own region and then wandering. */
-private val FLOW_LIGHTS = listOf(
-    FlowLight(0.17f, 0.25f, 0.30f, 0.30f, 1, 2, 2, 0.50f, 0.0f),
-    FlowLight(0.50f, 0.25f, 0.28f, 0.35f, 2, 1, 1, 0.46f, 1.3f),
-    FlowLight(0.83f, 0.25f, 0.30f, 0.30f, 1, 3, 3, 0.50f, 2.6f),
-    FlowLight(0.17f, 0.75f, 0.32f, 0.28f, 3, 1, 2, 0.48f, 3.9f),
-    FlowLight(0.50f, 0.75f, 0.28f, 0.32f, 1, 2, 1, 0.52f, 5.1f),
-    FlowLight(0.83f, 0.75f, 0.30f, 0.30f, 2, 1, 3, 0.48f, 0.7f),
+/** Three black patches that wander over the colour faster than the lights move. */
+private val FLOW_DARKS = listOf(
+    FlowLight(0.15f, 0.85f, 0.50f, 0.42f, 0.52f, 0.50f),
+    FlowLight(0.85f, 0.80f, 0.50f, 0.46f, 0.61f, 0.46f),
+    FlowLight(0.55f, 0.15f, 0.55f, 0.38f, 0.47f, 0.42f),
 )
 
 /**
@@ -381,7 +461,7 @@ private suspend fun bannerColors(context: Context, url: String): List<Color>? = 
         if (n == 0) n = 1
         android.graphics.Color.RGBToHSV((r / n).toInt(), (g / n).toInt(), (b / n).toInt(), hsv)
         hsv[1] = (hsv[1] * 1.3f).coerceAtMost(1f)
-        hsv[2] = (hsv[2] * 1.25f).coerceIn(0.4f, 0.95f)
+        hsv[2] = (hsv[2] * 1.25f).coerceIn(0.4f, 0.8f)
         Color(android.graphics.Color.HSVToColor(hsv))
     }
 }

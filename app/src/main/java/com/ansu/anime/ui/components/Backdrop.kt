@@ -97,6 +97,8 @@ fun Modifier.frostedBackdrop(state: BackdropState?, enabled: Boolean, shape: Sha
     val blurLayer = rememberGraphicsLayer()
     val holder = remember { BackdropBarHolder() }
     val radiusPx = with(LocalDensity.current) { radius.toPx() }
+    // Set once per radius, not on every draw: a fresh effect object each frame made the layer re-validate its blur.
+    remember(blurLayer, radiusPx) { blurLayer.renderEffect = BlurEffect(radiusPx, radiusPx, TileMode.Clamp) }
     return this
         .onGloballyPositioned { holder.coordinates = it }
         .clip(shape)
@@ -106,7 +108,6 @@ fun Modifier.frostedBackdrop(state: BackdropState?, enabled: Boolean, shape: Sha
             val me = holder.coordinates ?: return@drawBehind
             if (!source.isAttached || !me.isAttached) return@drawBehind
             val topLeft = source.localPositionOf(me, Offset.Zero)
-            blurLayer.renderEffect = BlurEffect(radiusPx, radiusPx, TileMode.Clamp)
             blurLayer.record {
                 // The screens are see-through (the animation sits behind them), so the blurred copy gets the page
                 // colour underneath. Without it the blur only had pixels where a poster or card was, which made

@@ -14,6 +14,9 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 
 /** What a log line is about, so an exported report reads as a real timeline and not one wall of text. */
 enum class LogCategory(val label: String) {
@@ -91,9 +94,23 @@ class Diagnostics(private val context: Context) {
     var lastCrashAt: Long = 0L
         private set
 
+    private val _playbackFeed = MutableStateFlow<List<DiagnosticEntry>>(emptyList())
+
+    /**
+     * The newest playback lines, kept in memory only (whether or not logging is on), so the buffering screen can show
+     * what is going on right now. See [friendlyPlaybackStep] for how a line is turned into something readable.
+     */
+    val playbackFeed: StateFlow<List<DiagnosticEntry>> = _playbackFeed
+
     fun log(category: LogCategory, message: String) = log(category, message, null)
 
     fun log(category: LogCategory, message: String, error: Throwable?) {
+        if (category == LogCategory.PLAYBACK) {
+            runCatching {
+                val entry = DiagnosticEntry(System.currentTimeMillis(), category, message)
+                _playbackFeed.update { (it + entry).takeLast(FEED_SIZE) }
+            }
+        }
         if (!enabled && category != LogCategory.CRASH) return
         runCatching {
             val millis = System.currentTimeMillis()
@@ -273,6 +290,8 @@ class Diagnostics(private val context: Context) {
         const val RETENTION_DAYS = 7L
         const val TIMESTAMP_LENGTH = 23
         const val MAX_BUFFER = 1500
+        /** How many recent playback lines the live feed keeps. */
+        const val FEED_SIZE = 60
         const val MAX_FILE_BYTES = 512L * 1024L
         const val MAX_EXPORT_CHARS = 200_000
     }

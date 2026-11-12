@@ -37,6 +37,7 @@ fun FrostedGlassCard(
     blurRadius: Dp = 0.dp,
     content: @Composable () -> Unit,
 ) {
+    val tint = tintAlpha
     Box(modifier = modifier.clip(shape)) {
         // Gradient fill with a touch of vertical structure, so a blur actually reads as softness
         // instead of acting on one flat colour (which would blur to itself, invisibly).
@@ -52,12 +53,21 @@ fun FrostedGlassCard(
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        AnsuColors.SurfaceGlassBase.copy(alpha = tintAlpha),
-                        AnsuColors.SurfaceGlassBase.copy(alpha = (tintAlpha * 0.82f).coerceIn(0f, 1f)),
+                        AnsuColors.SurfaceGlassBase.copy(alpha = tint),
+                        AnsuColors.SurfaceGlassBase.copy(alpha = (tint * 0.82f).coerceIn(0f, 1f)),
                     ),
                 ),
             )
-            .border(width = 1.dp, color = AnsuColors.StrokeGlass, shape = shape)
+            // The frosted look: a soft light haze, brightest along the top, over the tint.
+            .background(
+                Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.02f))),
+            )
+            // The edge catches the light from above, like the rim of frosted glass.
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.22f), Color.White.copy(alpha = 0.06f))),
+                shape = shape,
+            )
         Box(modifier = backgroundModifier)
         content()
     }
@@ -80,3 +90,19 @@ fun BottomScrim(modifier: Modifier = Modifier, midAlpha: Float = 0.35f, midStop:
         ),
     )
 }
+
+/** The least opaque a [HeavyGlassCard] gets, so cards match the weight of the navigation bar. */
+const val GLASS_MIN_TINT = 0.62f
+
+/**
+ * A [FrostedGlassCard] for content cards and buttons: never lighter than [GLASS_MIN_TINT], because they sit on sharp
+ * content while the bars blur a copy of it. The bars themselves keep using [FrostedGlassCard] with their own tint.
+ */
+@Composable
+fun HeavyGlassCard(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(16.dp),
+    tintAlpha: Float = 0.35f,
+    blurRadius: Dp = 0.dp,
+    content: @Composable () -> Unit,
+) = FrostedGlassCard(modifier, shape, tintAlpha.coerceAtLeast(GLASS_MIN_TINT), blurRadius, content)

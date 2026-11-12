@@ -76,6 +76,7 @@ import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.AppBottomBarReserve
 import com.ansu.anime.ui.components.backdropSource
 import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.HeavyGlassCard
 import com.ansu.anime.ui.components.posterTransitionOrigin
 import com.ansu.anime.ui.theme.AnsuColors
 import java.time.LocalDate
@@ -94,12 +95,18 @@ fun ScheduleScreen(
     navController: NavHostController,
     backdrop: BackdropState,
     onEntrySelected: (ScheduleEntry) -> Unit = {},
+    /** Tablet mode: this is the rail's own News tab, so it shows only the news (Schedule is a separate tab there). */
+    newsOnly: Boolean = false,
 ) {
     val viewModel: ScheduleViewModel = viewModel(
         factory = viewModelFactory { initializer { ScheduleViewModel(container.aniListRepository, container.newsRepository, container.appearancePrefs.titleLanguage) } },
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var tab by remember { mutableStateOf(ScheduleTab.NEWS) }
+    // Tablet mode splits Schedule and News into separate rail tabs, so the pill switch below is not needed there.
+    val separateTabs = com.ansu.anime.ui.components.LocalTabletMode.current
+    var tab by remember(separateTabs) {
+        mutableStateOf(if (separateTabs && !newsOnly) ScheduleTab.SCHEDULE else ScheduleTab.NEWS)
+    }
     // Opening the tab (again) fetches news that has gone stale; a recent copy is shown as it is.
     LaunchedEffect(Unit) { viewModel.refreshNews() }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
@@ -145,14 +152,16 @@ fun ScheduleScreen(
                 }
             }
 
-            SubTabToggle(
-                selected = tab,
-                onSelect = { tab = it },
-                backdrop = backdrop,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = barInset + 16.dp),
-            )
+            if (!separateTabs) {
+                SubTabToggle(
+                    selected = tab,
+                    onSelect = { tab = it },
+                    backdrop = backdrop,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = barInset + 16.dp),
+                )
+            }
         }
     }
 }
@@ -324,7 +333,7 @@ private fun NewsList(articles: List<NewsArticle>, loading: Boolean, bottomInset:
 @Composable
 private fun NewsCard(article: NewsArticle) {
     val context = LocalContext.current
-    FrostedGlassCard(
+    HeavyGlassCard(
         modifier = Modifier.fillMaxWidth().then(
             if (article.url != null) {
                 Modifier.clickable { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(article.url))) } }
@@ -461,7 +470,7 @@ private fun DayPillBar(selectedDate: LocalDate, onSelectDate: (LocalDate) -> Uni
 
 @Composable
 private fun ScheduleCard(entry: ScheduleEntry, onClick: () -> Unit) {
-    FrostedGlassCard(
+    HeavyGlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),

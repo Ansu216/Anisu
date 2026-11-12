@@ -24,7 +24,7 @@ import com.ansu.anime.ui.theme.AnsuColors
  */
 @Composable
 fun SavedDataNotice(modifier: Modifier = Modifier) {
-    FrostedGlassCard(
+    HeavyGlassCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
         tintAlpha = 0.92f,

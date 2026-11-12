@@ -42,7 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.HeavyGlassCard
 import com.ansu.anime.ui.components.GlassGroupLabel
 import com.ansu.anime.ui.theme.AnsuColors
 
@@ -225,7 +225,7 @@ fun LicensesScreen(container: AppContainer, navController: NavHostController) {
 
 @Composable
 private fun CreditCard(credit: Credit, context: Context) {
-    FrostedGlassCard(
+    HeavyGlassCard(
         modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
         shape = RoundedCornerShape(20.dp),
         tintAlpha = 0.5f,

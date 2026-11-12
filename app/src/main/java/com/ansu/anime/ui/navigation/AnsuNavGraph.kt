@@ -1,10 +1,15 @@
 package com.ansu.anime.ui.navigation
 
+import com.ansu.anime.ui.components.LocalTabletMode
+import com.ansu.anime.ui.components.TabletCentered
+import com.ansu.anime.ui.components.TabletNavRail
+import com.ansu.anime.ui.components.tabletRailPadding
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -15,8 +20,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.ui.about.AboutScreen
@@ -28,6 +42,7 @@ import com.ansu.anime.ui.components.LocalNavBarFrostiness
 import com.ansu.anime.ui.components.LocalNavBarRoundness
 import com.ansu.anime.ui.components.PosterExpandContainer
 import com.ansu.anime.ui.components.PosterTransition
+import com.ansu.anime.ui.components.posterBlurBehind
 import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.contributors.ContributorsScreen
 import androidx.navigation.NavHostController
@@ -52,6 +67,8 @@ object Dest {
     const val HOME = "home"
     const val SEARCH = "search"
     const val SCHEDULE = "schedule"
+    /** Tablet mode only: News as its own rail tab (on a phone it is a tab inside Schedule). */
+    const val NEWS = "news"
     const val SETTINGS = "settings"
     const val APPEARANCE = "appearance"
     const val PLAYER_STREAMING = "player_streaming"
@@ -73,7 +90,7 @@ object Dest {
 }
 
 /** Bottom bar destinations, in display order. */
-val bottomNavDestinations = listOf(Dest.HOME, Dest.SEARCH, Dest.SCHEDULE, Dest.MY_SPACE)
+val bottomNavDestinations = listOf(Dest.HOME, Dest.SEARCH, Dest.SCHEDULE, Dest.NEWS, Dest.MY_SPACE)
 
 /**
  * How long a tab change fades for. The bar waits exactly this long before it applies a tab that was
@@ -135,6 +152,8 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
     val navBarFrostiness by container.appearancePrefs.navBarFrostiness.collectAsStateWithLifecycle()
     val navBarBackdropBlur by container.appearancePrefs.navBarBackdropBlur.collectAsStateWithLifecycle()
     val backgroundStyle by container.appearancePrefs.backgroundStyle.collectAsStateWithLifecycle()
+    val tabletMode by container.appearancePrefs.tabletMode.collectAsStateWithLifecycle()
+    val railRight by container.appearancePrefs.tabletRailRight.collectAsStateWithLifecycle()
 
     // Every route change is written to the diagnostics log, so an exported report shows where the
     // user actually went before a problem happened.
@@ -150,12 +169,35 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
     // one shared backdrop, which is what the bar blurs.
     val backdrop = rememberBackdropState()
 
+    // The bar slides away while the page is dragged up (reading further down a list) and comes back as soon as it
+    // is dragged down. It listens to every scrolling list under it through nested scroll, so no screen needs to
+    // know about it, and it is only a translation of the finished bar: the bar's own code is not involved.
+    var barHidden by remember { mutableStateOf(false) }
+    val barHideConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput) {
+                    if (available.y < -6f) barHidden = true else if (available.y > 6f) barHidden = false
+                }
+                return Offset.Zero
+            }
+        }
+    }
+    LaunchedEffect(backStackEntry?.destination?.route) { barHidden = false }
+    val barHide = animateFloatAsState(
+        targetValue = if (barHidden) 1f else 0f,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "navBarHide",
+    )
+
     CompositionLocalProvider(
         LocalNavBarRoundness provides navBarRoundness,
         LocalNavBarFrostiness provides navBarFrostiness,
         LocalNavBarBackdropBlur provides navBarBackdropBlur,
+        LocalTabletMode provides tabletMode,
+        com.ansu.anime.ui.components.LocalTabletRailRight provides railRight,
     ) {
-    Box(modifier = Modifier.fillMaxSize().background(com.ansu.anime.ui.theme.AnsuColors.Background)) {
+    Box(modifier = Modifier.fillMaxSize().background(com.ansu.anime.ui.theme.AnsuColors.Background).nestedScroll(barHideConnection)) {
     // The animated background sits at the very back; the screens above it are see-through where they have no
     // content, while posters, cards and every opaque surface hide it completely.
     com.ansu.anime.ui.components.BackgroundAnimation(style = backgroundStyle)
@@ -203,113 +245,155 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
             }
         },
     ) {
-        composable(Dest.HOME) {
-            TrackTabTransition()
-            HomeScreen(
-                container = container,
-                navController = navController,
-                backdrop = backdrop,
-                onAnimeSelected = { anime ->
-                    container.selectionHolder.selectAnime(anime)
-                    navController.navigate(Dest.DETAILS)
-                },
-            )
+        composable(Dest.HOME) { entry ->
+            // The page under a details page softens while the details page opens out of a poster.
+            Box(modifier = Modifier.fillMaxSize().posterBlurBehind(entry.id).tabletRailPadding()) {
+                TrackTabTransition()
+                HomeScreen(
+                    container = container,
+                    navController = navController,
+                    backdrop = backdrop,
+                    onAnimeSelected = { anime ->
+                        container.selectionHolder.selectAnime(anime)
+                        navController.navigate(Dest.DETAILS)
+                    },
+                )
+            }
         }
-        composable(Dest.SEARCH) {
-            TrackTabTransition()
-            SearchScreen(
-                container = container,
-                navController = navController,
-                backdrop = backdrop,
-                onAnimeSelected = { anime ->
-                    container.selectionHolder.selectAnime(anime)
-                    navController.navigate(Dest.DETAILS)
-                },
-            )
+        composable(Dest.SEARCH) { entry ->
+            // The page under a details page softens while the details page opens out of a poster.
+            Box(modifier = Modifier.fillMaxSize().posterBlurBehind(entry.id).tabletRailPadding()) {
+                TrackTabTransition()
+                SearchScreen(
+                    container = container,
+                    navController = navController,
+                    backdrop = backdrop,
+                    onAnimeSelected = { anime ->
+                        container.selectionHolder.selectAnime(anime)
+                        navController.navigate(Dest.DETAILS)
+                    },
+                )
+            }
         }
-        composable(Dest.SCHEDULE) {
-            TrackTabTransition()
-            ScheduleScreen(
-                container = container,
-                navController = navController,
-                backdrop = backdrop,
-                onEntrySelected = { entry ->
-                    val anime = com.ansu.anime.core.model.SAnime(
-                        id = entry.animeId.toString(),
-                        title = entry.animeTitle,
-                        posterUrl = entry.imageUrl,
-                        anilistId = entry.animeId,
-                        // No installed extension has matched this show yet — it only
-                        // came from AniList's public schedule — so episodes on the details
-                        // page may come back empty until a real source is wired up for it.
-                        origin = com.ansu.anime.core.model.MediaOrigin.Extension(sourceId = 1L, urlPath = entry.animeId.toString()),
-                    )
-                    container.selectionHolder.selectAnime(anime)
-                    navController.navigate(Dest.DETAILS)
-                },
-            )
+        composable(Dest.SCHEDULE) { entry ->
+            // The page under a details page softens while the details page opens out of a poster.
+            Box(modifier = Modifier.fillMaxSize().posterBlurBehind(entry.id).tabletRailPadding()) {
+                TrackTabTransition()
+                ScheduleScreen(
+                    container = container,
+                    navController = navController,
+                    backdrop = backdrop,
+                    onEntrySelected = { entry ->
+                        val anime = com.ansu.anime.core.model.SAnime(
+                            id = entry.animeId.toString(),
+                            title = entry.animeTitle,
+                            posterUrl = entry.imageUrl,
+                            anilistId = entry.animeId,
+                            // No installed extension has matched this show yet — it only
+                            // came from AniList's public schedule — so episodes on the details
+                            // page may come back empty until a real source is wired up for it.
+                            origin = com.ansu.anime.core.model.MediaOrigin.Extension(sourceId = 1L, urlPath = entry.animeId.toString()),
+                        )
+                        container.selectionHolder.selectAnime(anime)
+                        navController.navigate(Dest.DETAILS)
+                    },
+                )
+            }
+        }
+        composable(Dest.NEWS) { entry ->
+            // The page under a details page softens while the details page opens out of a poster.
+            Box(modifier = Modifier.fillMaxSize().posterBlurBehind(entry.id).tabletRailPadding()) {
+                TrackTabTransition()
+                ScheduleScreen(
+                    newsOnly = true,
+                    container = container,
+                    navController = navController,
+                    backdrop = backdrop,
+                    onEntrySelected = { entry ->
+                        val anime = com.ansu.anime.core.model.SAnime(
+                            id = entry.animeId.toString(),
+                            title = entry.animeTitle,
+                            posterUrl = entry.imageUrl,
+                            anilistId = entry.animeId,
+                            // No installed extension has matched this show yet — it only
+                            // came from AniList's public schedule — so episodes on the details
+                            // page may come back empty until a real source is wired up for it.
+                            origin = com.ansu.anime.core.model.MediaOrigin.Extension(sourceId = 1L, urlPath = entry.animeId.toString()),
+                        )
+                        container.selectionHolder.selectAnime(anime)
+                        navController.navigate(Dest.DETAILS)
+                    },
+                )
+            }
         }
         composable(Dest.SETTINGS) {
-            SettingsScreen(container = container, navController = navController)
+            TabletCentered(720.dp) { SettingsScreen(container = container, navController = navController) }
         }
         composable(Dest.APPEARANCE) {
-            AppearanceScreen(container = container, navController = navController)
+            TabletCentered(720.dp) { AppearanceScreen(container = container, navController = navController) }
         }
         composable(Dest.PLAYER_STREAMING) {
-            com.ansu.anime.ui.playersettings.PlayerStreamingScreen(container = container, navController = navController)
+            TabletCentered(720.dp) { com.ansu.anime.ui.playersettings.PlayerStreamingScreen(container = container, navController = navController) }
         }
         composable(Dest.ABOUT) {
-            AboutScreen(container = container, navController = navController)
+            TabletCentered(720.dp) { AboutScreen(container = container, navController = navController) }
         }
         composable(Dest.DOWNLOADS) {
-            com.ansu.anime.ui.downloads.DownloadsScreen(container = container, navController = navController)
+            TabletCentered(720.dp) { com.ansu.anime.ui.downloads.DownloadsScreen(container = container, navController = navController) }
         }
         composable(Dest.LICENSES) {
-            com.ansu.anime.ui.about.LicensesScreen(container = container, navController = navController)
+            TabletCentered(720.dp) { com.ansu.anime.ui.about.LicensesScreen(container = container, navController = navController) }
         }
         composable(Dest.UPDATES) {
-            UpdatesScreen(container = container, navController = navController)
+            TabletCentered(720.dp) { UpdatesScreen(container = container, navController = navController) }
         }
         composable(Dest.CONTRIBUTORS) {
-            ContributorsScreen(container = container, navController = navController)
+            TabletCentered(720.dp) { ContributorsScreen(container = container, navController = navController) }
         }
         composable(Dest.CHANGELOG) {
-            com.ansu.anime.ui.docs.ProjectDocScreen(
-                doc = com.ansu.anime.data.docs.ProjectDoc.CHANGELOG,
-                container = container,
-                navController = navController,
-            )
+            TabletCentered(720.dp) {
+                com.ansu.anime.ui.docs.ProjectDocScreen(
+                    doc = com.ansu.anime.data.docs.ProjectDoc.CHANGELOG,
+                    container = container,
+                    navController = navController,
+                )
+            }
         }
         composable(Dest.LICENSE) {
-            com.ansu.anime.ui.docs.ProjectDocScreen(
-                doc = com.ansu.anime.data.docs.ProjectDoc.LICENSE,
-                container = container,
-                navController = navController,
-            )
+            TabletCentered(720.dp) {
+                com.ansu.anime.ui.docs.ProjectDocScreen(
+                    doc = com.ansu.anime.data.docs.ProjectDoc.LICENSE,
+                    container = container,
+                    navController = navController,
+                )
+            }
         }
         composable(Dest.SYSTEM) {
-            SystemScreen(container = container, navController = navController)
+            TabletCentered(720.dp) { SystemScreen(container = container, navController = navController) }
         }
         composable(Dest.BACKUP) {
-            BackupScreen(container = container, navController = navController)
+            TabletCentered(720.dp) { BackupScreen(container = container, navController = navController) }
         }
-        composable(Dest.MY_SPACE) {
-            TrackTabTransition()
-            MySpaceScreen(
-                container = container,
-                navController = navController,
-                backdrop = backdrop,
-                onAnimeSelected = { anime ->
-                    container.selectionHolder.selectAnime(anime)
-                    navController.navigate(Dest.DETAILS)
-                },
-            )
+        composable(Dest.MY_SPACE) { entry ->
+            // The page under a details page softens while the details page opens out of a poster.
+            Box(modifier = Modifier.fillMaxSize().posterBlurBehind(entry.id).tabletRailPadding()) {
+                TrackTabTransition()
+                MySpaceScreen(
+                    container = container,
+                    navController = navController,
+                    backdrop = backdrop,
+                    onAnimeSelected = { anime ->
+                        container.selectionHolder.selectAnime(anime)
+                        navController.navigate(Dest.DETAILS)
+                    },
+                )
+            }
         }
         composable(Dest.EXTENSIONS) {
-            ExtensionsScreen(container = container, navController = navController)
+            TabletCentered(840.dp) { ExtensionsScreen(container = container, navController = navController) }
         }
         composable(Dest.ANILIST_LOGIN) {
-            AniListLoginScreen(container = container, navController = navController)
+            TabletCentered(720.dp) { AniListLoginScreen(container = container, navController = navController) }
         }
         // The details page animates itself (PosterExpandContainer): it grows out of the tapped poster and
         // closes back into it. The NavHost's own transitions are switched off for it, and its progress
@@ -321,9 +405,12 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
             popEnterTransition = { EnterTransition.None },
             popExitTransition = { ExitTransition.None },
         ) { entry ->
+            // The page this one opened over, read once when the page first composes (later it is no longer "previous").
+            val behindEntryId = remember(entry.id) { navController.previousBackStackEntry?.id }
             PosterExpandContainer(
                 entryId = entry.id,
                 isOnBackStack = { navController.currentBackStack.value.any { it.id == entry.id } },
+                behindEntryId = behindEntryId,
             ) {
                 DetailsScreen(
                     container = container,
@@ -346,7 +433,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
             }
         }
         composable(Dest.SOURCES) {
-            com.ansu.anime.ui.sources.SourcePickerScreen(container = container, navController = navController)
+            TabletCentered(840.dp) { com.ansu.anime.ui.sources.SourcePickerScreen(container = container, navController = navController) }
         }
         composable(Dest.PLAYER) {
             PlayerScreen(container = container, navController = navController)
@@ -362,13 +449,26 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
             visible = currentRoute in bottomNavDestinations,
             enter = fadeIn(animationSpec = tween(durationMillis = 150)),
             exit = fadeOut(animationSpec = tween(durationMillis = 150)),
-            modifier = Modifier.align(Alignment.BottomCenter),
+            modifier = Modifier.align(Alignment.BottomCenter).graphicsLayer { translationY = barHide.value * 220.dp.toPx() },
         ) {
-            AppBottomBar(
-                navController = navController,
-                currentRoute = currentRoute,
-                backdrop = backdrop,
-            )
+            if (!tabletMode) {
+                AppBottomBar(
+                    navController = navController,
+                    currentRoute = currentRoute,
+                    backdrop = backdrop,
+                )
+            }
+        }
+        // Tablet mode: the side rail replaces the bottom bar on the same four tab screens.
+        if (tabletMode) {
+            AnimatedVisibility(
+                visible = currentRoute in bottomNavDestinations,
+                enter = fadeIn(animationSpec = tween(durationMillis = 150)),
+                exit = fadeOut(animationSpec = tween(durationMillis = 150)),
+                modifier = Modifier.align(if (railRight) Alignment.CenterEnd else Alignment.CenterStart),
+            ) {
+                TabletNavRail(navController = navController, currentRoute = currentRoute)
+            }
         }
     }
     }

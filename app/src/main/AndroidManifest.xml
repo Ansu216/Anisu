@@ -8,6 +8,9 @@
          Cast framework never sees a device. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
     <!-- Soft haptic feedback on taps, toggles and tab changes (switchable in Settings). -->
     <!-- Android 13+ runtime permission for the "update available" notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -23,6 +26,16 @@
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
+
+    <!-- Cast finds TVs through Google Play services' media route provider. Android hides other apps from us unless
+         they are declared here, and some phones (vivo, Xiaomi...) deny QUERY_ALL_PACKAGES to sideloaded apps, so
+         without this the router only ever sees the phone itself ("1 routes seen, 0 Cast"). -->
+    <queries>
+        <package android:name="com.google.android.gms" />
+        <intent>
+            <action android:name="android.media.MediaRouteProviderService" />
+        </intent>
+    </queries>
 
     <application
         android:name=".AnsuApp"

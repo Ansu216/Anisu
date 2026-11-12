@@ -63,3 +63,20 @@
 
 # Chromecast: the Cast framework reads this class by name from the manifest (a meta-data value, which shrinking does not see).
 -keep class com.ansu.anime.cast.AnisuCastOptionsProvider { *; }
+
+# CloudStream plugins (.cs3) are dex files loaded at runtime that call straight into the CloudStream library and
+# the libraries it brings (nicehttp, Jackson, Rhino, NewPipe extractor...). Same rule as for Aniyomi above: plain -keep,
+# so R8 neither strips nor renames nor finalises anything a plugin might use.
+-keep class com.lagradost.** { *; }
+-keep class com.fasterxml.jackson.** { *; }
+-keep class org.mozilla.javascript.** { *; }
+-keep class org.schabi.newpipe.** { *; }
+-keep class me.xdrop.fuzzywuzzy.** { *; }
+-keep class com.google.gson.** { *; }
+-keepclassmembers class * { @com.fasterxml.jackson.annotation.* *; }
+-dontwarn com.lagradost.**
+-dontwarn com.fasterxml.jackson.**
+-dontwarn org.mozilla.javascript.**
+-dontwarn javax.script.**
+-dontwarn org.schabi.newpipe.**
+-dontwarn java.beans.**

@@ -10,6 +10,8 @@ import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -72,7 +74,7 @@ import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.data.update.RepoStats
 import com.ansu.anime.data.update.UpdateCheckResult
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.HeavyGlassCard
 import com.ansu.anime.ui.components.GlassGroup
 import com.ansu.anime.ui.components.GlassGroupLabel
 import com.ansu.anime.ui.components.GlassRow
@@ -109,6 +111,14 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
     var statsLoading by remember { mutableStateOf(true) }
     var nightlyDownloads by remember { mutableStateOf<Long?>(null) }
     var nightlyLoading by remember { mutableStateOf(false) }
+    // Seven quick taps on the logo unlock the hidden options, Cast and Tablet mode (both are hidden until then); the taps count within two seconds of each other.
+    var logoTaps by remember { mutableStateOf(0) }
+    var lastLogoTap by remember { mutableStateOf(0L) }
+    val toastHolder = remember { arrayOfNulls<android.widget.Toast>(1) }
+    fun showToast(text: String) {
+        toastHolder[0]?.cancel()
+        toastHolder[0] = android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).also { it.show() }
+    }
 
     // Asked once when About opens; GitHubStats keeps the answer for the rest of the app run.
     LaunchedEffect(Unit) {
@@ -153,7 +163,27 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
         ) {
             Spacer(Modifier.height(12.dp))
 
-            HeroCard()
+            HeroCard(
+                onLogoTap = {
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    logoTaps = if (now - lastLogoTap > 2_000L) 1 else logoTaps + 1
+                    lastLogoTap = now
+                    val allUnlocked = container.playerPrefs.castUnlocked.value && container.appearancePrefs.tabletUnlocked.value
+                    when {
+                        logoTaps >= 7 -> {
+                            logoTaps = 0
+                            if (allUnlocked) {
+                                showToast("Hidden options are already enabled")
+                            } else {
+                                container.playerPrefs.unlockCast()
+                                container.appearancePrefs.unlockTablet()
+                                showToast("Cast and Tablet mode unlocked. Find them in Player and streaming and Appearance")
+                            }
+                        }
+                        logoTaps >= 4 && !allUnlocked -> showToast("${7 - logoTaps} more taps to unlock hidden options")
+                    }
+                },
+            )
 
             GlassGroupLabel("This build")
             GlassGroup {
@@ -325,8 +355,8 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
 
 /** The identity header: the logo, the name and the tagline, over a soft accent glow. No version here. */
 @Composable
-private fun HeroCard() {
-    FrostedGlassCard(
+private fun HeroCard(onLogoTap: () -> Unit) {
+    HeavyGlassCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
         tintAlpha = 0.4f,
@@ -346,7 +376,11 @@ private fun HeroCard() {
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Box(
-                    modifier = Modifier.size(96.dp).clip(RoundedCornerShape(24.dp)).background(AnsuColors.Background),
+                    modifier = Modifier
+                        .size(96.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(AnsuColors.Background)
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onLogoTap() },
                     contentAlignment = Alignment.Center,
                 ) {
                     // A full-colour raster, so drawn with Image (a tint would paint it a single colour).

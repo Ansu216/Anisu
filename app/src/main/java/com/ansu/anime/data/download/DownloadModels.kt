@@ -41,7 +41,7 @@ data class DownloadStatus(
 )
 
 /** Why the whole download queue is on hold, if it is. */
-enum class PauseState { None, User, Battery }
+enum class PauseState { None, User }
 
 data class DownloadItem(val entry: DownloadEntry, val status: DownloadStatus)
 

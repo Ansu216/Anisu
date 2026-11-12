@@ -75,7 +75,7 @@ fun ErrorGlassCard(
     val badge = if (compact) 52.dp else 88.dp
     val badgeIcon = if (compact) 26.dp else 40.dp
 
-    FrostedGlassCard(
+    HeavyGlassCard(
         modifier = modifier.fillMaxWidth(),
         shape = shape,
         tintAlpha = 0.88f,

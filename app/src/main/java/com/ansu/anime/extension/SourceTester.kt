@@ -1,5 +1,6 @@
 package com.ansu.anime.extension
 
+import com.ansu.anime.core.diagnostics.friendlyPlaybackStep
 import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.core.model.Video
 import com.ansu.anime.extension.api.AnimeCatalogueSource
@@ -29,6 +30,21 @@ sealed class TestTarget {
     }
 }
 
+/** What a quick look at a source's website found, shown live on its card in the Extensions list. */
+sealed class SiteStatus(val label: String, val good: Boolean) {
+    /** The site answered; a refusal such as 403 still proves the host is up. */
+    class Online(ms: Long) : SiteStatus("Site online · $ms ms", true)
+
+    /** The site answered with a server error (Cloudflare's 530 means it cannot reach the site's own server). */
+    class Down(code: Int) : SiteStatus("Site is down (HTTP $code)", false)
+
+    /** The site's address does not resolve: the domain is gone, or this network's DNS blocks it. */
+    data object NotFound : SiteStatus("Can't find the site: its address doesn't exist, or your DNS blocks it", false)
+
+    /** Connecting failed or timed out. */
+    data object Unreachable : SiteStatus("The site isn't answering", false)
+}
+
 /** Outcome of [SourceTester.test], shown under "Test Result". */
 data class SourceTestResult(
     val target: String,
@@ -54,9 +70,29 @@ class SourceTester(
     private val client: OkHttpClient,
     private val health: SourceHealth? = null,
 ) {
-    suspend fun test(target: TestTarget): SourceTestResult = withContext(Dispatchers.IO) {
+    /** Quick look at a source's website, without running anything through the extension. Null when it has no address. */
+    suspend fun checkSite(url: String): SiteStatus? = withContext(Dispatchers.IO) {
+        if (url.isBlank()) return@withContext null
+        val started = System.nanoTime()
+        try {
+            val request = Request.Builder().url(url).head().build()
+            client.newBuilder().callTimeout(10, java.util.concurrent.TimeUnit.SECONDS).build()
+                .newCall(request).execute().use { response ->
+                    if (response.code in 500..599) SiteStatus.Down(response.code) else SiteStatus.Online((System.nanoTime() - started) / 1_000_000)
+                }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: java.net.UnknownHostException) {
+            SiteStatus.NotFound
+        } catch (e: Exception) {
+            SiteStatus.Unreachable
+        }
+    }
+
+    /** [onProgress] is told each step as it starts ("Loading the catalogue…"), from a background thread. */
+    suspend fun test(target: TestTarget, onProgress: (String) -> Unit = {}): SourceTestResult = withContext(Dispatchers.IO) {
         when (target) {
-            is TestTarget.Extension -> testExtension(target.source).copy(target = target.label).also {
+            is TestTarget.Extension -> testExtension(target.source, onProgress).copy(target = target.label).also {
                 health?.record(target.source.id, it.ok, it.error)
             }
         }
@@ -76,14 +112,18 @@ class SourceTester(
         }
     }
 
-    private suspend fun testExtension(source: AnimeCatalogueSource): SourceTestResult {
+    private suspend fun testExtension(source: AnimeCatalogueSource, onProgress: (String) -> Unit): SourceTestResult {
+        onProgress("Checking the site…")
         val (pingMs, status) = ping(runCatching { source.baseUrl }.getOrDefault(""))
+        onProgress(if (pingMs != null) "The site answered in $pingMs ms" else "The site didn't answer")
+        onProgress("Loading the catalogue…")
         val started = System.nanoTime()
         return try {
             val page = withTimeout(REQUEST_TIMEOUT_MS) { source.getPopularAnime(1) }
             val latency = (System.nanoTime() - started) / 1_000_000
+            onProgress("Catalogue loaded: ${page.animes.size} titles")
             // A source can list its catalogue and still show no video in the player, so streaming is checked too.
-            val stream = if (page.animes.isEmpty()) null else checkStreaming(source, page.animes)
+            val stream = if (page.animes.isEmpty()) null else checkStreaming(source, page.animes, onProgress)
             SourceTestResult(
                 target = source.name,
                 pingMs = pingMs,
@@ -116,12 +156,13 @@ class SourceTester(
      * Asks for the first episode of the first popular titles and lists its videos, the way the player does.
      * Succeeds as soon as one title yields a video; otherwise reports why the last attempt found none.
      */
-    private suspend fun checkStreaming(source: AnimeCatalogueSource, titles: List<SAnime>): StreamCheck {
+    private suspend fun checkStreaming(source: AnimeCatalogueSource, titles: List<SAnime>, onProgress: (String) -> Unit): StreamCheck {
         var reason = "no episodes were listed"
         // Each title's failure is kept: only the last one used to be shown, which hid why the first title failed.
         val reasons = mutableListOf<String>()
         for (anime in titles.take(STREAM_TITLES)) {
             if (reasons.isNotEmpty() || reason != "no episodes were listed") reasons += reason
+            onProgress("Listing the episodes of ${anime.title}…")
             val episodes = try {
                 withTimeout(STREAM_STEP_TIMEOUT_MS) { source.getEpisodeList(anime) }
             } catch (e: TimeoutCancellationException) {
@@ -142,9 +183,13 @@ class SourceTester(
             }
             val listed = java.util.Collections.synchronizedList(mutableListOf<Video>())
             val lines = mutableListOf<String>()
+            onProgress("Asking for servers…")
             try {
                 withTimeoutOrNull(STREAM_TIMEOUT_MS) {
-                    source.streamVideos(episode, { line -> synchronized(lines) { lines += line.trim() } }) { videos ->
+                    source.streamVideos(episode, { line ->
+                        synchronized(lines) { lines += line.trim() }
+                        friendlyPlaybackStep(line)?.let(onProgress)
+                    }) { videos ->
                         listed += videos
                     }
                 }
@@ -165,6 +210,7 @@ class SourceTester(
             }
             // The player resolves the video that is picked (and moves on when one fails), so prove one of the first resolves.
             var playable: Video? = null
+            onProgress("Resolving a stream…")
             for (video in listed.toList().take(STREAM_RESOLVE_TRIES)) {
                 val pending = video.resolve
                 val ready = if (pending == null) {

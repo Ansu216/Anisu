@@ -45,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,6 +70,7 @@ import androidx.navigation.NavHostController
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.extension.ExtensionRepoEntry
 import com.ansu.anime.extension.JsonUrlResult
+import com.ansu.anime.extension.SiteStatus
 import com.ansu.anime.extension.SourceTestResult
 import com.ansu.anime.extension.TestTarget
 import com.ansu.anime.extension.aniyomi.AniyomiSourceAdapter
@@ -78,7 +80,10 @@ import com.ansu.anime.ui.components.frostedBackdrop
 import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.theme.AnsuColors
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 /**
@@ -113,6 +118,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     var addFailed by remember { mutableStateOf(false) }
 
     var repoUrls by remember { mutableStateOf(repo.savedRepoUrls()) }
+    var repoNames by remember { mutableStateOf(repo.savedRepoNames()) }
     var disabledRepos by remember { mutableStateOf(repo.disabledRepoUrls()) }
     var availableByRepo by remember { mutableStateOf<Map<String, List<ExtensionRepoEntry>>>(emptyMap()) }
     var installError by remember { mutableStateOf<String?>(null) }
@@ -120,6 +126,9 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
 
     var testingKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     var results by remember { mutableStateOf<Map<String, SourceTestResult>>(emptyMap()) }
+    // Live: what a quick look at each source's website found, and the step each running test is on.
+    val siteStatus = remember { mutableStateMapOf<String, SiteStatus>() }
+    val testProgress = remember { mutableStateMapOf<String, String>() }
 
     var actionTarget by remember { mutableStateOf<ExtensionActionTarget?>(null) }
     var settingsFor by remember { mutableStateOf<AniyomiSourceAdapter?>(null) }
@@ -131,8 +140,12 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
         for (url in repoUrls) {
             if (url in loaded) continue
             val parsed = repo.resolve(url).getOrNull()
-            if (parsed is JsonUrlResult.Repo) loaded[parsed.indexUrl] = parsed.entries
+            if (parsed is JsonUrlResult.Repo) {
+                loaded[parsed.indexUrl] = parsed.entries
+                parsed.name?.let { repo.saveRepoName(parsed.indexUrl, it) }
+            }
         }
+        repoNames = repo.savedRepoNames()
         availableByRepo = loaded
     }
 
@@ -204,6 +217,24 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                             settings = (s as? AniyomiSourceAdapter)?.takeIf { it.hasSettings },
                         ),
                     )
+                }
+            }
+        }
+    }
+
+    // A quick look at every installed source's website when the list opens, filling in as each answers, so a dead or
+    // blocked one shows before anyone tries to stream from it.
+    val siteCheckKeys = installedRows.filter { it.source != null }.map { it.key }
+    LaunchedEffect(siteCheckKeys) {
+        val gate = Semaphore(4)
+        coroutineScope {
+            installedRows.forEach { row ->
+                val source = row.source ?: return@forEach
+                launch {
+                    gate.withPermit {
+                        val url = runCatching { source.baseUrl }.getOrDefault("")
+                        container.sourceTester.checkSite(url)?.let { siteStatus[row.key] = it }
+                    }
                 }
             }
         }
@@ -374,12 +405,17 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                                 row = row,
                                 testing = row.key in testingKeys,
                                 resultLine = line,
+                                siteLine = siteStatus[row.key]?.let { it.label to it.good },
+                                progressLine = testProgress[row.key],
                                 onTest = {
                                     val source = row.source
                                     if (source != null) {
                                         scope.launch {
                                             testingKeys = testingKeys + row.key
-                                            val r = container.sourceTester.test(TestTarget.Extension(source))
+                                            val r = container.sourceTester.test(TestTarget.Extension(source)) { step ->
+                                                testProgress[row.key] = step
+                                            }
+                                            testProgress.remove(row.key)
                                             results = results + (row.key to r)
                                             testingKeys = testingKeys - row.key
                                         }
@@ -457,12 +493,13 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                                         val outcome = repo.resolve(jsonUrl).mapCatching { parsed ->
                                             when (parsed) {
                                                 is JsonUrlResult.Repo -> {
-                                                    repo.saveRepoUrl(parsed.indexUrl)
+                                                    repo.saveRepoUrl(parsed.indexUrl, parsed.name)
+                                                    repoNames = repo.savedRepoNames()
                                                     repo.setRepoEnabled(parsed.indexUrl, true)
                                                     disabledRepos = repo.disabledRepoUrls()
                                                     availableByRepo = availableByRepo + (parsed.indexUrl to parsed.entries)
                                                     repoUrls = repo.savedRepoUrls()
-                                                    "Repo added: ${parsed.entries.size} extensions available"
+                                                    "${com.ansu.anime.extension.repoDisplayName(parsed.indexUrl, parsed.name)} added: ${parsed.entries.size} extensions available"
                                                 }
                                             }
                                         }
@@ -474,6 +511,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                                     }
                                 },
                                 repoUrls = repoUrls,
+                                repoNames = repoNames,
                                 disabledRepos = disabledRepos,
                                 onRepoEnabled = { url, on ->
                                     repo.setRepoEnabled(url, on)

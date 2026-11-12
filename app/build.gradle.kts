@@ -74,6 +74,9 @@ android {
         applicationId = "com.ansu.anime"
         minSdk = 26
         targetSdk = 35
+        // The app is English only; this drops the translated strings that Material, Play services and the other
+        // libraries ship for dozens of languages.
+        resourceConfigurations += "en"
         versionCode = ciVersionCode
         versionName = ciVersionName
 
@@ -118,7 +121,13 @@ android {
         release {
             signingConfig = signingConfigs.getByName("ansu")
             isMinifyEnabled = true
+            // Drops resources nothing uses (library drawables, strings). Safe here: extensions are separate APKs with
+            // their own resources, and the app reads none of its own by name.
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // One APK for phones: native libraries (QuickJS and friends) are kept for the two phone CPU types only.
+            // The x86 copies are for emulators and only add size.
+            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         }
     }
 
@@ -139,6 +148,11 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            // Store native libraries compressed inside the APK (they are unpacked at install). The default keeps them
+            // uncompressed, which makes the APK download noticeably bigger.
+            useLegacyPackaging = true
         }
     }
 }
@@ -192,6 +206,11 @@ dependencies {
     // Base of HttpServer, the local proxy some extensions start to serve their streams.
     implementation(libs.nanohttpd)
 
+    // CloudStream (.cs3) plugin runtime: MainAPI, extractors and the HTTP client plugins are compiled against.
+    implementation(libs.cloudstream.library)
+    // The library's own HTTP client (nicehttp): `implementation` upstream, so compiling against `app.baseClient` needs it here.
+    implementation(libs.nicehttp)
+
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.exoplayer.dash)
@@ -201,6 +220,5 @@ dependencies {
 
     // Chromecast: the Cast framework, its device picker and the Fragment support that picker needs.
     implementation(libs.play.services.cast.framework)
-    implementation(libs.androidx.mediarouter)
     implementation(libs.androidx.fragment)
 }

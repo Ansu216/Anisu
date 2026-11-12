@@ -106,6 +106,37 @@ class AppearancePrefs(context: Context) {
         prefs.edit().putString(KEY_ACCENT, value.key).apply()
     }
 
+    private val _tabletUnlocked = MutableStateFlow(prefs.getBoolean(KEY_TABLET_UNLOCKED, false))
+
+    /** Tablet mode stays hidden (no toggle) until it is unlocked by tapping the Anisu logo in About seven times. */
+    val tabletUnlocked: StateFlow<Boolean> = _tabletUnlocked
+
+    /** Unlocks the Tablet mode toggle in Appearance. It does not switch tablet mode on by itself. */
+    fun unlockTablet() {
+        _tabletUnlocked.value = true
+        prefs.edit().putBoolean(KEY_TABLET_UNLOCKED, true).apply()
+    }
+
+    private val _tabletMode = MutableStateFlow(prefs.getBoolean(KEY_TABLET_MODE, false))
+
+    /** Tablet layout: side rail instead of the bottom bar, wider banner, bigger posters, 15 titles per page. */
+    val tabletMode: StateFlow<Boolean> = _tabletMode
+
+    fun setTabletMode(value: Boolean) {
+        _tabletMode.value = value
+        prefs.edit().putBoolean(KEY_TABLET_MODE, value).apply()
+    }
+
+    private val _tabletRailRight = MutableStateFlow(prefs.getBoolean(KEY_TABLET_RAIL_RIGHT, false))
+
+    /** Tablet mode: the navigation rail sits on the right (true) or the left (false, the default); the layout mirrors with it. */
+    val tabletRailRight: StateFlow<Boolean> = _tabletRailRight
+
+    fun setTabletRailRight(value: Boolean) {
+        _tabletRailRight.value = value
+        prefs.edit().putBoolean(KEY_TABLET_RAIL_RIGHT, value).apply()
+    }
+
     private val _searchGrid = MutableStateFlow(prefs.getBoolean(KEY_SEARCH_GRID, true))
 
     /** Search results as a poster grid (true) or a list (false); remembered across screens and restarts. */
@@ -257,6 +288,9 @@ class AppearancePrefs(context: Context) {
         private const val KEY_SUB_FONT_SEPARATE = "subtitle_font_separate"
         private const val MAX_FONT_BYTES = 25L * 1024 * 1024
         private const val KEY_SEARCH_GRID = "search_grid_layout"
+        private const val KEY_TABLET_UNLOCKED = "tablet_mode_unlocked"
+        private const val KEY_TABLET_MODE = "tablet_mode"
+        private const val KEY_TABLET_RAIL_RIGHT = "tablet_rail_right"
         private const val KEY_SEARCH_SOURCE = "search_source_id"
         private const val NO_SOURCE = Long.MIN_VALUE
         private const val KEY_MY_SPACE_TAB = "my_space_tab"
@@ -285,7 +319,6 @@ enum class BackgroundStyle(val key: String, val label: String) {
     SHAPES("shapes", "Material shapes"),
     SAKURA("sakura", "Cherry blossom"),
     SNOW("snow", "Snowfall"),
-    HALLOWEEN("halloween", "Halloween"),
     BREAD("bread", "Cute bread");
 
     companion object {

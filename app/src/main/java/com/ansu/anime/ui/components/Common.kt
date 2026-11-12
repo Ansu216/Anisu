@@ -37,9 +37,11 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -109,7 +111,7 @@ fun ShelfHeader(title: String, modifier: Modifier = Modifier) {
         text = title,
         style = MaterialTheme.typography.titleMedium,
         color = AnsuColors.TextPrimary,
-        modifier = modifier.padding(start = 20.dp, top = 26.dp, bottom = 12.dp),
+        modifier = modifier.padding(start = tabletDp(20.dp, 32.dp), top = 26.dp, bottom = 12.dp),
     )
 }
 
@@ -159,8 +161,8 @@ fun PagedPosterRow(
     LazyRow(
         state = listState,
         modifier = modifier,
-        contentPadding = PaddingValues(horizontal = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(horizontal = tabletDp(20.dp, 32.dp)),
+        horizontalArrangement = Arrangement.spacedBy(tabletDp(12.dp, 16.dp)),
     ) {
         items(items, key = { it.id }) { anime ->
             AnimeCard(anime = anime, onClick = { onClick(anime) })
@@ -168,7 +170,7 @@ fun PagedPosterRow(
         if (hasMore) {
             item(key = "paged-row-footer") {
                 Box(
-                    modifier = Modifier.width(56.dp).height(195.dp),
+                    modifier = Modifier.width(56.dp).height(tabletDp(195.dp, 240.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (loadFailed) {
@@ -194,7 +196,7 @@ fun PagedPosterRow(
 
 @Composable
 fun AnimeCard(anime: SAnime, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.width(130.dp).clickable(onClick = onClick)) {
+    Column(modifier = modifier.width(tabletDp(130.dp, 160.dp)).clickable(onClick = onClick)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -227,7 +229,7 @@ fun AnimeCard(anime: SAnime, onClick: () -> Unit, modifier: Modifier = Modifier)
 
 /**
  * The small frosted-glass age-rating chip pinned to a poster's top-left corner. Real backdrop
- * blur is not available without extra plumbing (see [FrostedGlassCard]), so the glass is a dark
+ * blur is not available without extra plumbing (see [HeavyGlassCard]), so the glass is a dark
  * tint with a white sheen and a light stroke, which stays legible on both bright and dark art.
  */
 @Composable
@@ -236,7 +238,7 @@ fun AgeRatingChip(rating: String, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .clip(shape)
-            .background(Color.Black.copy(alpha = 0.32f))
+            .background(Color.Black.copy(alpha = 0.55f))
             .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.26f), Color.White.copy(alpha = 0.06f))))
             .border(width = 0.75.dp, color = Color.White.copy(alpha = 0.30f), shape = shape)
             .padding(horizontal = 6.dp, vertical = 2.dp),
@@ -262,7 +264,7 @@ fun PosterGlassLabel(text: String, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .clip(shape)
-            .background(Color.Black.copy(alpha = 0.32f))
+            .background(Color.Black.copy(alpha = 0.55f))
             .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.26f), Color.White.copy(alpha = 0.06f))))
             .border(width = 0.75.dp, color = Color.White.copy(alpha = 0.30f), shape = shape)
             .padding(horizontal = 6.dp, vertical = 4.dp),
@@ -463,7 +465,7 @@ fun ContinueWatchingRow(
 ) {
     LazyRow(
         modifier = modifier,
-        contentPadding = PaddingValues(horizontal = 20.dp),
+        contentPadding = PaddingValues(horizontal = tabletDp(20.dp, 32.dp)),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(entries, key = { it.anilistId }) { entry ->
@@ -497,6 +499,9 @@ fun HeroCarousel(
     onToggleFavourite: (SAnime) -> Unit = {},
     /** AniList ids the user has hearted; a slide's heart is filled when its title is in here. */
     favouriteIds: Set<Int> = emptySet(),
+    /** Tablet mode: AniList ids saved to the Planning list; the save button is filled for these. */
+    savedIds: Set<Int> = emptySet(),
+    onToggleSave: (SAnime) -> Unit = {},
     modifier: Modifier = Modifier,
     /** Resolves the title-logo image URL for an AniList id; null (or no logo) shows the plain text title. */
     logoFor: suspend (Int) -> String? = { null },
@@ -553,7 +558,9 @@ fun HeroCarousel(
     // One fixed height for every slide: the old fillMaxSize inside a scrolling list let each poster's own
     // image size decide the banner height, so it jumped while swiping and while images loaded.
     val screenHeight = LocalConfiguration.current.screenHeightDp
-    val heroHeight = (screenHeight * 0.68f).dp.coerceIn(460.dp, 620.dp)
+    val tablet = LocalTabletMode.current
+    // Tablet mode: a wide, shorter banner (the sketch's layout) instead of the tall phone poster.
+    val heroHeight = if (tablet) (screenHeight * 0.6f).dp.coerceIn(340.dp, 540.dp) else (screenHeight * 0.68f).dp.coerceIn(460.dp, 620.dp)
 
     Column(modifier = modifier.fillMaxWidth()) {
         // Draws from the very top of the window, behind the status bar (no inset padding above it).
@@ -566,7 +573,13 @@ fun HeroCarousel(
                 // 0 when this page is centred, -1/+1 when it is fully off to one side.
                 val offset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).coerceIn(-1f, 1f)
                 val isLiked = anime.anilistId?.let { it in favouriteIds } == true
-                val heroImage = anime.anilistId?.let { posters[it] } ?: anime.posterUrl ?: anime.bannerUrl
+                val isSaved = anime.anilistId?.let { it in savedIds } == true
+                // A wide banner wants the landscape banner picture; a portrait poster would be cropped to a strip.
+                val heroImage = if (tablet) {
+                    anime.bannerUrl ?: anime.anilistId?.let { posters[it] } ?: anime.posterUrl
+                } else {
+                    anime.anilistId?.let { posters[it] } ?: anime.posterUrl ?: anime.bannerUrl
+                }
                 val logoUrl = anime.anilistId?.let { logos[it] }
                 Box(
                     modifier = Modifier.fillMaxSize().posterTransitionOrigin(
@@ -585,6 +598,8 @@ fun HeroCarousel(
                         isLiked = isLiked,
                         onClick = { onClick(anime) },
                         onToggleFavourite = { onToggleFavourite(anime) },
+                        isSaved = isSaved,
+                        onToggleSave = { onToggleSave(anime) },
                     )
                 }
             }
@@ -654,8 +669,12 @@ private fun HeroSlide(
     onClick: () -> Unit,
     onToggleFavourite: () -> Unit,
     imageSize: IntSize? = null,
+    isSaved: Boolean = false,
+    onToggleSave: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val tablet = LocalTabletMode.current
+    val railRight = LocalTabletRailRight.current
     val imageModel: Any? = remember(heroImage, imageSize) {
         if (imageSize == null || heroImage == null) heroImage
         else ImageRequest.Builder(context).data(heroImage).size(imageSize.width, imageSize.height).crossfade(false).build()
@@ -704,6 +723,47 @@ private fun HeroSlide(
                     ),
                 ),
         )
+        if (tablet) {
+            // Wide banner: the picture melts into the page colour along its left edge (towards the rail), which also
+            // keeps the text on that side readable. The bottom edge already fades by the gradient above.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        // Mirrored when the rail is on the right: the fade (and the text) move to the right edge.
+                        if (!railRight) {
+                            Brush.horizontalGradient(
+                                0f to AnsuColors.Background,
+                                0.12f to AnsuColors.Background.copy(alpha = 0.85f),
+                                0.32f to AnsuColors.Background.copy(alpha = 0.4f),
+                                0.55f to Color.Transparent,
+                            )
+                        } else {
+                            Brush.horizontalGradient(
+                                0.45f to Color.Transparent,
+                                0.68f to AnsuColors.Background.copy(alpha = 0.4f),
+                                0.88f to AnsuColors.Background.copy(alpha = 0.85f),
+                                1f to AnsuColors.Background,
+                            )
+                        },
+                    ),
+            )
+            TabletHeroInfo(
+                anime = anime,
+                logoUrl = logoUrl,
+                isLiked = isLiked,
+                isSaved = isSaved,
+                onClick = onClick,
+                onToggleFavourite = onToggleFavourite,
+                onToggleSave = onToggleSave,
+                alignEnd = railRight,
+                modifier = Modifier
+                    .align(if (railRight) Alignment.BottomEnd else Alignment.BottomStart)
+                    .padding(start = 40.dp, end = 40.dp, bottom = 28.dp)
+                    .graphicsLayer { alpha = 1f - abs(offset) * 0.6f },
+            )
+            return@Box
+        }
         // Title, genres and buttons belong to the page, so they slide with it.
         Column(
             modifier = Modifier
@@ -745,7 +805,7 @@ private fun HeroSlide(
                 ) {
                     Text("View Details", color = AnsuColors.OnAccent, fontWeight = FontWeight.Bold)
                 }
-                FrostedGlassCard(modifier = Modifier.size(48.dp), shape = CircleShape, tintAlpha = 0.5f) {
+                HeavyGlassCard(modifier = Modifier.size(48.dp), shape = CircleShape, tintAlpha = 0.5f) {
                     IconButton(onClick = { onToggleFavourite() }, modifier = Modifier.fillMaxSize()) {
                         Icon(
                             imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
@@ -753,6 +813,118 @@ private fun HeroSlide(
                             tint = AnsuColors.TextPrimary,
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Tablet mode's banner text block, bottom left like the sketch: title logo, "year | episodes | rating" line, genre
+ * tags, a short description and the View Details and heart buttons.
+ */
+@Composable
+private fun TabletHeroInfo(
+    anime: SAnime,
+    logoUrl: String?,
+    isLiked: Boolean,
+    isSaved: Boolean,
+    onClick: () -> Unit,
+    onToggleFavourite: () -> Unit,
+    onToggleSave: () -> Unit,
+    alignEnd: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.widthIn(max = 520.dp),
+        horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
+    ) {
+        TitleLogo(
+            title = anime.title,
+            logoUrl = logoUrl,
+            alignment = if (alignEnd) Alignment.CenterEnd else Alignment.CenterStart,
+            textAlign = if (alignEnd) TextAlign.End else TextAlign.Start,
+            fontSize = 34.sp,
+            uppercase = false,
+            maxLogoWidth = 400.dp,
+            maxLogoHeight = 140.dp,
+        )
+        val meta = listOfNotNull(
+            anime.releaseYear?.toString(),
+            anime.episodes?.takeIf { it > 0 }?.let { if (it == 1) "1 episode" else "$it episodes" },
+            anime.rating?.takeIf { it > 0.0 }?.let { "★ " + String.format(java.util.Locale.US, "%.1f", it) },
+            anime.ageRating,
+        )
+        if (meta.isNotEmpty()) {
+            Text(
+                text = meta.joinToString("  |  "),
+                color = AnsuColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = if (alignEnd) TextAlign.End else TextAlign.Start,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+        }
+        anime.genres.take(4).takeIf { it.isNotEmpty() }?.let { genres ->
+            Row(modifier = Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                genres.forEach { genre ->
+                    val chip = RoundedCornerShape(10.dp)
+                    Text(
+                        text = genre,
+                        color = AnsuColors.TextPrimary,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .clip(chip)
+                            .background(Color.Black.copy(alpha = 0.45f))
+                            .border(0.75.dp, Color.White.copy(alpha = 0.25f), chip)
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                }
+            }
+        }
+        anime.description?.takeIf { it.isNotBlank() }?.let { text ->
+            Text(
+                text = text.replace(Regex("<[^>]*>"), " ").replace(Regex("\\s+"), " ").trim(),
+                color = AnsuColors.TextSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = if (alignEnd) TextAlign.End else TextAlign.Start,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(top = 16.dp),
+        ) {
+            Button(
+                onClick = onClick,
+                colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
+                shape = RoundedCornerShape(24.dp),
+                contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
+            ) {
+                Text("View Details", color = AnsuColors.OnAccent, fontWeight = FontWeight.Bold)
+            }
+            HeavyGlassCard(modifier = Modifier.size(48.dp), shape = CircleShape, tintAlpha = 0.5f) {
+                IconButton(onClick = { onToggleFavourite() }, modifier = Modifier.fillMaxSize()) {
+                    Icon(
+                        imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                        contentDescription = if (isLiked) "Unlike" else "Like",
+                        tint = AnsuColors.TextPrimary,
+                    )
+                }
+            }
+            // The third button: save to the Planning list.
+            HeavyGlassCard(modifier = Modifier.size(48.dp), shape = CircleShape, tintAlpha = 0.5f) {
+                IconButton(onClick = { onToggleSave() }, modifier = Modifier.fillMaxSize()) {
+                    Icon(
+                        imageVector = if (isSaved) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                        contentDescription = if (isSaved) "Remove from Planning" else "Save to Planning",
+                        tint = AnsuColors.TextPrimary,
+                    )
                 }
             }
         }

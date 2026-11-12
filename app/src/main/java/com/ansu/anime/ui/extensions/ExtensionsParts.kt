@@ -74,7 +74,7 @@ import com.ansu.anime.extension.ExtensionRepoEntry
 import com.ansu.anime.extension.api.AnimeCatalogueSource
 import com.ansu.anime.extension.aniyomi.AniyomiSourceAdapter
 import com.ansu.anime.ui.components.BackdropState
-import com.ansu.anime.ui.components.FrostedGlassCard
+import com.ansu.anime.ui.components.HeavyGlassCard
 import com.ansu.anime.ui.components.backdropBlurSupported
 import com.ansu.anime.ui.components.frostedBackdrop
 import com.ansu.anime.ui.theme.AnsuColors
@@ -239,23 +239,49 @@ internal fun InstalledSourceCard(
     resultLine: Pair<String, Boolean>?,
     onTest: () -> Unit,
     modifier: Modifier = Modifier,
+    /** What a quick look at the source's website found ("Site online · 120 ms", "Site is down (HTTP 530)"), with whether it is good. */
+    siteLine: Pair<String, Boolean>? = null,
+    /** The step a running test is on right now ("Asking for servers…"); replaces the last result while it runs. */
+    progressLine: String? = null,
 ) {
+    val extraContent: @Composable () -> Unit = {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            siteLine?.let { (text, good) ->
+                Text(
+                    text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (good) AnsuColors.ScoreGreen else AnsuColors.Error,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (progressLine != null) {
+                Text(
+                    progressLine,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AnsuColors.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else {
+                resultLine?.let { (text, ok) ->
+                    Text(
+                        text,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (ok) AnsuColors.ScoreGreen else AnsuColors.Error,
+                        maxLines = if (ok) 2 else 5,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
     ExtensionCard(
         icon = row.icon,
         title = row.title,
         subtitle = installedLine(row),
         modifier = modifier.graphicsLayer { alpha = if (row.enabled) 1f else 0.6f },
-        extra = resultLine?.let { (text, ok) ->
-            {
-                Text(
-                    text,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (ok) AnsuColors.ScoreGreen else AnsuColors.Error,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        },
+        extra = if (resultLine != null || siteLine != null || progressLine != null) extraContent else null,
         trailing = {
             if (row.source != null) OutlineAction("Test", onClick = onTest, loading = testing)
         },
@@ -269,7 +295,7 @@ internal fun InstalledSourceCard(
 /** The frosted card shell shared by "Add extension" and "Update sources". */
 @Composable
 internal fun BottomCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    FrostedGlassCard(
+    HeavyGlassCard(
         modifier = modifier
             .fillMaxWidth()
             // Swallow taps so touching the card never reaches the dimmed backdrop behind it.
@@ -290,6 +316,7 @@ internal fun AddExtensionCardContent(
     failed: Boolean,
     onAdd: () -> Unit,
     repoUrls: List<String>,
+    repoNames: Map<String, String>,
     disabledRepos: Set<String>,
     onRepoEnabled: (String, Boolean) -> Unit,
     onRepoRemove: (String) -> Unit,
@@ -331,14 +358,23 @@ internal fun AddExtensionCardContent(
                     modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        repoUrl,
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = AnsuColors.TextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            com.ansu.anime.extension.repoDisplayName(repoUrl, repoNames[repoUrl]),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = AnsuColors.TextPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            repoUrl,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AnsuColors.TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     Switch(
                         checked = repoUrl !in disabledRepos,
                         onCheckedChange = {
@@ -562,7 +598,7 @@ internal fun ExtensionActionOverlay(
                         scaleY = s
                     },
             ) {
-                FrostedGlassCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), tintAlpha = 0.66f) {
+                HeavyGlassCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), tintAlpha = 0.66f) {
                     Column {
                         entries.forEachIndexed { index, entry ->
                             if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(AnsuColors.StrokeGlass))

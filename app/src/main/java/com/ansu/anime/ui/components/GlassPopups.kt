@@ -39,7 +39,7 @@ import com.ansu.anime.ui.theme.AnsuColors
  * (the same 0.66 tint over the same base colour, a hairline edge), with the screen behind it blurred where the
  * phone can do that. One place, so a popup never ends up as a solid grey slab again.
  */
-val GlassPopupFill: Color = AnsuColors.SurfaceGlassBase.copy(alpha = 0.66f)
+val GlassPopupFill: Color = AnsuColors.SurfaceGlassBase.copy(alpha = 0.80f)
 
 /**
  * Whether the phone is actually allowed to blur between windows right now. Android 12+ only, and phones switch it
@@ -62,8 +62,10 @@ fun rememberCrossWindowBlurEnabled(): Boolean {
 
 /** The popup fill: the translucent glass when the phone can blur behind it, a nearly solid one when it cannot. */
 @Composable
-fun glassPopupFill(): Color =
-    AnsuColors.SurfaceGlassBase.copy(alpha = if (rememberCrossWindowBlurEnabled()) 0.66f else 0.96f)
+fun glassPopupFill(): Color {
+    val windowBlur = rememberCrossWindowBlurEnabled()
+    return AnsuColors.SurfaceGlassBase.copy(alpha = if (windowBlur) 0.80f else 0.96f)
+}
 
 /**
  * Blurs whatever is behind the window this is composed in (a dialog, a sheet, a menu), the way the
@@ -72,7 +74,7 @@ fun glassPopupFill(): Color =
  * which is why the sheets showed the page behind them sharp. Needs Android 12 and a phone that allows it.
  */
 @Composable
-fun WindowBlurBehind(radius: Dp = 24.dp) {
+fun WindowBlurBehind(radius: Dp = 34.dp) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
     val view = LocalView.current
     val radiusPx = with(LocalDensity.current) { radius.roundToPx() }
@@ -178,7 +180,7 @@ fun GlassDropdownMenu(
         shadowElevation = 12.dp,
         border = BorderStroke(1.dp, AnsuColors.StrokeGlass),
     ) {
-        WindowBlurBehind(radius = 20.dp)
+        WindowBlurBehind(radius = 28.dp)
         content()
     }
 }

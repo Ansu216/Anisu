@@ -86,28 +86,28 @@ jobs:
             *) echo "::error::Unknown variant '$VARIANT'"; exit 1 ;;
           esac
 
-          # version.txt is the single source of truth (line 1 = version, line 2 = version code,
-          # line 3 = channel), exactly as app/build.gradle.kts reads it: "#" lines are comments and
-          # are dropped. The channel decides the name - a nightly is <version>-nightly
-          # (e.g. 0.3.0-nightly), anything else is the plain <version>. The name carries no timestamp
-          # on purpose: every nightly shares the name and the version code, so what tells one build
-          # from another is the commit it was made from (BuildConfig.BUILD_COMMIT), and the in-app
-          # updater compares that.
+          # version.txt is the single source of truth for the version (line 1) and the version code
+          # (line 2), exactly as app/build.gradle.kts reads it: "#" lines are comments and are
+          # dropped. Line 3 is NOT read here, deliberately: this is the nightly workflow and it
+          # publishes to the apk-nightly branch, so everything it builds is a nightly whatever that
+          # line says - the name is always <version>-nightly and the APK is compiled with
+          # -Pchannel=nightly, so BuildConfig.RELEASE_CHANNEL is "nightly" too. Only
+          # release-apk.yml reads the channel. The name carries no timestamp on purpose: every
+          # nightly shares the name and the version code, so what tells one build from another is
+          # the commit it was made from (BuildConfig.BUILD_COMMIT), and the in-app updater compares
+          # that.
           VALUES="$(grep -v '^[[:space:]]*#' version.txt | sed -e 's/[[:space:]]//g' -e '/^$/d')"
           VERSION="$(printf '%s\n' "$VALUES" | sed -n '1p')"
           VERSION_CODE="$(printf '%s\n' "$VALUES" | sed -n '2p')"
-          CHANNEL="$(printf '%s\n' "$VALUES" | sed -n '3p' | tr '[:upper:]' '[:lower:]')"
-          if [ -z "$VERSION" ] || [ -z "$VERSION_CODE" ] || [ -z "$CHANNEL" ]; then
-            echo "::error::version.txt is missing one of its three value lines (version, version code, channel) - it is the single source of them."
+          if [ -z "$VERSION" ] || [ -z "$VERSION_CODE" ]; then
+            echo "::error::version.txt is missing its version (line 1) or its version code (line 2) - it is the single source of them."
             exit 1
           fi
           case "$VERSION_CODE" in
             ''|*[!0-9]*) echo "::error::version.txt line 2 (version code) is not an integer: '$VERSION_CODE'"; exit 1 ;;
           esac
-          case "$CHANNEL" in
-            nightly) VERSION_NAME="${VERSION}-nightly" ;;
-            *)       VERSION_NAME="$VERSION" ;;
-          esac
+          CHANNEL="nightly"
+          VERSION_NAME="${VERSION}-nightly"
 
           echo "variant=$VARIANT"           >> "$GITHUB_OUTPUT"
           echo "variants=$VARIANTS"         >> "$GITHUB_OUTPUT"
@@ -183,6 +183,7 @@ jobs:
           ./gradlew --no-daemon --stacktrace "$TASK" \
             -PversionCode="${{ needs.plan.outputs.version_code }}" \
             -PversionName="${{ needs.plan.outputs.version_name }}" \
+            -Pchannel=nightly \
             -PbuildCommit="${{ github.sha }}"
 
       - name: Verify the APK is signed (an unsigned build is never published)
