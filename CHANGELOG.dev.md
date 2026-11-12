@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- [APK] **A docs-only push no longer starts a nightly build.**
+  `apk-nightly.yml`'s `push` trigger now carries `paths-ignore` for `docs/**` and `**.md`, so a commit that only edits documentation costs no runner and produces no new nightly. Everything that reaches the APK still triggers it, including a commit that mixes a doc edit with code, a Gradle file, a workflow, `version.txt` or an asset: `paths-ignore` skips a push only when every changed file matches it. The hourly `cron` and the manual dispatch are unaffected.
+
 ## [1.0.4] - 2026-11-13
 
 ### Added

@@ -27,6 +27,12 @@ on:
   push:
     branches:
       - main
+    # A docs-only push (Markdown, `docs/`) changes nothing that goes into the APK, so it does not
+    # start a build. Any commit that also touches code, a Gradle file, a workflow, `version.txt` or
+    # an asset still does: the filter skips a push only when every changed file matches it.
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
   workflow_dispatch:
     inputs:
       variant:

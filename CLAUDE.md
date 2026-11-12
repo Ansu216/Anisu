@@ -527,7 +527,7 @@ is worse for every user, so add the section **before** pushing the tag.
 
 | Workflow | Trigger | Output |
 |---|---|---|
-| `.github/workflows/apk-nightly.yml` | hourly `cron`, **every push to `main`**, manual | force-publishes to `apk-nightly`: `Ansu-nightly.apk`, `Ansu-nightly-debug.apk`, `nightly.json`, generated `README.md` |
+| `.github/workflows/apk-nightly.yml` | hourly `cron`, **every push to `main` that is not docs-only** (`paths-ignore`: `docs/**`, `**.md`), manual | force-publishes to `apk-nightly`: `Ansu-nightly.apk`, `Ansu-nightly-debug.apk`, `nightly.json`, generated `README.md` |
 | `.github/workflows/release-apk.yml` | tag `v*`, manual (with no tag typed in the manual run uses `v` + `version.txt` line 1) | GitHub Release with `Ansu-<version>.apk` and `-debug.apk`, notes extracted from `CHANGELOG.md` |
 | `.github/workflows/extract-fix-zip.yml` | push to `main` that **changed a `fix.*` file** *and* whose **commit title** starts with `Maygodblastyou`, `fix` or `n`; manual (always starts) | extracts the `fix.*` archive **that push brought in** (`.zip`, `.7z`, `.rar`, `.tar`, `.tar.gz`, …) into the working tree (its own relative paths), commits it to `main` as `extract fix.zip and updated the app`, then dispatches the nightly APK build. A push applies only the archives it changed; a manual run applies everything on `main` and always dispatches a build. A push that carried an archive but has no matching title ends in a `::warning::` annotation and a run summary (`warn` job) instead of silently doing nothing. No account is checked |
 
