@@ -223,7 +223,7 @@ means the manifest and the package name have drifted — that is an instant
 - [ ] `aapt dump badging` still reports `com.ansu.anime` / `Anisu`.
 - [ ] No new `com.kernel.anime` / `Anisu` / `StreamHub` name anywhere (§5).
 - [ ] No duplicate top-level symbols were introduced (§4.3.2).
-- [ ] `CHANGELOG.md` **and** `CHANGELOG.dev.md` `## [Unreleased]` updated (§7).
+- [ ] `CHANGELOG.dev.md` `## [Unreleased]` updated **and** `python scripts/split_changelog.py` run, so `CHANGELOG.md` was regenerated rather than hand-edited (§7).
 - [ ] A version change touched `version.txt` **only** (plus that changelog entry) —
       no copy of the version or the version code is left behind in another file
       (§7.4).
@@ -344,24 +344,31 @@ that could break existing behaviour, and ask when in doubt.
 ## 7. Versioning and the changelog — MANDATORY
 
 **Every change that alters behaviour, the UI, the build, the CI or the docs is
-added to `CHANGELOG.md` and `CHANGELOG.dev.md` in the same commit.** A change
-with no entry in both is an incomplete change.
+written into `CHANGELOG.dev.md`, and the short `CHANGELOG.md` is regenerated from
+it, in the same commit.** A change with no dev entry is an incomplete change.
 
 ### 7.1 The two files
 
-The changelog method is the one `PiBOH/vivi-music-de` uses: **two files at the
-repository root, both written in the same change.**
+The method is the one `PiBOH/vivi-music-de` uses, and it is a generation, not two
+hand-written copies:
 
-| File | Reader | What a bullet says |
+| File | Reader | What it carries |
 |---|---|---|
-| `CHANGELOG.md` | the person installing the APK | what changed for them and why — no file paths, class names or Gradle tasks |
-| `CHANGELOG.dev.md` | the next developer or agent | the same change technically: the files and functions touched, the dependency coordinates, the constraint that was kept |
+| `CHANGELOG.dev.md` | the next developer or agent | **the source.** Every change with the whole story: the files, the functions, the figures measured, the check that proves it. No length limit. |
+| `CHANGELOG.md` | the person installing the APK | **generated** from the dev file by `scripts/split_changelog.py`: one line per change, its bold head and nothing else. |
 
-Both follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
-and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-- Both files carry the same headings, the same categories in the same order, and
-  the same version sections: a version that exists in one exists in the other.
+- **Write the entry once, in `CHANGELOG.dev.md`, then run
+  `python scripts/split_changelog.py`.** The script keeps the headings, blank
+  lines and notes, reduces every entry to its head, drops the continuation
+  lines, and leaves the sections that only exist in `CHANGELOG.md` (releases cut
+  before the file was generated) untouched and in order.
+- **Never edit `CHANGELOG.md` by hand.** A change made there is gone at the next
+  run — which is exactly what keeps the two from drifting.
+- **Every bullet is tagged with the surface it changes and none is left
+  untagged:** `- [APK] …`. Anisu has one surface, so every entry starts with
+  `[APK]`.
+- Both files follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+  and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - New work goes under `## [Unreleased]`, in the right category, in the right
   order:
@@ -369,11 +376,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `### Security`.
 - If a category does not exist under `## [Unreleased]`, create it — do not
   invent a new one.
-- At release time the entries are moved, in **both** files, under a new heading,
+- At release time the entries are moved, in the **dev** file, under a new heading,
   `## [<version>] - <YYYY-MM-DD>` (inserted directly under `## [Unreleased]`),
-  and `## [Unreleased]` is left empty for the next cycle. **`<version>` is the
-  tag without its `v`**: tag `v1.2.3` → `## [1.2.3]`.
+  `## [Unreleased]` is left empty for the next cycle, and the script is run again.
+  **`<version>` is the tag without its `v`**: tag `v1.2.3` → `## [1.2.3]`.
 - **Never rewrite a published section.** A mistake is corrected in a new release.
+
 - Comparing the file's two ends is the fastest way to see what a release
   contains: `Unreleased` (empty in a clean tree) and the newest `<version>`.
 
@@ -399,14 +407,23 @@ Given `MAJOR.MINOR.PATCH` (`1.4.2`), and an optional pre-release suffix
 
 ### 7.3 How to write an entry
 
-Write for the person installing the APK, not for the git log. One bullet per
-change, in this shape:
+An entry has two halves, and they are written once, in `CHANGELOG.dev.md`:
 
 ```markdown
-- **Bold, one-line statement of the change.** What was wrong or missing, and why
-  the change fixes it — the mechanism, not a restatement of the code. A
-  `**Constraint:**` sentence records a limit that was deliberately kept.
+- [APK] **One-line head, what changed for the person using the app.**
+  The whole account, indented under the head: what was wrong, what it does now,
+  the files and functions touched, the figures measured, the check that proves
+  it, and a `**Constraint:**` sentence for any limit that was deliberately kept.
 ```
+
+- **The head is the only line `CHANGELOG.md` and the release page show**, so it
+  says the change and nothing else, in about ten to twenty words.
+- **The body is the six-months-later explanation** and may be as long as the
+  change needs: the file or function, the dependency and its version, the Gradle
+  task that failed, the command that proved it.
+- One bullet per change. Two unrelated changes are two bullets, never one
+  paragraph. A head that needs a second sentence to be understood is two
+  entries.
 
 - **Say what and why**, and include the detail someone would ask for next: which
   file/flow is involved, what the old behaviour was, what the new behaviour is.
@@ -654,6 +671,7 @@ folder, described below:
 - `app/` — the whole `:app` module **except its `build/` sub-folder** (never ship
   generated output);
 - `gradle/` (the wrapper and `libs.versions.toml`);
+- `scripts/` (the changelog generator and any other tooling);
 - `keystore/` (the committed signing key and its README);
 - `.gitignore`;
 - `AGENTS.md`;

@@ -131,7 +131,13 @@ class UpdateChecker(private val client: OkHttpClient) {
         installedVersionCode: Int,
         installedCommit: String,
     ): UpdateCheckResult {
-        val manifest = json.decodeFromString<NightlyManifest>(get(NIGHTLY_JSON_URL))
+        // raw.githubusercontent.com is served through a CDN that keeps a copy of nightly.json for
+        // minutes, so a nightly published a moment ago came back as the manifest from before it and
+        // the app answered "up to date" until that copy expired, however often it was rechecked. A
+        // unique query makes every check a URL the CDN has not seen, so it is fetched from the origin.
+        val manifest = json.decodeFromString<NightlyManifest>(
+            get("$NIGHTLY_JSON_URL?refresh=${System.currentTimeMillis()}"),
+        )
         if (manifest.versionCode <= 0) return UpdateCheckResult.Failed("The nightly manifest is empty")
         // A nightly is identified by the commit it was made from. Every nightly carries the same
         // version *name* (`0.3.0-nightly`) and, by design, the same version *code* (it is the shared
@@ -185,6 +191,8 @@ class UpdateChecker(private val client: OkHttpClient) {
             // The GitHub API answers 403 without a User-Agent, so always send one.
             .header("User-Agent", USER_AGENT)
             .header("Accept", "application/vnd.github+json")
+            // Nothing the updater reads may be served from a stored copy; a check is a fresh look.
+            .header("Cache-Control", "no-cache")
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw HttpStatusException(response.code)
