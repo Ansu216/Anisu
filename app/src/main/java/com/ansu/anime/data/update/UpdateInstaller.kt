@@ -115,6 +115,10 @@ class UpdateInstaller(
         appContext.startActivity(intent)
     }
 
+    /** The complete APK already cached for [update], or null when it has not been downloaded yet. */
+    fun cachedApk(update: AvailableUpdate): File? =
+        File(updatesDir, "ansu-update-${update.versionName}.apk").takeIf { it.exists() }
+
     /** How many complete update APKs the cache is holding right now. */
     fun cachedApkCount(): Int = runCatching {
         updatesDir.listFiles()?.count { it.isFile && it.name.endsWith(".apk") } ?: 0

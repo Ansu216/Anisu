@@ -90,7 +90,12 @@ class UpdateManager(
             is UpdateCheckResult.Failed ->
                 diagnostics?.log(LogCategory.UPDATE, "Update check failed: ${result.message}")
         }
-        _state.update { it.copy(isChecking = false, result = result, error = null) }
+        // A cached APK belongs to the build it was downloaded for, so the Install button only comes
+        // back for the same build: a newer one has to be downloaded first.
+        val cachedApk = (result as? UpdateCheckResult.Available)?.let { installer.cachedApk(it.update) }
+        _state.update {
+            it.copy(isChecking = false, result = result, error = null, downloadedApk = cachedApk)
+        }
         return result
     }
 
@@ -112,6 +117,7 @@ class UpdateManager(
     /** Empties that cache and reports whether it worked, for the Updates screen's storage row. */
     fun clearCachedApks(): Boolean {
         val cleared = installer.clearCachedApks()
+        if (cleared) _state.update { it.copy(downloadedApk = null) }
         diagnostics?.log(LogCategory.UPDATE, "Cleared the downloaded update APKs: $cleared")
         return cleared
     }
@@ -131,28 +137,45 @@ class UpdateManager(
         }
     }
 
-    fun downloadAndInstall() {
+    /**
+     * Downloads the build on offer and stops there. The install is a separate, explicit action
+     * ([installDownloaded]), so a download that took a while on a bad connection is not immediately
+     * thrown into the installer, and a file already on disk can be installed without downloading it again.
+     */
+    fun download() {
         val update = (_state.value.result as? UpdateCheckResult.Available)?.update ?: return
         scope.launch {
             diagnostics?.log(LogCategory.UPDATE, "Downloading ${update.versionName} from ${update.apkUrl}")
-            _state.update { it.copy(isDownloading = true, downloadProgress = 0f, error = null) }
+            _state.update {
+                it.copy(isDownloading = true, downloadProgress = 0f, downloadedApk = null, error = null)
+            }
             val downloaded = runCatching {
                 installer.download(update) { progress ->
                     _state.update { it.copy(downloadProgress = progress) }
                 }
             }
             val apkFile = downloaded.getOrNull()
-            if (apkFile != null) {
-                // About's nightly counter. A nightly has no GitHub download count to read, so the app
-                // counts its own downloads; it runs beside the install, never in front of it.
-                if (update.channel == UpdateChannel.NIGHTLY) {
-                    scope.launch { nightlyDownloads?.recordDownload() }
-                }
-                installer.install(apkFile)
-            } else {
-                diagnostics?.log(LogCategory.UPDATE, "Download failed: ${downloaded.exceptionOrNull()?.message}")
+            val failure = downloaded.exceptionOrNull()
+            if (failure != null) {
+                diagnostics?.log(LogCategory.UPDATE, "Download failed: ${failure.message}")
             }
-            _state.update { it.copy(isDownloading = false, error = downloaded.exceptionOrNull()?.message) }
+            _state.update { it.copy(isDownloading = false, downloadedApk = apkFile, error = failure?.message) }
         }
+    }
+
+    /** Hands the APK that [download] already wrote to the system installer. */
+    fun installDownloaded() {
+        val apkFile = _state.value.downloadedApk ?: return
+        val update = (_state.value.result as? UpdateCheckResult.Available)?.update
+        // About's nightly counter. A nightly has no GitHub download count to read, so the app counts
+        // its own downloads; it runs beside the install, never in front of it.
+        if (update?.channel == UpdateChannel.NIGHTLY) {
+            scope.launch { nightlyDownloads?.recordDownload() }
+        }
+        installer.install(apkFile)
+        // The system installer owns the file from here; asking for it again would install the build
+        // that is being replaced. A cached file is offered again only if the same build is still the
+        // one on offer at the next check.
+        _state.update { it.copy(downloadedApk = null) }
     }
 }

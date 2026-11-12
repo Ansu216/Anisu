@@ -12,7 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- [APK] **The update has a screen of its own, and its download is separate from its install.**
+
 ### Changed
+- [APK] **Updates is a page of settings rows again, with the nightly channel as a plain switch.**
 - [APK] **A docs-only push no longer starts a nightly build.**
 
 ## [1.0.4] - 2026-11-13

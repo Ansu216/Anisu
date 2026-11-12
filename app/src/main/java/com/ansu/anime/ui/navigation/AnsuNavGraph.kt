@@ -34,6 +34,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.ui.about.AboutScreen
+import com.ansu.anime.ui.about.UpdateScreen
 import com.ansu.anime.ui.about.UpdatesScreen
 import com.ansu.anime.ui.appearance.AppearanceScreen
 import com.ansu.anime.ui.components.AppBottomBar
@@ -75,6 +76,7 @@ object Dest {
     const val ABOUT = "about"
     const val LICENSES = "licenses"
     const val UPDATES = "updates"
+    const val UPDATE = "update"
     const val CONTRIBUTORS = "contributors"
     const val CHANGELOG = "changelog"
     const val LICENSE = "license"
@@ -346,6 +348,9 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         }
         composable(Dest.UPDATES) {
             TabletCentered(720.dp) { UpdatesScreen(container = container, navController = navController) }
+        }
+        composable(Dest.UPDATE) {
+            TabletCentered(720.dp) { UpdateScreen(container = container, navController = navController) }
         }
         composable(Dest.CONTRIBUTORS) {
             TabletCentered(720.dp) { ContributorsScreen(container = container, navController = navController) }

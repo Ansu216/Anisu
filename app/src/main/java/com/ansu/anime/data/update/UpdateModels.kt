@@ -41,6 +41,11 @@ data class UpdateState(
     val result: UpdateCheckResult? = null,
     val isDownloading: Boolean = false,
     val downloadProgress: Float = 0f,
+    /**
+     * The complete APK already on disk for [result], waiting for the install step — downloading and
+     * installing are two actions now, so this is what the second one acts on. Null until it exists.
+     */
+    val downloadedApk: java.io.File? = null,
     val error: String? = null,
 )
 

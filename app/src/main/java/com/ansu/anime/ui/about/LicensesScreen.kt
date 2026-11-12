@@ -211,7 +211,9 @@ fun LicensesScreen(container: AppContainer, navController: NavHostController) {
             softwareCredits.forEach { CreditCard(it, context) }
 
             Text(
-                text = "Anisu is an independent, free project and is not affiliated with, endorsed by or sponsored by any of the services above. " +
+                text = "Anisu aggregates metadata from the public AniList API and plays media through third-party sources and extensions. " +
+                    "It is not affiliated with, endorsed by or sponsored by AniList or by any provider you connect. " +
+                    "Anisu is an independent, free project and is not affiliated with, endorsed by or sponsored by any of the services above. " +
                     "Names, logos and trademarks belong to their respective owners and are used here only to give credit. " +
                     "Anisu does not host or distribute any video and includes no sources; content comes from third-party extensions you choose to add, " +
                     "and you are responsible for following the laws where you live.",
