@@ -102,7 +102,9 @@ def main():
 
     parts = [HEADER.rstrip("\n"), ""]
     for heading, body in generated + kept:
-        parts += [heading, "", body.strip("\n"), ""]
+        parts += [heading, ""]
+        if body.strip():
+            parts += [body.strip("\n"), ""]
     SHORT.write_text("\n".join(parts).rstrip("\n") + "\n", encoding="utf-8", newline="\n")
     print(f"CHANGELOG.md written from {len(generated)} generated and {len(kept)} kept sections")
 
