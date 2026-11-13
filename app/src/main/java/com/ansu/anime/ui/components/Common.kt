@@ -675,6 +675,13 @@ private fun HeroSlide(
     val context = LocalContext.current
     val tablet = LocalTabletMode.current
     val railRight = LocalTabletRailRight.current
+    // 0 = banner text and fade on the left, 1 = on the right. It glides between the two, starting when the rail
+    // changes sides, so the banner slides across with the rail instead of jumping.
+    val mirror by animateFloatAsState(
+        targetValue = if (railRight) 1f else 0f,
+        animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing),
+        label = "heroMirror",
+    )
     val imageModel: Any? = remember(heroImage, imageSize) {
         if (imageSize == null || heroImage == null) heroImage
         else ImageRequest.Builder(context).data(heroImage).size(imageSize.width, imageSize.height).crossfade(false).build()
@@ -726,26 +733,31 @@ private fun HeroSlide(
         if (tablet) {
             // Wide banner: the picture melts into the page colour along its left edge (towards the rail), which also
             // keeps the text on that side readable. The bottom edge already fades by the gradient above.
+            // Both fades are always there; one fades out as the other fades in while the rail changes sides.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .graphicsLayer { alpha = 1f - mirror }
                     .background(
-                        // Mirrored when the rail is on the right: the fade (and the text) move to the right edge.
-                        if (!railRight) {
-                            Brush.horizontalGradient(
-                                0f to AnsuColors.Background,
-                                0.12f to AnsuColors.Background.copy(alpha = 0.85f),
-                                0.32f to AnsuColors.Background.copy(alpha = 0.4f),
-                                0.55f to Color.Transparent,
-                            )
-                        } else {
-                            Brush.horizontalGradient(
-                                0.45f to Color.Transparent,
-                                0.68f to AnsuColors.Background.copy(alpha = 0.4f),
-                                0.88f to AnsuColors.Background.copy(alpha = 0.85f),
-                                1f to AnsuColors.Background,
-                            )
-                        },
+                        Brush.horizontalGradient(
+                            0f to AnsuColors.Background,
+                            0.12f to AnsuColors.Background.copy(alpha = 0.85f),
+                            0.32f to AnsuColors.Background.copy(alpha = 0.4f),
+                            0.55f to Color.Transparent,
+                        ),
+                    ),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = mirror }
+                    .background(
+                        Brush.horizontalGradient(
+                            0.45f to Color.Transparent,
+                            0.68f to AnsuColors.Background.copy(alpha = 0.4f),
+                            0.88f to AnsuColors.Background.copy(alpha = 0.85f),
+                            1f to AnsuColors.Background,
+                        ),
                     ),
             )
             TabletHeroInfo(
@@ -756,11 +768,13 @@ private fun HeroSlide(
                 onClick = onClick,
                 onToggleFavourite = onToggleFavourite,
                 onToggleSave = onToggleSave,
-                alignEnd = railRight,
+                alignEnd = mirror > 0.5f,
                 modifier = Modifier
-                    .align(if (railRight) Alignment.BottomEnd else Alignment.BottomStart)
+                    // Glides from the left edge to the right one (or back) with the mirror value.
+                    .align(androidx.compose.ui.BiasAlignment(horizontalBias = -1f + 2f * mirror, verticalBias = 1f))
                     .padding(start = 40.dp, end = 40.dp, bottom = 28.dp)
-                    .graphicsLayer { alpha = 1f - abs(offset) * 0.6f },
+                    // Dims at the middle of the glide, where the text flips to the other alignment, so that flip is not seen.
+                    .graphicsLayer { alpha = (1f - abs(offset) * 0.6f) * (0.3f + 0.7f * abs(1f - 2f * mirror)) },
             )
             return@Box
         }

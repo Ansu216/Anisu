@@ -54,7 +54,9 @@ fun FrostedGlassCard(
                 Brush.verticalGradient(
                     listOf(
                         AnsuColors.SurfaceGlassBase.copy(alpha = tint),
-                        AnsuColors.SurfaceGlassBase.copy(alpha = (tint * 0.82f).coerceIn(0f, 1f)),
+                        AnsuColors.SurfaceGlassBase.copy(
+                            alpha = if (tint >= 0.999f) 1f else (tint * 0.82f).coerceIn(0f, 1f),
+                        ),
                     ),
                 ),
             )
@@ -92,7 +94,7 @@ fun BottomScrim(modifier: Modifier = Modifier, midAlpha: Float = 0.35f, midStop:
 }
 
 /** The least opaque a [HeavyGlassCard] gets, so cards match the weight of the navigation bar. */
-const val GLASS_MIN_TINT = 0.62f
+const val GLASS_MIN_TINT = 1f
 
 /**
  * A [FrostedGlassCard] for content cards and buttons: never lighter than [GLASS_MIN_TINT], because they sit on sharp

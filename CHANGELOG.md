@@ -12,24 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- [APK] **The update has a screen of its own, and its download is separate from its install.**
-
-### Changed
-- [APK] **Updates is a page of settings rows again, with the nightly channel as a plain switch.**
-- [APK] **A docs-only push no longer starts a nightly build.**
-
-## [1.0.4] - 2026-11-13
+## [1.1.0] - 2026-11-13
 
 ### Added
 - [APK] **Live status while sources load and test.**
 - [APK] **Subtitle translation.**
 - [APK] **Blur when a poster opens and closes, and one switch for all the frosted glass.**
+- [APK] **The update has a screen of its own, and its download is separate from its install.**
 
 ### Changed
 - [APK] **The nightly APK is always a nightly, whatever `version.txt` says.**
 - [APK] **Smaller APK.**
 - [APK] **Casting now looks like the sketch.**
+- [APK] **Updates is a page of settings rows again, with the nightly channel as a plain switch.**
+- [APK] **A docs-only push no longer starts a nightly build.**
+- [APK] **About is the identity page from the preview: hero, developer, contributors, support, links and the download counters.**
+- [APK] **Content cards are opaque, so the animated background no longer shows through them, and Updates shows one title instead of two.**
 
 ### Removed
 - [APK] **Preload Last Episode is gone.**

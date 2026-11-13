@@ -106,7 +106,7 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Updates") },
+                title = {},
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
