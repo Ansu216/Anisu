@@ -232,6 +232,21 @@ means the manifest and the package name have drifted — that is an instant
 - [ ] `git status` contains no `local.properties`, `build/`, `.gradle/` or
       `.kotlin/`.
 
+### 4.6 Scratch files, logs and temporary output
+
+`.ignore/` is the scratch folder of this repository. Every agent writes its build logs, test
+logs, ad-hoc screenshots and any other temporary file there, never at the repository root:
+
+```bash
+./gradlew assembleDebug assembleRelease --console=plain > .ignore/build.log 2>&1
+```
+
+`.ignore/` is gitignored, so nothing in it is committed, pushed or packed into `fix.zip`. It is
+also the first place to look when a previous run failed, because the full output survives there
+instead of being lost with the terminal. The one exception is `screenshots/`: the headless
+`ScreenshotTest` writes the visual proofs it produces there on purpose, so they can be inspected
+next to the code they show.
+
 ## 5. Code conventions
 
 - Match the surrounding style: same naming, same import ordering, same

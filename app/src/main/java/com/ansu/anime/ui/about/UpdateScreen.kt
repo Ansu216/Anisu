@@ -10,6 +10,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,6 +37,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,12 +50,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.ansu.anime.BuildConfig
+import com.ansu.anime.R
 import com.ansu.anime.core.diagnostics.LogCategory
 import com.ansu.anime.data.update.UpdateChannel
 import com.ansu.anime.data.update.UpdateCheckResult
@@ -97,6 +103,7 @@ fun UpdateScreen(container: AppContainer, navController: NavHostController) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Check again")
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         },
     ) { padding ->
@@ -113,7 +120,19 @@ fun UpdateScreen(container: AppContainer, navController: NavHostController) {
                 .padding(bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            UpdaterBlobs(active = update != null, modifier = Modifier.padding(top = 18.dp))
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                UpdaterBlobs(active = update != null, modifier = Modifier)
+                // The app's own mark on the turning hexagons, the way vivi puts the icon at the top of its updater.
+                Image(
+                    painter = painterResource(R.drawable.splash_logo_a),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.size(72.dp),
+                )
+            }
 
             Text(
                 text = update?.versionName ?: "Anisu ${BuildConfig.VERSION_NAME}",
@@ -248,7 +267,7 @@ fun UpdateScreen(container: AppContainer, navController: NavHostController) {
                     ) {
                         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
-                                text = "What is in this build",
+                                text = "What's new?",
                                 style = MaterialTheme.typography.titleSmall,
                                 color = AnsuColors.TextPrimary,
                                 fontWeight = FontWeight.Bold,
@@ -296,7 +315,7 @@ fun UpdateScreen(container: AppContainer, navController: NavHostController) {
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = AnsuColors.TextPrimary),
                 modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(50.dp),
             ) {
-                Text("Check again", fontWeight = FontWeight.SemiBold)
+                Text("Check for update", fontWeight = FontWeight.SemiBold)
             }
 
             Text(

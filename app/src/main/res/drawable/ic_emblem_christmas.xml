@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="36dp"
+    android:height="24dp"
+    android:viewportWidth="36"
+    android:viewportHeight="24">
+    <!-- The hat body: a soft cone that bends to the right and overhangs the brim. -->
+    <path
+        android:fillColor="#C62828"
+        android:pathData="M7,16.8 C9.2,8.2 18.6,2.4 28.4,4.2 C30.8,4.6 32,7 30.9,9.2 C27.9,15 26.9,16.2 26.9,16.8 Z" />
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M7,16.8 C9.2,8.2 18.6,2.4 28.4,4.2 C29.6,4.4 30.4,5.1 30.8,6 C26.2,5.6 17.4,10.4 14.6,16.8 Z" />
+    <!-- The white fur trim, wider than the hat so it reads as a hat on a head. -->
+    <path
+        android:fillColor="#F5F5F5"
+        android:pathData="M4.4,16.2 H31.6 A3.4,3.4 0 0 1 31.6,23 H4.4 A3.4,3.4 0 0 1 4.4,16.2 Z" />
+    <path
+        android:fillColor="#DCDCDC"
+        android:pathData="M4.4,20.4 H31.6 V21.6 A1.4,1.4 0 0 1 30.2,23 H5.8 A1.4,1.4 0 0 1 4.4,21.6 Z" />
+    <!-- The pompom at the tip. -->
+    <path
+        android:fillColor="#F5F5F5"
+        android:pathData="M29.8,1.2 A3.6,3.6 0 1 1 29.8,8.4 A3.6,3.6 0 1 1 29.8,1.2 Z" />
+</vector>

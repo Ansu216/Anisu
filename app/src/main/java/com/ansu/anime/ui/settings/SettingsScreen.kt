@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Extension
@@ -27,8 +28,6 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -50,7 +49,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.ansu.anime.di.AppContainer
-import com.ansu.anime.ui.components.GlassToggleRow
 import com.ansu.anime.ui.components.HeavyGlassCard
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
@@ -65,9 +63,7 @@ import com.ansu.anime.ui.theme.AnsuColors
 fun SettingsScreen(container: AppContainer, navController: NavHostController) {
     val viewer by container.aniListRepository.viewer.collectAsStateWithLifecycle()
     val isLoggedIn by container.aniListRepository.isLoggedIn.collectAsStateWithLifecycle()
-    val notificationsEnabled by container.notificationPrefs.enabled.collectAsStateWithLifecycle()
-    val notifyWatching by container.notificationPrefs.newEpisodes.collectAsStateWithLifecycle()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val developerUnlocked by container.appearancePrefs.developerUnlocked.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -106,32 +102,6 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                     subtitle = "Titles, accent and navigation bar",
                     showDivider = false,
                     onClick = { navController.navigate(Dest.APPEARANCE) },
-                )
-            }
-
-            SettingsGroup(title = "Notifications") {
-                GlassToggleRow(
-                    icon = Icons.Filled.Notifications,
-                    title = "Release Notifications",
-                    description = "New releases and episodes of shows you follow",
-                    checked = notificationsEnabled,
-                    onCheckedChange = { on ->
-                        container.notificationPrefs.setEnabled(on)
-                        if (on) {
-                            com.ansu.anime.data.notify.ReleaseCheckWorker.schedule(context)
-                        } else {
-                            com.ansu.anime.data.notify.ReleaseCheckWorker.cancel(context)
-                        }
-                    },
-                )
-                GlassToggleRow(
-                    icon = Icons.Filled.NotificationsActive,
-                    title = "Watching List Alerts",
-                    description = "New episodes of your whole Watching list",
-                    checked = notifyWatching && notificationsEnabled,
-                    onCheckedChange = { container.notificationPrefs.setNewEpisodes(it) },
-                    enabled = notificationsEnabled,
-                    showDivider = false,
                 )
             }
 
@@ -191,6 +161,19 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
                     showDivider = false,
                     onClick = { navController.navigate(Dest.ABOUT) },
                 )
+            }
+
+            // Hidden category: it only exists once the seven taps in Updates have unlocked it.
+            if (developerUnlocked) {
+                SettingsGroup(title = "Developer") {
+                    SettingsRow(
+                        icon = Icons.Filled.Code,
+                        title = "Developer options",
+                        subtitle = "Seasonal themes and hidden test switches",
+                        showDivider = false,
+                        onClick = { navController.navigate(Dest.DEVELOPER_OPTIONS) },
+                    )
+                }
             }
         }
     }

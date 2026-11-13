@@ -12,15 +12,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- [APK] **Commits now lists the repository's real history, not just the build's SHA.**
+
+### Changed
+
+- [APK] **Updates is called Updates, sits in the app bar, and no longer shows the package name.**
+- [APK] **The download counters are back under The project, and Developer options unlock from App version.**
+- [APK] **About and Playback put their titles in the app bar too.**
+- [APK] **The seasonal logo wears vector art instead of emoji: a Santa hat, a witch hat and bunny ears.**
+- [APK] **The update subscreen now carries the app's mark, like vivi's updater.**
+- [APK] **Notification settings all live in Updates, and Developer options have a category of their own with an off switch.**
+- [APK] **Build logs and scratch files live in `.ignore/`.**
+
 ## [1.1.0] - 2026-11-13
 
 ### Added
+
+- [APK] **Hidden seasonal themes: Christmas, Halloween and Easter.**
+- [APK] **The update has a screen of its own, and its download is separate from its install.**
 - [APK] **Live status while sources load and test.**
 - [APK] **Subtitle translation.**
 - [APK] **Blur when a poster opens and closes, and one switch for all the frosted glass.**
-- [APK] **The update has a screen of its own, and its download is separate from its install.**
 
 ### Changed
+- [APK] **Update Settings is vivi-music's screen, drawn in Anisu's black glass.**
+- [APK] **The search bar blurs what scrolls behind it, the way Telegram's does.**
 - [APK] **The nightly APK is always a nightly, whatever `version.txt` says.**
 - [APK] **Smaller APK.**
 - [APK] **Casting now looks like the sketch.**
@@ -28,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [APK] **A docs-only push no longer starts a nightly build.**
 - [APK] **About is the identity page from the preview: hero, developer, contributors, support, links and the download counters.**
 - [APK] **Content cards are opaque, so the animated background no longer shows through them, and Updates shows one title instead of two.**
+- [APK] **About wears the real GitHub and Telegram marks, and its Links card closes on Back.**
+- [APK] **Updates is laid out like vivi-music's updater, with the build commit and changelog on the page.**
+- [APK] **Content cards are dark again.**
+- [APK] **Playback gets the same one-title page as the rest of the settings.**
+- [APK] **Autorelease builds debug and release on separate branches and publishes only the release APK.**
+- [APK] **Version code moved to 2026111304.**
 
 ### Removed
 - [APK] **Preload Last Episode is gone.**

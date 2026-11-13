@@ -53,7 +53,7 @@ fun BackgroundAnimationPicker(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(modifier = Modifier.verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp)) {
-                BackgroundStyle.entries.chunked(2).forEach { rowStyles ->
+                BackgroundStyle.entries.filter { !it.seasonal }.chunked(2).forEach { rowStyles ->
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                         rowStyles.forEach { style ->
                             PreviewTile(

@@ -117,6 +117,8 @@ fun BackgroundAnimation(
                     BackgroundStyle.SAKURA -> drawPetal(paths[0], r, item, t)
                     BackgroundStyle.SNOW -> drawSnow(r, item, angle, density)
                     BackgroundStyle.BREAD -> drawBread(paths[0], r, item, t)
+                    BackgroundStyle.HALLOWEEN -> drawPumpkin(paths[0], r, item, t)
+                    BackgroundStyle.EASTER -> drawEgg(paths[0], r, item)
                     BackgroundStyle.NONE -> Unit
                 }
             }
@@ -160,6 +162,8 @@ private fun makeItems(style: BackgroundStyle): List<Item> {
             BackgroundStyle.SAKURA -> 51
             BackgroundStyle.SNOW -> 67
             BackgroundStyle.BREAD -> 97
+            BackgroundStyle.HALLOWEEN -> 131
+            BackgroundStyle.EASTER -> 149
             else -> 37
         },
     )
@@ -209,6 +213,26 @@ private fun makeItems(style: BackgroundStyle): List<Item> {
                 vx = between(-0.004f, 0.004f), vy = between(-0.014f, -0.005f),
                 sizeDp = between(64f, 104f), rot = between(-12f, 12f), spin = 0f,
                 phase = between(0f, 6.28f), alpha = 1f, kind = if (i == 6 || i == 13) 2 else i % 2, sway = 0.02f,
+            )
+        }
+        // Pumpkins that bob upward, turning slowly so the carved face catches the light.
+        BackgroundStyle.HALLOWEEN -> List(10) { i ->
+            Item(
+                x = rnd.nextFloat(), y = rnd.nextFloat(),
+                vx = between(-0.004f, 0.004f), vy = between(-0.012f, -0.004f),
+                sizeDp = between(58f, 100f), rot = between(-14f, 14f), spin = 0f,
+                phase = between(0f, 6.28f), alpha = between(0.55f, 0.85f), kind = i % 2,
+                sway = 0.02f,
+            )
+        }
+        // Pastel eggs drifting down, each painted with a stripe.
+        BackgroundStyle.EASTER -> List(16) { i ->
+            Item(
+                x = rnd.nextFloat(), y = rnd.nextFloat(),
+                vx = between(-0.004f, 0.004f), vy = between(0.008f, 0.022f),
+                sizeDp = between(34f, 62f), rot = between(0f, 360f), spin = between(4f, 12f) * sign(),
+                phase = between(0f, 6.28f), alpha = between(0.55f, 0.85f), kind = i % EggColors.size,
+                sway = 0.018f,
             )
         }
         else -> List(14) { i ->
@@ -267,6 +291,14 @@ private fun unitPaths(style: BackgroundStyle): List<Path> = when (style) {
             quadraticTo(-0.8f, 0.85f, -0.65f, 0.85f)
             close()
         },
+    )
+    BackgroundStyle.HALLOWEEN -> listOf(
+        // A ribbed pumpkin: a circle with ten soft lobes.
+        polar { 0.92f + 0.08f * abs(cos(5f * it)) },
+    )
+    BackgroundStyle.EASTER -> listOf(
+        // An egg: taller than it is wide.
+        Path().apply { addOval(androidx.compose.ui.geometry.Rect(-0.72f, -1f, 0.72f, 1f)) },
     )
     else -> emptyList()
 }
@@ -362,6 +394,60 @@ private fun DrawScope.drawSandwichBody() {
     drawRoundRect(SandwichTomato, topLeft = Offset(-0.8f, -0.03f), size = Size(1.6f, 0.14f), cornerRadius = CornerRadius(0.07f))
     drawRoundRect(BreadCrust, topLeft = Offset(-0.85f, -0.78f), size = Size(1.7f, 0.78f), cornerRadius = CornerRadius(0.42f, 0.42f))
     drawRoundRect(BreadCrumb, topLeft = Offset(-0.77f, -0.7f), size = Size(1.54f, 0.64f), cornerRadius = CornerRadius(0.34f, 0.34f))
+}
+
+// Halloween and Easter keep their own colours too, pre-blended against the dark page.
+private val PumpkinOrange = Color(0xFFC9661F)
+private val PumpkinRidge = Color(0xFF9E4A12)
+private val PumpkinStem = Color(0xFF4C6B2F)
+private val PumpkinFace = Color(0xFF2A1607)
+private val EggColors = listOf(Color(0xFFE3C4EF), Color(0xFFBFE3C9), Color(0xFFF1D79B), Color(0xFFB9D8F0))
+
+/** A ribbed pumpkin that bobs and turns, with a carved face. */
+private fun DrawScope.drawPumpkin(path: Path, r: Float, item: Item, t: Float) {
+    val wobble = 5f * sin(t * 0.7f + item.phase)
+    rotate(item.rot + wobble, Offset.Zero) {
+        scale(r, r, Offset.Zero) {
+            drawPath(path, PumpkinOrange.copy(alpha = item.alpha))
+            for (dx in listOf(-0.34f, 0.34f)) {
+                val rib = Path().apply {
+                    moveTo(dx, -0.82f)
+                    quadraticTo(dx * 1.5f, 0f, dx, 0.82f)
+                }
+                drawPath(rib, PumpkinRidge.copy(alpha = item.alpha * 0.55f), style = Stroke(width = 0.06f))
+            }
+            drawRoundRect(
+                PumpkinStem.copy(alpha = item.alpha),
+                topLeft = Offset(-0.07f, -1.18f),
+                size = Size(0.14f, 0.3f),
+                cornerRadius = CornerRadius(0.05f),
+            )
+            drawCircle(PumpkinFace.copy(alpha = item.alpha), radius = 0.11f, center = Offset(-0.28f, -0.12f))
+            drawCircle(PumpkinFace.copy(alpha = item.alpha), radius = 0.11f, center = Offset(0.28f, -0.12f))
+            val smile = Path().apply {
+                moveTo(-0.34f, 0.24f)
+                quadraticTo(0f, 0.58f, 0.34f, 0.24f)
+            }
+            drawPath(smile, PumpkinFace.copy(alpha = item.alpha), style = Stroke(width = 0.08f, cap = StrokeCap.Round))
+        }
+    }
+}
+
+/** A pastel egg with a painted stripe, tipping as it floats. */
+private fun DrawScope.drawEgg(path: Path, r: Float, item: Item) {
+    val tip = 10f * sin(item.phase + item.rot)
+    rotate(item.rot + tip, Offset.Zero) {
+        scale(r * 0.82f, r, Offset.Zero) {
+            drawPath(path, EggColors[item.kind % EggColors.size].copy(alpha = item.alpha))
+            drawLine(
+                Color.White.copy(alpha = item.alpha * 0.6f),
+                Offset(-0.62f, 0.08f),
+                Offset(0.62f, -0.18f),
+                strokeWidth = 0.13f,
+                cap = StrokeCap.Round,
+            )
+        }
+    }
 }
 
 /** A closed curve r(theta), scaled so its farthest point sits at radius 1. */

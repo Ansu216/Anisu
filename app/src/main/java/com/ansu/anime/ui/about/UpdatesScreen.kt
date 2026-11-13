@@ -8,16 +8,19 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Refresh
@@ -30,6 +33,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,7 +58,6 @@ import com.ansu.anime.data.update.UpdateState
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.GlassAlertDialog
 import com.ansu.anime.ui.components.GlassGroup
-import com.ansu.anime.ui.components.GlassGroupLabel
 import com.ansu.anime.ui.components.GlassRow
 import com.ansu.anime.ui.components.GlassRowValue
 import com.ansu.anime.ui.components.GlassToggleRow
@@ -62,13 +65,17 @@ import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
 
 /**
- * Updates, as a settings page rather than a status card: the same grouped rows the rest of the app's
- * settings use, with the state of the installed build as the first row's trailing pill.
+ * Update Settings, mirroring vivi-music's `ui/screens/settings/UpdateSettings.kt`:
  *
- * The work is the one it always was — read what the project publishes on GitHub, download the APK
- * through a resumable `.part` file, hand a complete download to the system installer — split over two
- * screens: this page holds the settings, and [UpdateScreen] the build on offer with its download and
- * install. Tapping "System update" runs the check itself, so there is no separate "check" row.
+ *  1. System update (opens the update subscreen) · App version (seven taps unlock Developer options)
+ *  2. Automatic update check · Nightly Updates · Notification setting
+ *  3. Clear downloaded updates
+ *  4. Changelog (Version history) · Commits
+ *
+ * The two update subscreens vivi routes to are kept: the update screen itself ([UpdateScreen],
+ * `Dest.UPDATE`) and the notification settings screen ([NotificationsScreen], new). Changelog opens
+ * `Dest.CHANGELOG`; Commits opens the new [CommitsScreen], so both the changelog and the build commit
+ * are visible inside the app.
  */
 @Composable
 fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
@@ -79,6 +86,11 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
     // Read once and refreshed after a clear, so the row shows the cache the moment it is emptied.
     var apkCount by remember { mutableIntStateOf(container.updateManager.cachedApkCount()) }
     var showStorageInfo by rememberSaveable { mutableStateOf(false) }
+    val notificationsOn = container.updateManager.notificationsEnabled()
+    val developerUnlocked by container.appearancePrefs.developerUnlocked.collectAsStateWithLifecycle()
+    // Seven quick taps on App version unlock Developer options, counted within two seconds.
+    var versionTaps by remember { mutableStateOf(0) }
+    var lastVersionTap by remember { mutableStateOf(0L) }
 
     LaunchedEffect(Unit) { container.updateManager.check() }
 
@@ -106,7 +118,7 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = {},
+                title = { Text("Updates") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -123,6 +135,7 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Check again")
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         },
     ) { padding ->
@@ -131,22 +144,17 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 24.dp),
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 28.dp),
         ) {
-            Text(
-                text = "Updates",
-                style = MaterialTheme.typography.headlineLarge,
-                color = AnsuColors.TextPrimary,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 6.dp),
-            )
+            Spacer(Modifier.height(16.dp))
 
-            GlassGroup(modifier = Modifier.padding(horizontal = 16.dp)) {
+            // 1 · the build
+            GlassGroup {
                 GlassRow(
                     icon = Icons.Filled.SystemUpdate,
                     title = "System update",
-                    description = "Anisu ${BuildConfig.VERSION_NAME} · version code ${BuildConfig.VERSION_CODE}",
-                    trailing = { UpdateStatusPill(state) },
+                    trailing = { UpdateTrailing(state) },
                     showDivider = false,
                     onClick = {
                         container.diagnostics.log(LogCategory.CLICK, "Updates → system update opened")
@@ -157,27 +165,44 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                     icon = Icons.Filled.Info,
                     title = "App version",
                     trailing = { GlassRowValue(BuildConfig.VERSION_NAME) },
+                    onClick = {
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        versionTaps = if (now - lastVersionTap > 2_000L) 1 else versionTaps + 1
+                        lastVersionTap = now
+                        when {
+                            versionTaps >= 7 -> {
+                                versionTaps = 0
+                                container.appearancePrefs.unlockDeveloperOptions()
+                                container.diagnostics.log(LogCategory.CLICK, "Updates → developer options unlocked")
+                                Toast.makeText(context, "Developer options unlocked", Toast.LENGTH_SHORT).show()
+                            }
+                            versionTaps >= 4 && !developerUnlocked ->
+                                Toast.makeText(
+                                    context,
+                                    "${7 - versionTaps} more taps to unlock Developer options",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                        }
+                    },
                 )
             }
 
-            GlassGroupLabel("Checks")
-            GlassGroup(modifier = Modifier.padding(horizontal = 16.dp)) {
+            Spacer(Modifier.height(10.dp))
+
+            // 2 · checks and notifications
+            GlassGroup {
                 GlassToggleRow(
                     icon = Icons.Filled.Refresh,
-                    title = "Auto check",
-                    description = "On open and every 12 hours",
+                    title = "Automatic update check",
+                    description = "Automatically check for updates.",
                     checked = autoCheck,
                     onCheckedChange = { container.updateManager.setAutoCheck(it) },
                     showDivider = false,
                 )
                 GlassToggleRow(
                     icon = Icons.Filled.Update,
-                    title = "Nightly channel",
-                    description = if (channel == UpdateChannel.NIGHTLY) {
-                        "Every apk-nightly build, newer than the release"
-                    } else {
-                        "Off: tagged releases only. Turn on to follow the nightlies"
-                    },
+                    title = "Nightly Updates",
+                    description = "Receive nightly builds",
                     checked = channel == UpdateChannel.NIGHTLY,
                     onCheckedChange = { nightly ->
                         container.diagnostics.log(
@@ -191,21 +216,24 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                 )
                 GlassRow(
                     icon = Icons.Filled.NotificationsActive,
-                    title = "Notifications",
-                    description = "Android notification settings",
-                    trailing = {
-                        GlassRowValue(if (container.updateManager.notificationsEnabled()) "On" else "Off")
+                    title = "Notification setting",
+                    description = "Configure notification settings.",
+                    trailing = { GlassRowValue(if (notificationsOn) "Enabled" else "Disabled") },
+                    onClick = {
+                        container.diagnostics.log(LogCategory.CLICK, "Updates → notification settings opened")
+                        navController.navigate(Dest.UPDATE_NOTIFICATIONS)
                     },
-                    onClick = { openNotificationSettings(context) },
                 )
             }
 
-            GlassGroupLabel("Storage")
-            GlassGroup(modifier = Modifier.padding(horizontal = 16.dp)) {
+            Spacer(Modifier.height(10.dp))
+
+            // 3 · storage
+            GlassGroup {
                 GlassRow(
                     icon = Icons.Filled.Delete,
                     title = "Clear downloaded updates",
-                    description = if (apkCount > 0) "$apkCount APKs in the cache" else "No downloaded APKs",
+                    description = if (apkCount > 0) "$apkCount APKs found" else "No downloaded APKs",
                     trailing = {
                         IconButton(
                             onClick = { showStorageInfo = true },
@@ -236,33 +264,63 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                 )
             }
 
-            GlassGroupLabel("History")
-            GlassGroup(modifier = Modifier.padding(horizontal = 16.dp)) {
+            Spacer(Modifier.height(10.dp))
+
+            // 4 · history
+            GlassGroup {
                 GlassRow(
-                    icon = Icons.AutoMirrored.Filled.Article,
+                    icon = Icons.Filled.History,
                     title = "Changelog",
-                    description = "What changed in this build",
+                    description = "View version history",
                     showDivider = false,
                     onClick = {
                         container.diagnostics.log(LogCategory.CLICK, "Updates → changelog opened")
                         navController.navigate(Dest.CHANGELOG)
                     },
                 )
+                GlassRow(
+                    icon = Icons.Filled.Code,
+                    title = "Commits",
+                    description = "View commit history",
+                    onClick = {
+                        container.diagnostics.log(LogCategory.CLICK, "Updates → commits opened")
+                        navController.navigate(Dest.UPDATE_COMMITS)
+                    },
+                )
             }
 
+            Spacer(Modifier.height(16.dp))
             Text(
                 text = "Builds are published from the official Anisu repository " +
                     "(github.com/Ansu216/Anisu). Android verifies the signature before installing, " +
                     "so an update can only ever be Anisu itself.",
                 style = MaterialTheme.typography.labelSmall,
                 color = AnsuColors.TextTertiary,
-                modifier = Modifier.padding(top = 18.dp, start = 20.dp, end = 20.dp),
+                modifier = Modifier.padding(start = 4.dp, end = 4.dp),
             )
         }
     }
 }
 
-/** The first row's trailing pill: the one thing the page has to say before anything else. */
+/** The trailing line of "System update", worded as vivi's updater words it: "Update" / "Up to date". */
+@Composable
+private fun UpdateTrailing(state: UpdateState) {
+    val (label, color) = when {
+        state.isChecking -> "Checking…" to AnsuColors.TextSecondary
+        state.isDownloading -> "Downloading" to AnsuColors.Accent
+        state.result is UpdateCheckResult.Available -> "Update" to AnsuColors.Error
+        state.result is UpdateCheckResult.Failed -> "Check failed" to AnsuColors.Error
+        else -> "Up to date" to AnsuColors.ScoreGreen
+    }
+    Text(
+        text = label,
+        style = MaterialTheme.typography.bodyMedium,
+        color = color,
+        fontWeight = FontWeight.Medium,
+    )
+}
+
+/** The first row's trailing pill used by [UpdateScreen]: the one thing the page has to say first. */
 @Composable
 internal fun UpdateStatusPill(state: UpdateState, modifier: Modifier = Modifier) {
     val (label, color) = updateStatus(state)

@@ -74,9 +74,14 @@ object Dest {
     const val APPEARANCE = "appearance"
     const val PLAYER_STREAMING = "player_streaming"
     const val ABOUT = "about"
+    const val DEVELOPER_OPTIONS = "developer-options"
     const val LICENSES = "licenses"
     const val UPDATES = "updates"
     const val UPDATE = "update"
+    /** Notification settings subscreen, mirroring vivi-music's notification permission screen. */
+    const val UPDATE_NOTIFICATIONS = "update_notifications"
+    /** Commit history subscreen, mirroring vivi-music's commits screen. */
+    const val UPDATE_COMMITS = "update_commits"
     const val CONTRIBUTORS = "contributors"
     const val CHANGELOG = "changelog"
     const val LICENSE = "license"
@@ -340,6 +345,11 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         composable(Dest.ABOUT) {
             TabletCentered(720.dp) { AboutScreen(container = container, navController = navController) }
         }
+        composable(Dest.DEVELOPER_OPTIONS) {
+            TabletCentered(720.dp) {
+                com.ansu.anime.ui.about.DeveloperOptionsScreen(container = container, navController = navController)
+            }
+        }
         composable(Dest.DOWNLOADS) {
             TabletCentered(720.dp) { com.ansu.anime.ui.downloads.DownloadsScreen(container = container, navController = navController) }
         }
@@ -351,6 +361,16 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         }
         composable(Dest.UPDATE) {
             TabletCentered(720.dp) { UpdateScreen(container = container, navController = navController) }
+        }
+        composable(Dest.UPDATE_NOTIFICATIONS) {
+            TabletCentered(720.dp) {
+                com.ansu.anime.ui.about.NotificationsScreen(container = container, navController = navController)
+            }
+        }
+        composable(Dest.UPDATE_COMMITS) {
+            TabletCentered(720.dp) {
+                com.ansu.anime.ui.about.CommitsScreen(container = container, navController = navController)
+            }
         }
         composable(Dest.CONTRIBUTORS) {
             TabletCentered(720.dp) { ContributorsScreen(container = container, navController = navController) }

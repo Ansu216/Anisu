@@ -145,6 +145,21 @@ android {
         jvmTarget = "17"
     }
 
+    // Headless Compose screenshots (Robolectric + Roborazzi): the test task needs the merged resources and
+    // native graphics, which is what lets it rasterise the real screens without an emulator.
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all {
+                it.systemProperty("robolectric.graphicsMode", "NATIVE")
+                // Roborazzi only writes the PNG when recording is on. The plugin normally sets this;
+                // without the plugin it has to be set on the test JVM directly.
+                it.systemProperty("roborazzi.test.record", "true")
+                it.systemProperty("roborazzi.record", "true")
+            }
+        }
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -221,4 +236,16 @@ dependencies {
     // Chromecast: the Cast framework, its device picker and the Fragment support that picker needs.
     implementation(libs.play.services.cast.framework)
     implementation(libs.androidx.fragment)
+
+    // Headless screenshot tests. They only exist in the test source set (and the debug manifest for the
+    // ComponentActivity the Compose test rule hosts), so neither APK changes.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("androidx.test:core-ktx:1.6.1")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.32.2")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.32.2")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

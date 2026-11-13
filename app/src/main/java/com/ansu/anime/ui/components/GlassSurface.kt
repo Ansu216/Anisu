@@ -50,19 +50,27 @@ fun FrostedGlassCard(
                     Modifier
                 },
             )
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        AnsuColors.SurfaceGlassBase.copy(alpha = tint),
-                        AnsuColors.SurfaceGlassBase.copy(
-                            alpha = if (tint >= 0.999f) 1f else (tint * 0.82f).coerceIn(0f, 1f),
-                        ),
-                    ),
-                ),
-            )
-            // The frosted look: a soft light haze, brightest along the top, over the tint.
-            .background(
-                Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.02f))),
+            .then(
+                if (tint >= 0.999f) {
+                    // A fully opaque card is a content card. It is solid and dark, the colour of the page it
+                    // sits on, so the animated background behind it never shows through and it keeps the
+                    // weight the app had before the cards went see-through.
+                    Modifier.background(AnsuColors.BackgroundElevated)
+                } else {
+                    Modifier
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    AnsuColors.SurfaceGlassBase.copy(alpha = tint),
+                                    AnsuColors.SurfaceGlassBase.copy(alpha = (tint * 0.82f).coerceIn(0f, 1f)),
+                                ),
+                            ),
+                        )
+                        // The frosted look: a soft light haze, brightest along the top, over the tint.
+                        .background(
+                            Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.02f))),
+                        )
+                },
             )
             // The edge catches the light from above, like the rim of frosted glass.
             .border(
@@ -97,8 +105,9 @@ fun BottomScrim(modifier: Modifier = Modifier, midAlpha: Float = 0.35f, midStop:
 const val GLASS_MIN_TINT = 1f
 
 /**
- * A [FrostedGlassCard] for content cards and buttons: never lighter than [GLASS_MIN_TINT], because they sit on sharp
- * content while the bars blur a copy of it. The bars themselves keep using [FrostedGlassCard] with their own tint.
+ * A [FrostedGlassCard] for content cards and buttons: always fully opaque, and dark like the page, so the
+ * animated background never bleeds through it. The bars themselves keep using [FrostedGlassCard] with their
+ * own tint.
  */
 @Composable
 fun HeavyGlassCard(

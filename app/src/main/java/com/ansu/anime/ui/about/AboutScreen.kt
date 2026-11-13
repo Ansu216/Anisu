@@ -5,6 +5,7 @@ package com.ansu.anime.ui.about
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -31,6 +32,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -87,11 +89,13 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.ansu.anime.BuildConfig
 import com.ansu.anime.R
 import com.ansu.anime.core.diagnostics.LogCategory
+import com.ansu.anime.data.prefs.SeasonalTheme
 import com.ansu.anime.data.update.RepoStats
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.GlassGroup
@@ -135,6 +139,9 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
     var nightlyDownloads by remember { mutableStateOf<Long?>(null) }
     var nightlyLoading by remember { mutableStateOf(false) }
     var showLinks by remember { mutableStateOf(false) }
+    val seasonal by container.appearancePrefs.seasonalTheme.collectAsStateWithLifecycle()
+    // The system back button closes the links card before it leaves About.
+    BackHandler(enabled = showLinks) { showLinks = false }
     // Seven quick taps on the logo unlock the hidden options (Cast and Tablet mode), counted within two seconds.
     var logoTaps by remember { mutableStateOf(0) }
     var lastLogoTap by remember { mutableStateOf(0L) }
@@ -163,7 +170,7 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
             containerColor = Color.Transparent,
             topBar = {
                 TopAppBar(
-                    title = {},
+                    title = { Text("About") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -180,15 +187,10 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
             ) {
-                Text(
-                    text = "About",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = AnsuColors.TextPrimary,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 10.dp),
-                )
+                Spacer(Modifier.height(12.dp))
 
                 HeroCard(
+                    season = seasonal,
                     onLogoTap = {
                         val now = android.os.SystemClock.elapsedRealtime()
                         logoTaps = if (now - lastLogoTap > 2_000L) 1 else logoTaps + 1
@@ -251,7 +253,7 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                 GlassGroup {
                     GlassRow(
                         icon = Icons.Filled.Link,
-                        title = "Anisu links",
+                        title = "Anisu Community",
                         description = "Telegram, repository, licence, issues",
                         showDivider = false,
                         trailing = { LinkChevron() },
@@ -262,14 +264,16 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                     )
                 }
 
+                // The release/nightly counters end the page, under The project, as they did in 1.0.3.
+                // The version row moved to Updates: that is where the seven taps now live.
                 GlassGroupLabel("The project")
                 GlassGroup {
                     GlassRow(
                         icon = Icons.Filled.Download,
                         title = "Downloads",
                         description = "APK downloads from every release",
-                        showDivider = false,
                         trailing = { CounterValue(stats?.downloads, statsLoading) },
+                        showDivider = false,
                         onClick = {
                             container.diagnostics.log(LogCategory.CLICK, "About → downloads opened")
                             openUrl(context, "$REPO_URL/releases")
@@ -295,7 +299,6 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
 
         AnimatedVisibility(visible = showLinks, enter = fadeIn(tween(220)), exit = fadeOut(tween(180))) {
             LinksOverlay(
-                stars = stats?.stars,
                 onDismiss = { showLinks = false },
                 onOpen = { url, label ->
                     container.diagnostics.log(LogCategory.CLICK, "About → $label opened")
@@ -313,7 +316,7 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
 
 /** The identity card: the logo (tap seven times), the name and the installed build, and the GitHub button. */
 @Composable
-private fun HeroCard(onLogoTap: () -> Unit, onGithub: () -> Unit) {
+private fun HeroCard(season: SeasonalTheme?, onLogoTap: () -> Unit, onGithub: () -> Unit) {
     HeavyGlassCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(26.dp),
@@ -330,20 +333,47 @@ private fun HeroCard(onLogoTap: () -> Unit, onGithub: () -> Unit) {
                 .padding(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(CircleShape)
-                        .background(AnsuColors.Background)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onLogoTap() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_launcher_foreground),
-                        contentDescription = stringResource(R.string.app_name),
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                // The seasonal theme dresses the logo the way VLC dresses its cone: the Easter ears
+                // stand behind the badge, the Christmas and Halloween hats sit on top of it.
+                Box(modifier = Modifier.size(56.dp)) {
+                    if (season == SeasonalTheme.EASTER) {
+                        Image(
+                            painter = painterResource(season.emblemRes),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .offset(y = (-11).dp)
+                                .size(width = 28.dp, height = 24.dp),
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .background(AnsuColors.Background)
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onLogoTap() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.ic_launcher_foreground),
+                            contentDescription = stringResource(R.string.app_name),
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    if (season != null && season != SeasonalTheme.EASTER) {
+                        Image(
+                            painter = painterResource(season.emblemRes),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .offset(y = (-12).dp)
+                                .size(
+                                    width = if (season == SeasonalTheme.CHRISTMAS) 36.dp else 34.dp,
+                                    height = 24.dp,
+                                ),
+                        )
+                    }
                 }
                 Column(modifier = Modifier.weight(1f).padding(start = 14.dp)) {
                     Text(
@@ -367,7 +397,11 @@ private fun HeroCard(onLogoTap: () -> Unit, onGithub: () -> Unit) {
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onGithub() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Filled.Code, contentDescription = "GitHub repository", tint = AnsuColors.TextPrimary, modifier = Modifier.size(19.dp))
+                    Image(
+                        painter = painterResource(R.drawable.ic_github),
+                        contentDescription = "GitHub repository",
+                        modifier = Modifier.size(22.dp),
+                    )
                 }
             }
         }
@@ -484,7 +518,9 @@ private fun CounterValue(value: Long?, loading: Boolean) {
         label = "aboutCounter",
     )
     if (value == null) {
-        GlassRowValue(if (loading) "…" else "—")
+        // A dash, never an ellipsis: while the count is loading (or offline) the row must not read as a
+        // truncated number, which is what the screenshot check flagged in the download counters.
+        GlassRowValue("—")
         return
     }
     val formatter = remember { NumberFormat.getInstance() }
@@ -497,6 +533,17 @@ private fun LinkChevron() {
     Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = AnsuColors.TextTertiary)
 }
 
+/** The GitHub mark in the accent-toned circle the glass rows use for their icons. */
+@Composable
+private fun GithubBadge() {
+    Box(
+        modifier = Modifier.size(40.dp).clip(CircleShape).background(AnsuColors.AccentSoft),
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(painter = painterResource(R.drawable.ic_github), contentDescription = null, modifier = Modifier.size(22.dp))
+    }
+}
+
 /**
  * The Links row's panel, in the style of [com.ansu.anime.ui.components.WelcomeOverlay]: a dimmed screen,
  * a frosted card with a slowly turning cookie under the logo, then Telegram, Repository, License and
@@ -504,7 +551,6 @@ private fun LinkChevron() {
  */
 @Composable
 private fun LinksOverlay(
-    stars: Long?,
     onDismiss: () -> Unit,
     onOpen: (String, String) -> Unit,
     onLicense: () -> Unit,
@@ -542,7 +588,7 @@ private fun LinksOverlay(
                 ) {
                     RotatingCookieBadge()
                     Text(
-                        text = "Anisu links",
+                        text = "Anisu Community",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = AnsuColors.TextPrimary,
@@ -571,16 +617,10 @@ private fun LinksOverlay(
                         onClick = { onOpen(TELEGRAM_URL, "Telegram opened") },
                     )
                     GlassRow(
-                        icon = Icons.Filled.Code,
                         title = "Repository",
                         description = REPO_URL.removePrefix("https://"),
-                        trailing = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.Star, contentDescription = null, tint = AnsuColors.Accent, modifier = Modifier.size(15.dp))
-                                Spacer(Modifier.width(5.dp))
-                                CounterValue(stars, loading = false)
-                            }
-                        },
+                        leading = { GithubBadge() },
+                        trailing = { LinkChevron() },
                         onClick = { onOpen(REPO_URL, "repository opened") },
                     )
                     GlassRow(

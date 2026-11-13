@@ -135,6 +135,10 @@ class AppContainer(context: Context) {
     val gitHubStats: com.ansu.anime.data.update.GitHubStats =
         com.ansu.anime.data.update.GitHubStats(okHttpClient)
 
+    /** The commit list the Commits screen shows, newest first, also from the public GitHub API. */
+    val gitHubCommits: com.ansu.anime.data.update.GitHubCommits =
+        com.ansu.anime.data.update.GitHubCommits(okHttpClient)
+
     val updateManager: UpdateManager = UpdateManager(appContext, okHttpClient, diagnostics, nightlyDownloads)
 
     /** What the user asked to be notified about (followed shows, Watching-list episodes) and the master switch. */

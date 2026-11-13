@@ -51,6 +51,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -59,6 +60,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -87,6 +89,13 @@ import com.ansu.anime.extension.BUILT_IN_SOURCE_ID
 @Composable
 fun PlayerStreamingScreen(container: AppContainer, navController: NavHostController) {
     val prefs = container.playerPrefs
+    // Chips are Anisu black glass too: a tinted accent when chosen, the dark page when not.
+    val chipColors = FilterChipDefaults.filterChipColors(
+        containerColor = AnsuColors.BackgroundElevated,
+        labelColor = AnsuColors.TextSecondary,
+        selectedContainerColor = AnsuColors.AccentSoft,
+        selectedLabelColor = AnsuColors.Accent,
+    )
     val doubleTap by prefs.doubleTapSeek.collectAsStateWithLifecycle()
     val swipeSeek by prefs.swipeSeek.collectAsStateWithLifecycle()
     val holdSpeed by prefs.holdSpeed.collectAsStateWithLifecycle()
@@ -117,9 +126,11 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val autoScroll = remember { DragAutoScroll() }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = { Text("Playback") },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -150,6 +161,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                             FilterChip(
                                 selected = skipSeconds == seconds,
                                 onClick = { prefs.setSkipSeconds(seconds) },
+                                colors = chipColors,
                                 label = { Text("${seconds}s") },
                             )
                         }
@@ -269,6 +281,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                             FilterChip(
                                 selected = preferredQuality == height,
                                 onClick = { prefs.setPreferredQuality(height) },
+                                colors = chipColors,
                                 label = { Text(if (height == PlayerPrefs.QUALITY_ANY) "Any" else "${height}p", maxLines = 1, softWrap = false) },
                             )
                         }
@@ -284,6 +297,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                             FilterChip(
                                 selected = preferredLanguage == value,
                                 onClick = { prefs.setPreferredLanguage(value) },
+                                colors = chipColors,
                                 label = { Text(label, maxLines = 1, softWrap = false) },
                             )
                         }
@@ -319,6 +333,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                             FilterChip(
                                 selected = downloadParallel == count,
                                 onClick = { prefs.setDownloadParallel(count) },
+                                colors = chipColors,
                                 label = { Text("$count", maxLines = 1, softWrap = false) },
                             )
                         }
@@ -338,6 +353,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                             FilterChip(
                                 selected = downloadQuality == option,
                                 onClick = { prefs.setDownloadQuality(option) },
+                                colors = chipColors,
                                 label = {
                                     Text(
                                         when (option) {

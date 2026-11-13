@@ -115,7 +115,10 @@ import com.ansu.anime.di.AppContainer
 import com.ansu.anime.ui.components.AgeRatingChip
 import com.ansu.anime.ui.components.AppBottomBarReserve
 import com.ansu.anime.ui.components.BackdropState
+import com.ansu.anime.ui.components.LocalNavBarBackdropBlur
+import com.ansu.anime.ui.components.backdropBlurSupported
 import com.ansu.anime.ui.components.backdropSource
+import com.ansu.anime.ui.components.frostedBackdrop
 import com.ansu.anime.ui.components.HeavyGlassCard
 import com.ansu.anime.ui.components.PosterOriginHandle
 import com.ansu.anime.ui.components.posterTransitionAnchor
@@ -311,14 +314,20 @@ fun SearchScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .backdropSource(backdrop)
                 .padding(top = padding.calculateTopPadding())
                 .onGloballyPositioned { areaBounds = it.boundsInRoot() },
         ) {
           // Filter chips and results sit under the bar row, which is drawn last so the panel can slide beneath it.
-          Column(modifier = Modifier.fillMaxSize().padding(top = SearchBarRowHeight)) {
+          // Only the results (not the bar itself) are the blur source: the bar samples this layer, so including
+          // the bar in it would make the pill blur its own text.
+          Column(modifier = Modifier.fillMaxSize().backdropSource(backdrop)) {
             // The filter sheet's options are AniList's, so they are not offered while a single source is searched.
             val chips = if (sourceId == null) activeFilterChips(filters) else emptyList()
+            // With no chip row, the results list starts at the top of the screen and its own top content padding
+            // puts the first card under the bar; as it scrolls, cards pass behind the bar, which is what the
+            // frosted backdrop blurs. With a chip row, the row takes that space instead.
+            val chipsRow = sourceId != null || chips.isNotEmpty()
+            if (chipsRow) Spacer(Modifier.height(SearchBarRowHeight))
             if (sourceId != null) {
                 // The chosen source stays visible under the bar; its cross switches the search back to everything.
                 LazyRow(
@@ -354,7 +363,7 @@ fun SearchScreen(
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 val contentPadding = PaddingValues(
                     start = 12.dp,
-                    top = 6.dp,
+                    top = if (chipsRow) 6.dp else SearchBarRowHeight + 6.dp,
                     end = 12.dp,
                     bottom = 12.dp + padding.calculateBottomPadding(),
                 )
@@ -463,6 +472,7 @@ fun SearchScreen(
                   searching = searching,
                   onBack = { closeSearch() },
                   onFocused = { searching = true },
+                  backdrop = backdrop,
                   modifier = Modifier
                       .weight(1f)
                       .height(52.dp)
@@ -544,6 +554,7 @@ private fun SearchField(
     searching: Boolean,
     onBack: () -> Unit,
     onFocused: () -> Unit,
+    backdrop: BackdropState? = null,
     modifier: Modifier = Modifier,
 ) {
     BasicTextField(
@@ -556,7 +567,28 @@ private fun SearchField(
         keyboardActions = KeyboardActions(onSearch = { onSearch() }),
         modifier = modifier.onFocusChanged { if (it.isFocused) onFocused() },
         decorationBox = { innerTextField ->
-            HeavyGlassCard(modifier = Modifier.fillMaxSize(), shape = CircleShape, tintAlpha = 0.55f) {
+            // With the Frosted blur switch on, the pill blurs the results scrolling behind it, the way a
+            // Telegram search bar blurs its chat list. Off, or below Android 12, it keeps the plain dark glass.
+            val blurOn = LocalNavBarBackdropBlur.current
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (blurOn) {
+                            Modifier.frostedBackdrop(backdrop, enabled = true, shape = CircleShape, radius = 28.dp)
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .clip(CircleShape)
+                    .background(
+                        if (blurOn && backdropBlurSupported) {
+                            Color.Black.copy(alpha = 0.42f)
+                        } else {
+                            AnsuColors.SurfaceGlassBase.copy(alpha = 0.82f)
+                        },
+                    ),
+            ) {
                 Row(
                     modifier = Modifier.fillMaxSize().padding(start = 8.dp, end = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,

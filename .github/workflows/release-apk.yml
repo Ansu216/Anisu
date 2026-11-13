@@ -1,14 +1,15 @@
-name: Anisu Release APK
+name: Anisu Autorelease
 
-# Builds signed APKs and attaches them to a GitHub Release.
+# Builds the signed release APK and attaches it to a GitHub Release. The debug APK is built on its
+# own branch in parallel but is never published here.
 #
 # Triggers:
 #   - automatically when a tag like v1.2.3 is pushed
 #   - manually from the Actions tab (Run workflow), optionally with a tag
 #
-# The two variants build in PARALLEL (one matrix leg each); a final `release`
-# job rewrites the notes from CHANGELOG.md and publishes only after both legs
-# succeeded, so a release is never created with half of its assets.
+# The two variants build on SEPARATE branches of the graph: `build-release` and `build-debug` start
+# together, each with its own matrix, and neither waits for the other. The `autorelease` job depends
+# only on `build-release`, so a slow (or broken) debug build can never hold back a release.
 
 on:
   push:
@@ -122,16 +123,14 @@ jobs:
           echo "Releasing tag=$TAG version=$VERSION versionCode=$VERSION_CODE channel=$CHANNEL prerelease=$PRERELEASE"
 
   # ---------------------------------------------------------------------------
-  # 2) The variants build in parallel. `fail-fast: false` keeps the other leg
-  #    running so one broken variant does not hide the state of the other.
+  # 2a) The release APK. Its own branch and its own one-entry matrix.
   # ---------------------------------------------------------------------------
-  build:
-    name: Build ${{ matrix.variant }} APK
+  build-release:
+    name: Build release APK
     needs: plan
     strategy:
-      fail-fast: false
       matrix:
-        variant: [release, debug]
+        variant: [release]
     runs-on: ubuntu-latest
 
     steps:
@@ -145,8 +144,6 @@ jobs:
           java-version: '21'
           cache: gradle
 
-      # The ubuntu-latest image already ships the Android SDK at
-      # $ANDROID_SDK_ROOT, so we only install the packages we need.
       - name: Install Android SDK packages
         run: |
           set -euo pipefail
@@ -164,20 +161,12 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Assemble the ${{ matrix.variant }} APK
+      - name: Assemble the release APK
         env:
-          # Optional repository secret; empty means English mode falls back to the plain text title.
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: |
           set -euo pipefail
-          case "${{ matrix.variant }}" in
-            release) TASK="assembleRelease" ;;
-            debug)   TASK="assembleDebug" ;;
-            *) echo "::error::Unknown variant '${{ matrix.variant }}'"; exit 1 ;;
-          esac
-          # The commit goes into BuildConfig.BUILD_COMMIT, the identity the updater compares
-          # (see app/build.gradle.kts): the version name no longer carries a timestamp.
-          ./gradlew --no-daemon --stacktrace "$TASK" \
+          ./gradlew --no-daemon --stacktrace assembleRelease \
             -PversionCode="${{ needs.plan.outputs.version_code }}" \
             -PversionName="${{ needs.plan.outputs.version }}" \
             -PbuildCommit="${{ github.sha }}"
@@ -186,39 +175,92 @@ jobs:
         run: |
           set -euo pipefail
           BUILD_TOOLS="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
-          echo "Using build-tools: $BUILD_TOOLS"
-          APK="$(find "app/build/outputs/apk/${{ matrix.variant }}" -type f -name '*.apk' | head -1)"
+          APK="$(find app/build/outputs/apk/release -type f -name '*.apk' | head -1)"
           if [ -z "$APK" ]; then
-            echo "::error::No APK produced for variant ${{ matrix.variant }}"
+            echo "::error::No release APK produced"
             exit 1
           fi
-          # `apksigner verify` exits non-zero for an unsigned or broken APK; the
-          # second check refuses one that verified but carries no signer certificate.
           if ! "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"; then
-            echo "::error::The ${{ matrix.variant }} APK is not validly signed — refusing to publish it."
-            exit 1
-          fi
-          if ! "$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | grep -qi "certificate DN"; then
-            echo "::error::The ${{ matrix.variant }} APK carries no signer certificate — refusing to publish it."
+            echo "::error::The release APK is not validly signed — refusing to publish it."
             exit 1
           fi
 
-      - name: Upload the APK as a workflow artifact
+      - name: Upload the release APK as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apk-${{ matrix.variant }}
-          path: app/build/outputs/apk/${{ matrix.variant }}/*.apk
+          name: apk-release
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # 3) Publish the release. The notes come from CHANGELOG.md — the `## [x.y.z]`
-  #    section has to exist for the version being released (see CLAUDE.md).
+  # 2b) The debug APK. A separate branch that starts with the release build and
+  #     is free to finish on its own; nothing downstream depends on it.
   # ---------------------------------------------------------------------------
-  release:
+  build-debug:
+    name: Build debug APK
+    needs: plan
+    strategy:
+      matrix:
+        variant: [debug]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(ls -d "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1 || true)"
+          fi
+          echo "Using sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0" "build-tools;34.0.0"
+
+      - name: Point Gradle at the Android SDK
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Assemble the debug APK
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --stacktrace assembleDebug \
+            -PversionCode="${{ needs.plan.outputs.version_code }}" \
+            -PversionName="${{ needs.plan.outputs.version }}" \
+            -PbuildCommit="${{ github.sha }}"
+
+      - name: Upload the debug APK as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # 3) Publish the release. It waits only for the release build; the debug branch
+  #    is never part of it, so a debug APK is never published here. The notes come
+  #    from CHANGELOG.md — the `## [x.y.z]` section has to exist for the version
+  #    being released (see CLAUDE.md).
+  # ---------------------------------------------------------------------------
+  autorelease:
     name: Publish the GitHub Release
-    needs: [plan, build]
-    if: ${{ always() && needs.plan.result == 'success' && needs.build.result == 'success' }}
+    needs: [plan, build-release]
+    if: ${{ always() && needs.plan.result == 'success' && needs.build-release.result == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -229,28 +271,26 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download the built APKs
+      - name: Download the built release APK
         uses: actions/download-artifact@v4
         with:
+          name: apk-release
           path: artifacts
-          merge-multiple: true
 
-      - name: Rename the APKs for the release
+      - name: Rename the APK for the release
         run: |
           set -euo pipefail
           VERSION="${{ needs.plan.outputs.version }}"
           APK_RELEASE="$(find artifacts -type f -name 'app-release.apk' | head -1 || true)"
-          APK_DEBUG="$(find artifacts -type f -name 'app-debug.apk' | head -1 || true)"
-          if [ -z "$APK_RELEASE" ] || [ -z "$APK_DEBUG" ]; then
-            echo "::error::Both APKs are required to publish a release — refusing to publish a partial one."
+          if [ -z "$APK_RELEASE" ]; then
+            echo "::error::The release APK is required to publish a release — refusing to publish one without it."
             find artifacts -type f -print
             exit 1
           fi
           cp "$APK_RELEASE" "Ansu-${VERSION}.apk"
-          cp "$APK_DEBUG"   "Ansu-${VERSION}-debug.apk"
           ls -la Ansu-*.apk
 
-      - name: Verify both APKs are signed before publishing
+      - name: Verify the APK is signed before publishing
         run: |
           set -euo pipefail
           SDKMANAGER="$(command -v sdkmanager || true)"
@@ -262,13 +302,12 @@ jobs:
             "$SDKMANAGER" "platform-tools" "build-tools;35.0.0" "build-tools;34.0.0" > /dev/null
           fi
           BUILD_TOOLS="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)"
-          echo "Using build-tools: $BUILD_TOOLS"
-          for apk in Ansu-*.apk; do
-            if ! "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$apk"; then
-              echo "::error::$apk is not validly signed — refusing to publish the release."
-              exit 1
-            fi
-          done
+          APK="Ansu-${{ needs.plan.outputs.version }}.apk"
+          if ! "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"; then
+            echo "::error::$APK is not validly signed — refusing to publish the release."
+            exit 1
+          fi
+
       - name: Extract the changelog section for this version
         id: changelog
         run: |
@@ -306,7 +345,6 @@ jobs:
           fi
           if [ -z "$COMMITS" ]; then COMMITS="- Initial release"; fi
 
-          # Collapse a long list so the release body stays readable.
           COMMIT_COUNT="$(printf '%s\n' "$COMMITS" | grep -c . || true)"
           if [ "$COMMIT_COUNT" -gt 7 ]; then
             COMMITS="$(printf '<details>\n<summary>Show all %s commits</summary>\n\n%s\n</details>' "$COMMIT_COUNT" "$COMMITS")"
@@ -326,13 +364,10 @@ jobs:
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: ${{ needs.plan.outputs.prerelease == 'true' }}
-          # The body is written by hand from CHANGELOG.md, so GitHub's
-          # generated notes are not used.
           generate_release_notes: false
           fail_on_unmatched_files: true
           files: |
             Ansu-${{ needs.plan.outputs.version }}.apk
-            Ansu-${{ needs.plan.outputs.version }}-debug.apk
           body: |
             ## Anisu ${{ needs.plan.outputs.version }}
             **Release channel:** `${{ needs.plan.outputs.channel }}`

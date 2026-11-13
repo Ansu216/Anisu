@@ -279,8 +279,65 @@ class AppearancePrefs(context: Context) {
             (head[0] == 0.toByte() && head[1] == 1.toByte() && head[2] == 0.toByte() && head[3] == 0.toByte())
     }
 
+    // ---- Developer options and the hidden seasonal themes ----
+
+    private val _developerUnlocked = MutableStateFlow(prefs.getBoolean(KEY_DEVELOPER_UNLOCKED, false))
+
+    /** Hidden options, unlocked by tapping the version code in About seven times. */
+    val developerUnlocked: StateFlow<Boolean> = _developerUnlocked
+
+    fun unlockDeveloperOptions() {
+        _developerUnlocked.value = true
+        prefs.edit().putBoolean(KEY_DEVELOPER_UNLOCKED, true).apply()
+    }
+
+    /** Hides Developer options again; the forced season is dropped so no theme is left stuck on. */
+    fun lockDeveloperOptions() {
+        _developerUnlocked.value = false
+        prefs.edit().putBoolean(KEY_DEVELOPER_UNLOCKED, false).apply()
+        setSeasonalOverride(null)
+    }
+
+    private val _seasonalOverride = MutableStateFlow(
+        SeasonalTheme.fromKey(prefs.getString(KEY_SEASONAL_OVERRIDE, null)),
+    )
+
+    /** A season forced from developer options; null means "follow the calendar". */
+    val seasonalOverride: StateFlow<SeasonalTheme?> = _seasonalOverride
+
+    private val _seasonalTheme = MutableStateFlow(
+        SeasonalTheme.fromKey(prefs.getString(KEY_SEASONAL_OVERRIDE, null))
+            ?: SeasonalTheme.activeOn(java.time.LocalDate.now()),
+    )
+
+    /** The season in effect right now (forced or from the calendar), or null. */
+    val seasonalTheme: StateFlow<SeasonalTheme?> = _seasonalTheme
+
+    init {
+        // The seasonal accent and background are applied in memory only. Writing them to disk would replace the
+        // person's own choice, and when the window closes the app should go back to it.
+        _seasonalTheme.value?.let { season ->
+            _accent.value = season.accent
+            AnsuColors.setAccent(season.accent.color)
+            _backgroundStyle.value = season.background
+        }
+    }
+
+    fun setSeasonalOverride(theme: SeasonalTheme?) {
+        _seasonalOverride.value = theme
+        val resolved = theme ?: SeasonalTheme.activeOn(java.time.LocalDate.now())
+        _seasonalTheme.value = resolved
+        prefs.edit().putString(KEY_SEASONAL_OVERRIDE, theme?.key.orEmpty()).apply()
+        // Resolve back to the person's stored choice when no season applies.
+        _accent.value = resolved?.accent ?: AccentPalette.fromKey(prefs.getString(KEY_ACCENT, null))
+        AnsuColors.setAccent(_accent.value.color)
+        _backgroundStyle.value = resolved?.background ?: BackgroundStyle.fromKey(prefs.getString(KEY_BACKGROUND_STYLE, null))
+    }
+
     companion object {
         private const val KEY_ACCENT = "accent_palette"
+        private const val KEY_DEVELOPER_UNLOCKED = "developer_options_unlocked"
+        private const val KEY_SEASONAL_OVERRIDE = "seasonal_theme_override"
         private const val KEY_APP_FONT_FILE = "app_font_file"
         private const val KEY_APP_FONT_NAME = "app_font_name"
         private const val KEY_SUB_FONT_FILE = "subtitle_font_file"
@@ -312,14 +369,17 @@ class AppearancePrefs(context: Context) {
 }
 
 /** Background animations; None keeps the plain background. */
-enum class BackgroundStyle(val key: String, val label: String) {
+enum class BackgroundStyle(val key: String, val label: String, val seasonal: Boolean = false) {
     NONE("none", "None"),
     CIRCLES("circles", "Circles"),
     TRIANGLES("triangles", "Triangles"),
     SHAPES("shapes", "Material shapes"),
     SAKURA("sakura", "Cherry blossom"),
     SNOW("snow", "Snowfall"),
-    BREAD("bread", "Cute bread");
+    BREAD("bread", "Cute bread"),
+    // Hidden seasonal backgrounds: they appear with their season and are not listed in the picker.
+    HALLOWEEN("halloween", "Halloween", seasonal = true),
+    EASTER("easter", "Easter eggs", seasonal = true);
 
     companion object {
         fun fromKey(key: String?): BackgroundStyle = entries.firstOrNull { it.key == key } ?: NONE

@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="34dp"
+    android:height="24dp"
+    android:viewportWidth="34"
+    android:viewportHeight="24">
+    <!-- The cone, leaning slightly so it looks worn. -->
+    <path
+        android:fillColor="#5E35B1"
+        android:pathData="M17.8,1.6 C19.6,1.6 21.4,5.4 24.2,15.2 L11.4,15.2 C14.2,5.4 16,1.6 17.8,1.6 Z" />
+    <path
+        android:fillColor="#7E57C2"
+        android:pathData="M17.8,1.6 C18.6,1.6 19.4,3 20.3,5.4 C18.7,6.2 17.4,8.6 16.8,12.2 L14.4,15.2 L11.4,15.2 C14.2,5.4 16,1.6 17.8,1.6 Z" />
+    <!-- The orange band and its buckle. -->
+    <path
+        android:fillColor="#F08A24"
+        android:pathData="M12.6,11.8 H23 V15.2 H12.6 Z" />
+    <path
+        android:fillColor="#F7C948"
+        android:pathData="M16.8,12.3 H19.4 V14.7 H16.8 Z" />
+    <!-- The wide brim. -->
+    <path
+        android:fillColor="#4527A0"
+        android:pathData="M2,15.2 H32 A2.6,2.6 0 0 1 32,20.4 H2 A2.6,2.6 0 0 1 2,15.2 Z" />
+    <path
+        android:fillColor="#311B92"
+        android:pathData="M2,18.2 H32 V18.8 A1.6,1.6 0 0 1 30.4,20.4 H3.6 A1.6,1.6 0 0 1 2,18.8 Z" />
+</vector>

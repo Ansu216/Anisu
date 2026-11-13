@@ -1,5 +1,5 @@
 1.1.0
-2026111303
+2026111304
 stable
 # version.txt - the release metadata, read by app/build.gradle.kts and by the
 # workflows. Three value lines, then these notes:

@@ -1,0 +1,20 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="24dp"
+    android:viewportWidth="28"
+    android:viewportHeight="24">
+    <!-- Left ear, with its pink inner ear. -->
+    <path
+        android:fillColor="#F7F3EC"
+        android:pathData="M8,22 C4.2,15.2 4.6,5.4 8.2,2.4 C11.8,0 13.2,8.4 12.2,22 Z" />
+    <path
+        android:fillColor="#F4A6C0"
+        android:pathData="M8.6,19.4 C6.4,13.4 6.8,6.6 8.8,5.4 C10.8,5.2 11.2,12.6 10.6,19.4 Z" />
+    <!-- Right ear, mirrored. -->
+    <path
+        android:fillColor="#F7F3EC"
+        android:pathData="M20,22 C23.8,15.2 23.4,5.4 19.8,2.4 C16.2,0 14.8,8.4 15.8,22 Z" />
+    <path
+        android:fillColor="#F4A6C0"
+        android:pathData="M19.4,19.4 C21.6,13.4 21.2,6.6 19.2,5.4 C17.2,5.2 16.8,12.6 17.4,19.4 Z" />
+</vector>

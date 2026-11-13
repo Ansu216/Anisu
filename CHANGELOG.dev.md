@@ -20,10 +20,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- [APK] **Commits now lists the repository's real history, not just the build's SHA.**
+  `data/update/GitHubCommits.kt` reads `https://api.github.com/repos/Ansu216/Anisu/commits?branch=main&per_page=50`
+  through the shared `OkHttpClient` (same `User-Agent` rule as `GitHubStats`), keeps the first
+  non-blank line of each message, formats the author date as `d MMM yyyy`, and caches the answer for
+  the app run. `ui/about/CommitsScreen.kt` presents it the way vivi-music's `CommitScreen` does —
+  subject, author, date and the seven-character SHA, the author's GitHub avatar on the right, each
+  row opening the commit on GitHub — but as a `GlassGroup` of `GlassRow`s, so the list is black
+  glass rather than Material surfaces. The build's own commit stays in a `This build` card above
+  the list; loading, empty and failure states each have a row, and the top bar's refresh forces a
+  new request.
+
+### Changed
+
+- [APK] **Updates is called Updates, sits in the app bar, and no longer shows the package name.**
+  `ui/about/UpdatesScreen.kt`: the content heading `Update Settings` moved into the `TopAppBar` as
+  `Updates` (the same treatment Notifications already had), and the `Package` row was removed from
+  the first card, leaving System update and App version. `Icons.Filled.Numbers` went with it.
+- [APK] **The download counters are back under The project, and Developer options unlock from App version.**
+  `ui/about/AboutScreen.kt`: the `Version` row is gone from The project, so the page ends with
+  `Downloads` (and `Nightly Downloads` on a nightly build) as it did in 1.0.3, and the Links panel
+  no longer repeats them — it is Telegram, Repository, License and Report an issue again.
+  `ui/about/UpdatesScreen.kt`: the seven quick taps moved to the `App version` row (two-second
+  window between taps, `Developer options unlocked` toast), because the version code is no longer
+  shown in About; the hidden Seasonal theme control still appears on About once unlocked.
+- [APK] **About and Playback put their titles in the app bar too.**
+  `ui/about/AboutScreen.kt` and `ui/playersettings/PlayerStreamingScreen.kt` lost their large
+  in-content headings; `About` and `Playback` are the `TopAppBar` titles now, matching
+  `NotificationsScreen`. The About page starts with the hero card under the bar; Playback starts
+  with its `Gestures` label.
+- [APK] **The seasonal logo wears vector art instead of emoji: a Santa hat, a witch hat and bunny ears.**
+  `data/prefs/SeasonalTheme.kt` stores `@DrawableRes emblemRes` instead of the `🎄`/`🎃`/`🐣`
+  strings. Three new drawables replace them: `ic_emblem_christmas.xml` is a red Santa hat with a
+  white fur trim and pompom that sits on top of the Anisu badge, exactly where VLC's cone wears its
+  hat; `ic_emblem_halloween.xml` is a purple witch hat with an orange band, also on top;
+  `ic_emblem_easter.xml` is a pair of bunny ears that stands behind the badge, so the circle hides
+  their base. `AboutScreen.HeroCard` overlays the Easter ears before the clipped logo and the hats
+  after it, 11–12dp above it, so nothing is cut by the badge's circle. The themes stay secret:
+  they are still driven by the calendar and only forceable from Developer options after seven taps
+  on the version code. **Constraint:** VLC only dresses its icon for Christmas (20 December–1
+  January); Anisu keeps its wider 1 December–6 January window and its Halloween/Easter windows,
+  which VLC does not have.
+- [APK] **The update subscreen now carries the app's mark, like vivi's updater.**
+  `ui/about/UpdateScreen.kt`: the three slowly turning hexagons are still there, but the Anisu
+  logo (`splash_logo_a`, 72dp, transparent) is drawn on top of them, centred, so the page opens on the
+  app's identity before the version and the Download/Install action. The rest of the page — status
+  pill, version comparison, download bar, `What's new?` card and `Check for update` — is unchanged.
+- [APK] **Notification settings all live in Updates, and Developer options have a category of their own with an off switch.**
+  `ui/settings/SettingsScreen.kt` lost its `Notifications` group: Release Notifications and
+  Watching List Alerts now sit in `ui/about/NotificationsScreen.kt`, under the update switches, so
+  every notification control is in one place (Updates → Notification setting). When Developer
+  options are unlocked, Settings shows a new `Developer` category right under About; it opens the
+  new `ui/about/DeveloperOptionsScreen.kt` (route `Dest.DEVELOPER_OPTIONS`), which holds the
+  seasonal picker and a `Developer options` switch. Turning it off calls the new
+  `AppearancePrefs.lockDeveloperOptions()`: it hides the category, clears the forced season and
+  pops the screen, so a season can never stay forced with no way to change it. The seasonal
+  controls were removed from About, which keeps the public page free of test switches.
+- [APK] **Build logs and scratch files live in `.ignore/`.**
+  `CLAUDE.md` gained §4.6: agents write Gradle output, test logs and temporary screenshots into the
+  gitignored `.ignore/` folder instead of the repository root, which keeps `git status` clean and
+  keeps `fix.zip` free of them. `screenshots/` remains the deliberate exception, because
+  `ScreenshotTest` writes the visual proofs there.
+
 ## [1.1.0] - 2026-11-13
 
 ### Added
 
+- [APK] **Hidden seasonal themes: Christmas, Halloween and Easter.** `data/prefs/SeasonalTheme.kt` decides the window from the calendar (1 December–6 January, 20 October–2 November, and the week either side of Easter Sunday, computed with the anonymous Gregorian algorithm), and `AppearancePrefs` applies that season's accent and background in memory at launch — never to disk, so the person's own choice comes back when the window closes. Halloween and Easter got their own animations (`BackgroundStyle.HALLOWEEN` with carved pumpkins, `BackgroundStyle.EASTER` with painted eggs), both filtered out of `BackgroundAnimationPicker`, and the About hero draws the season's emblem (🎄/🎃/🐣) on the Anisu logo. A new Version row in About unlocks Developer options after seven quick taps and offers Auto/Christmas/Halloween/Easter, which forces a season at any time for testing.
 - [APK] **The update has a screen of its own, and its download is separate from its install.**
   `ui/about/UpdateScreen.kt` is new: route `Dest.UPDATE = "update"` in `AnsuNavGraph.kt`, opened from the System update row. It draws the build on offer over three slowly turning hexagons (`UpdaterBlobs`, a `Canvas` path rather than a shape library), the version comparison line, the Material 3 Expressive bar (`UpdateProgressBar`: 14dp rounded track, the active indicator stopping 6dp short of the end and the 4dp stop indicator on the right) and one action that follows the state — `Download`, then the progress, then `Install` — with the notes of the build underneath. `UpdateManager.downloadAndInstall()` was split into `download()` and `installDownloaded()`: the first leaves the completed APK on disk, the second hands it to `UpdateInstaller.install()`. `UpdateState` gained `downloadedApk`, filled by the new `UpdateInstaller.cachedApk(update)` when a check finds the file already downloaded, and cleared by the install, by `clearCachedApks()` and whenever the offered build changes, so `Install` never appears for a different build than the one on disk. The nightly download counter still runs beside the install, never in front of it. With nothing on offer the same screen shows `Anisu <version>`, the `Up to date` pill and an explanation card.
 - [APK] **Live status while sources load and test.** The Extensions list now checks every installed source's website when it opens and shows, as each answers, whether it is online (with the time it took), down (for example "HTTP 530", which means the site's own server is unreachable), or can't be found at all (the domain doesn't exist or your DNS blocks it). Pressing Test now shows the step it is on as it happens: checking the site, loading the catalogue, listing episodes, asking for servers, resolving a stream. The buffering screen likewise lists what is going on in plain words under "Buffering…" (looking for sources, "AniLab: 2 servers found", "Reading the stream (HLS)…", a source that failed and the next one being tried), the newest line brightest. It follows the playback log, so what you see there is what the diagnostics report will say.
@@ -31,6 +96,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [APK] **Blur when a poster opens and closes, and one switch for all the frosted glass.** Opening a details page from a poster now softens the page behind it while the poster grows, and sharpens it again as the page shrinks back, like a phone's home screen behind an app. A new Appearance > Glass > Frosted blur switch (on by default) controls every frosted effect: that blur, the blur behind the bars, menus and sheets, and a frosted sheen and light edge on glass cards and buttons. Off keeps the plain translucent glass everywhere. **Constraint:** the real blur needs Android 12 or newer (older phones keep the dimmed page), and cards and buttons that sit on the plain background get the frosted sheen rather than a see-through blur, because there is nothing behind them to blur.
 
 ### Changed
+- [APK] **Update Settings is vivi-music's screen, drawn in Anisu's black glass.**
+  `ui/about/UpdatesScreen.kt` now follows `UpdateSettings.kt` from vivizzz007/vivi-music card for card: System update (Update/Up to date) · App version · Package; Automatic update check · Nightly Updates · Notification setting; Clear downloaded updates (with the "N APKs found" line and the ⓘ dialog); Changelog ("View version history") · Commits ("View commit history"). The two subscreens vivi routes to are new: `NotificationsScreen` (the description, the big Enable Notifications capsule and the Update/Download/Nightly toggles) and `CommitsScreen` (the build's commit and the commit history), wired as `Dest.UPDATE_NOTIFICATIONS` and `Dest.UPDATE_COMMITS`. `UpdateScreen` keeps the download/install action and now labels its notes "What's new?" and its retry "Check for update", as vivi does. Everything is built from `GlassGroup`/`GlassRow`/`GlassToggleRow`, so no card is a Material 3 surface.
+- [APK] **The search bar blurs what scrolls behind it, the way Telegram's does.**
+  `ui/search/SearchScreen.kt` no longer wraps the pill in the opaque `HeavyGlassCard`: with the Appearance > Frosted blur switch on (and Android 12+), the field draws a live backdrop blur of the results behind it (`Modifier.frostedBackdrop`) under a light black tint, and keeps the plain dark glass when the switch is off or the phone is older.
 - [APK] **The nightly APK is always a nightly, whatever `version.txt` says.**
   `apk-nightly.yml`'s `plan` job no longer reads line 3: it hardcodes `CHANNEL=nightly`, names the build `${VERSION}-nightly`, and the matrix build step passes `-Pchannel=nightly` next to `-PversionName` / `-PversionCode`, so `BuildConfig.RELEASE_CHANNEL` is `nightly` on every nightly and the nightly-only rows in `AboutScreen.kt` (`onNightly`) and `UpdatesScreen.kt` show. Lines 1-2 are still read for the version and the code, and `release-apk.yml` still reads the channel. Verified locally with the workflow's exact property set (`RELEASE_CHANNEL="nightly"` over a file that says `stable`) and without it (`"stable"`).
 - [APK] **Smaller APK.** The release APK now carries native libraries for phones only (arm64 and 32-bit ARM) and stores them compressed, drops unused resources, and keeps English strings only for the libraries it uses.
@@ -43,6 +112,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ui/about/AboutScreen.kt` rewritten around the same glass rows: the hero is a horizontal card with the launcher logo (seven taps still unlock Cast and Tablet mode), the name and the installed build, and a GitHub button; the developer row draws the GitHub avatar on a 7-lobed Material cookie (`Cookie7Shape`/`cookie7Path`, a `Shape` built from the star-bumped circle) with a Material 3 Expressive "Lead developer" badge and opens the profile; Contributors keeps the row but now stacks the GitHub avatars on the right; the Support row carries the GitHub star count and opens the repository to star; the Links row opens a welcome-style panel (`LinksOverlay`) with Telegram, Repository (star count), License (inside the app, `Dest.LICENSES`) and Issues; Downloads and, on nightlies, Nightly Downloads close the page. The version-code row, the install date and the Credits block are gone — the AniList/source affiliation now lives in `LicensesScreen` — and the hero's Version/Changelog pills are removed. The top-bar "About" label is dropped in favour of the large in-page title, so the page no longer shows two titles. Version bumped to 1.1.0 in `version.txt`.
 - [APK] **Content cards are opaque, so the animated background no longer shows through them, and Updates shows one title instead of two.**
   `components/GlassSurface.kt` raises `GLASS_MIN_TINT` to `1f` and `FrostedGlassCard` uses a fully opaque fill when the tint is that high, so `HeavyGlassCard`/`GlassGroup` cards no longer let the petals/ghosts of `BackgroundAnimation` bleed through them (they keep their light edge). In `ui/about/UpdatesScreen.kt` the `TopAppBar` title is removed, leaving the back arrow, the refresh action and the large `Updates` heading as the only title, matching the About page.
+- [APK] **About wears the real GitHub and Telegram marks, and its Links card closes on Back.**
+  `ui/about/AboutScreen.kt` now draws `ic_github` (a new vector drawable) in the hero button and in the links panel, keeps the Telegram logo beside the Telegram row, renames the row and panel to "Anisu Community", replaces the repository star count with "Stable downloads" and "Nightly downloads", and handles system Back (`BackHandler`) so the first press closes the links card instead of leaving About. The large "About" title sits lower, clear of the back button.
+- [APK] **Updates is laid out like vivi-music's updater, with the build commit and changelog on the page.**
+  `ui/about/UpdatesScreen.kt` reordered into one card (System update + Commit), then Update channel (a Stable/Nightly chip pair), Checks, Notifications, Storage and History; `UpdateScreen` stays the subscreen that carries the download and install. The `TopAppBar` title is gone, so the page shows one title.
+- [APK] **Content cards are dark again.**
+  `components/GlassSurface.kt` fills the opaque `HeavyGlassCard` with `BackgroundElevated`, the page's own dark colour, instead of the lighter glass tint, so cards read as dark as 1.0.2 while the animated background still never shows through them.
+- [APK] **Playback gets the same one-title page as the rest of the settings.**
+  `ui/playersettings/PlayerStreamingScreen.kt` drops the `TopAppBar` title and shows a large in-page "Playback" heading, over the same dark cards.
+- [APK] **Autorelease builds debug and release on separate branches and publishes only the release APK.**
+  `.github/workflows/release-apk.yml` is renamed "Anisu Autorelease": `build-release` and `build-debug` are two independent one-variant matrix jobs that start together and need not finish together, and the `autorelease` job depends only on `build-release` and attaches only `Ansu-<version>.apk` — a debug APK is never published.
+- [APK] **Version code moved to 2026111304.** `version.txt` only; the version name stays 1.1.0.
 
 ### Removed
 - [APK] **Preload Last Episode is gone.**
