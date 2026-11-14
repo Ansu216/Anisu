@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- [APK] **Adult extensions say "18+" in their description line, with the version and language.**
+- [APK] **The manual source picker shows each stream's size.**
+
 ## [1.1.1] - 2026-11-14
 
 ### Added

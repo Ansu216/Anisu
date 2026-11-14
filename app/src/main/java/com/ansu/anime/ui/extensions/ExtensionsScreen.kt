@@ -73,6 +73,7 @@ import androidx.navigation.NavHostController
 import com.ansu.anime.di.AppContainer
 import com.ansu.anime.extension.ExtensionRepoEntry
 import com.ansu.anime.extension.JsonUrlResult
+import com.ansu.anime.core.util.ContentFilter
 import com.ansu.anime.extension.SiteStatus
 import com.ansu.anime.extension.isAdult
 import com.ansu.anime.extension.SourceTestResult
@@ -207,12 +208,13 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
         }
         extensions.forEach { ext ->
             val icon = ext.icon ?: runCatching { packageManager.getApplicationIcon(ext.packageName) }.getOrNull()
+            val extAdult = ext.isNsfw || ContentFilter.isAdultName(ext.packageName) || ContentFilter.isAdultName(ext.displayName)
             if (ext.sources.isEmpty()) {
                 add(
                     InstalledSource(
                         key = uniqueRowKey("ext:${ext.packageName}"), title = ext.displayName, lang = "", versionName = ext.versionName,
                         icon = icon, source = null, packageName = ext.packageName, sourcesInPackage = 0, enabled = true,
-                        hasUpdate = ext.packageName in updatePkgs, error = ext.loadError ?: "No sources found", settings = null,
+                        hasUpdate = ext.packageName in updatePkgs, error = ext.loadError ?: "No sources found", settings = null, adult = extAdult,
                     ),
                 )
             } else {
@@ -223,6 +225,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                             source = s, packageName = ext.packageName, sourcesInPackage = ext.sources.size,
                             enabled = s.id !in disabledIds, hasUpdate = ext.packageName in updatePkgs, error = null,
                             settings = (s as? AniyomiSourceAdapter)?.takeIf { it.hasSettings },
+                            adult = extAdult || ContentFilter.isAdultName(s.name),
                         ),
                     )
                 }
@@ -376,7 +379,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                             ExtensionCard(
                                 icon = repo.iconUrl(item.indexUrl, item.entry),
                                 title = item.entry.name,
-                                subtitle = plainLine(item.entry.version.takeIf { it.isNotBlank() }?.let { "v$it" }, item.entry.lang),
+                                subtitle = plainLine(item.entry.version.takeIf { it.isNotBlank() }?.let { "v$it" }, item.entry.lang, adult = item.entry.isAdult()),
                                 trailing = {
                                     OutlineAction(
                                         text = if (hasUpdate) "Update" else if (isInstalled) "Installed" else "Install",

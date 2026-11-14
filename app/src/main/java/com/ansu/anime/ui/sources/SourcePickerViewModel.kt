@@ -13,6 +13,7 @@ import com.ansu.anime.data.prefs.PlayerPrefs
 import com.ansu.anime.extension.ExtensionManager
 import com.ansu.anime.extension.findEpisodesByTitle
 import com.ansu.anime.ui.player.PlayableSource
+import com.ansu.anime.ui.player.qualityChip
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,6 +21,10 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import okhttp3.OkHttpClient
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -63,6 +68,8 @@ data class SourcePickerState(
     /** Every stream found so far, in the person's source-priority order. Grows while the extensions answer. */
     val sources: List<PlayableSource> = emptyList(),
     val error: String? = null,
+    /** Stream url -> its size label ("845 MB", "~1.2 GB"), filled in as each stream is measured. */
+    val sizes: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -75,7 +82,12 @@ class SourcePickerViewModel(
     private val playerPrefs: PlayerPrefs,
     private val aniListRepository: AniListRepository,
     private val diagnostics: Diagnostics,
+    streamClient: OkHttpClient,
 ) : ViewModel() {
+
+    private val sizeProbe = StreamSizeProbe(streamClient)
+    private val sizeGate = Semaphore(4)
+    private val sizeRequested = HashSet<String>()
 
     private val _state = MutableStateFlow(
         SourcePickerState(anime = selectionHolder.currentAnime.value, episode = selectionHolder.currentEpisode.value),
@@ -106,6 +118,7 @@ class SourcePickerViewModel(
             val cached = PickerCache.get(key)
             if (cached != null) {
                 _state.value = _state.value.copy(isLoading = false, sources = cached, error = null)
+                probeSizes(cached)
                 return
             }
         }
@@ -120,6 +133,7 @@ class SourcePickerViewModel(
                         // Same order as the player's own list: the person's source priority first.
                         collected.sortWith(compareBy<PlayableSource> { playerPrefs.rankOf(it.sourceId) })
                         _state.value = _state.value.copy(sources = collected.toList())
+                        probeSizes(fresh)
                     }
                 }
             } catch (e: CancellationException) {
@@ -221,6 +235,30 @@ class SourcePickerViewModel(
         resolve = resolve?.let { pending -> suspend { pending()?.toPlayableSource() } },
         serverName = serverName,
     )
+
+    /**
+     * Measures every stream that already has a link (a stream the extension lists without resolving has none until it
+     * is picked, so it shows no size), four at a time, and publishes each size as it arrives. Runs on the main
+     * dispatcher between requests, so the state is only ever written from one thread.
+     */
+    private fun probeSizes(list: List<PlayableSource>) {
+        list.forEach { source ->
+            val url = source.url
+            if (url.isBlank()) return@forEach
+            sizeProbe.cached(url)?.let { size ->
+                _state.update { it.copy(sizes = it.sizes + (url to size.label())) }
+                return@forEach
+            }
+            if (!sizeRequested.add(url)) return@forEach
+            val height = source.qualityChip()?.let { chip ->
+                when (chip) { "4K" -> 2160; "2K" -> 1440; else -> chip.removeSuffix("p").toIntOrNull() }
+            }
+            viewModelScope.launch {
+                val size = sizeGate.withPermit { sizeProbe.sizeOf(url, source.headers, height) }
+                if (size != null) _state.update { it.copy(sizes = it.sizes + (url to size.label())) }
+            }
+        }
+    }
 
     /** The person chose [source]: it is kept for this show's next episodes and handed to the player. */
     fun pick(source: PlayableSource) {

@@ -20,6 +20,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- [APK] **Adult extensions say "18+" in their description line, with the version and language.**
+  `plainLine` and `installedLine` in `ui/extensions/ExtensionsParts.kt` add a bold red `18+` after the version and
+  language (`v17.16 · en · 18+`; on an installed row before "Update available" / "Disabled"). Available rows read it
+  from `ExtensionRepoEntry.isAdult()`; installed rows from `InstalledSource.adult`, set in `ExtensionsScreen.kt` when
+  the extension flags itself NSFW (`InstalledExtension.isNsfw`) or it, or one of its sources, has an adult name
+  (`ContentFilter.isAdultName`). They only show while the NSFW checkbox is on.
+- [APK] **The manual source picker shows each stream's size.**
+  New `ui/sources/StreamSizeProbe.kt`, fed by `SourcePickerViewModel.probeSizes` (four at a time, through
+  `container.streamClient`, an 8 s call timeout each). A plain file is sized exactly from its `Content-Length`
+  (HEAD, or a one-byte ranged GET when HEAD is refused). HLS is estimated and shown with a `~`: a master playlist
+  gives the variant nearest the stream's resolution (average bandwidth) times the variant playlist's running time,
+  a media playlist gives the first segment's byte length times the number of segments. The size is a chip on the
+  source card after the quality and Sub/Dub chips. **Constraint:** a stream that the extension lists without
+  resolving (Aniyomi library 16 hosters) has no link until it is picked, so it shows no size; resolving them all
+  just to measure them would bring back the slow picker.
+
 ## [1.1.1] - 2026-11-14
 
 ### Added

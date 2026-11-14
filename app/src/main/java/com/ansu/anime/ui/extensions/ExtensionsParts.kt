@@ -112,6 +112,8 @@ internal data class InstalledSource(
     val hasUpdate: Boolean,
     val error: String?,
     val settings: AniyomiSourceAdapter?,
+    /** True for an 18+ extension (only listed while the NSFW checkbox is on); its card carries an "18+" badge. */
+    val adult: Boolean = false,
 )
 
 /** The row that was held, plus where it sat on screen (window coordinates) when it was held. */
@@ -197,13 +199,16 @@ internal fun ExtensionCard(
     ) {
         IconSquare(model = icon, fallback = title)
         Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                title.removePrefix("Aniyomi: "),
-                style = MaterialTheme.typography.titleSmall,
-                color = AnsuColors.TextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    title.removePrefix("Aniyomi: "),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = AnsuColors.TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = AnsuColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             extra?.invoke()
         }
@@ -211,8 +216,17 @@ internal fun ExtensionCard(
     }
 }
 
-internal fun plainLine(vararg parts: String?): androidx.compose.ui.text.AnnotatedString =
-    buildAnnotatedString { append(parts.filter { !it.isNullOrBlank() }.joinToString(" · ")) }
+internal fun plainLine(vararg parts: String?, adult: Boolean = false): androidx.compose.ui.text.AnnotatedString =
+    buildAnnotatedString {
+        append(parts.filter { !it.isNullOrBlank() }.joinToString(" · "))
+        if (adult) appendAdultTag(isFirst = length == 0)
+    }
+
+/** "18+" in red, after a " · " unless it opens the line. */
+private fun androidx.compose.ui.text.AnnotatedString.Builder.appendAdultTag(isFirst: Boolean) {
+    if (!isFirst) append(" · ")
+    withStyle(SpanStyle(color = AnsuColors.Error, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)) { append("18+") }
+}
 
 /** "v17.16 · all · Update available" with the update note in the accent colour. */
 internal fun installedLine(row: InstalledSource): androidx.compose.ui.text.AnnotatedString = buildAnnotatedString {
@@ -221,6 +235,7 @@ internal fun installedLine(row: InstalledSource): androidx.compose.ui.text.Annot
         return@buildAnnotatedString
     }
     append(listOfNotNull(row.versionName?.let { "v$it" } ?: "Built-in", row.lang.ifBlank { null }).joinToString(" · "))
+    if (row.adult) appendAdultTag(isFirst = false)
     if (row.hasUpdate) {
         append(" · ")
         withStyle(SpanStyle(color = AnsuColors.Accent)) { append("Update available") }

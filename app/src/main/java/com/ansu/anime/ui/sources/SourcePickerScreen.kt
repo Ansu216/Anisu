@@ -84,6 +84,7 @@ fun SourcePickerScreen(container: AppContainer, navController: NavHostController
                     container.playerPrefs,
                     container.aniListRepository,
                     container.diagnostics,
+                    container.streamClient,
                 )
             }
         },
@@ -194,6 +195,7 @@ fun SourcePickerScreen(container: AppContainer, navController: NavHostController
                         Box(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp)) {
                             SourceCard(
                                 source = source,
+                                size = state.sizes[source.url],
                                 onClick = {
                                     play(source)
                                 },
@@ -310,7 +312,7 @@ private fun FilterChip(text: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SourceCard(source: PlayableSource, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun SourceCard(source: PlayableSource, size: String?, onClick: () -> Unit, onLongClick: () -> Unit) {
     val title = listOfNotNull(source.extensionName, source.serverName).joinToString(" \u00b7 ").ifBlank { source.label }
     Column(
         modifier = Modifier
@@ -326,6 +328,7 @@ private fun SourceCard(source: PlayableSource, onClick: () -> Unit, onLongClick:
         val chips = listOfNotNull(
             source.qualityChip(),
             source.kindChip(),
+            size,
             source.subtitles.size.takeIf { it > 0 }?.let { "$it subs" },
             source.audioTracks.size.takeIf { it > 0 }?.let { "$it audio" },
         )
