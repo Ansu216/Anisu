@@ -1,9 +1,10 @@
 package com.ansu.anime.core.util
 
 /**
- * The app's built-in adult-content filter. It is always on and has no setting: hentai titles never
- * appear in Search, Home or Details, and 18+ extensions are never listed, installed or loaded, so
- * their sources can neither be searched nor used to stream.
+ * The app's built-in adult-content filter. For titles it is always on and has no setting: hentai never
+ * appears in Search, Home or Details (mature but not adult series such as Berserk are fine). 18+ extensions
+ * are hidden by default and only listed, installed and loaded while the Extensions screen's NSFW checkbox
+ * is on; even then their results are matched to AniList titles, which this filter still screens.
  *
  * Extensions are judged by the flag they publish (`nsfw` in a repo index, the NSFW metadata in the
  * APK) and, as a fallback for sources that do not flag themselves, by obvious words in their name.

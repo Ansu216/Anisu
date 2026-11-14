@@ -27,7 +27,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.ansu.anime.ui.components.FadingTopAppBar
+import com.ansu.anime.ui.components.withoutTop
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -71,22 +72,22 @@ fun NotificationsScreen(container: AppContainer, navController: NavHostControlle
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            TopAppBar(
+            FadingTopAppBar(
                 title = { Text("Notification setting") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         },
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(padding.withoutTop())
                 .verticalScroll(rememberScrollState())
+                .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp),
         ) {

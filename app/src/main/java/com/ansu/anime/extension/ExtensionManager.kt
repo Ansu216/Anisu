@@ -117,6 +117,23 @@ class ExtensionManager(private val context: Context) {
     /** Ids of sources the person switched off on the Extensions screen; they stay installed but are skipped by Home and Search. */
     val disabledSourceIds: StateFlow<Set<Long>> = _disabledSourceIds
 
+    private val _showNsfw = MutableStateFlow(prefs.getBoolean("show_nsfw", false))
+
+    /**
+     * The Extensions screen's NSFW checkbox (off by default): when on, 18+ extensions are listed, can be installed and
+     * are loaded. It only concerns extensions; the title filter (no hentai in Search, Home or Details) is separate and
+     * always on.
+     */
+    val showNsfw: StateFlow<Boolean> = _showNsfw
+
+    /** Remembers the choice; the caller then runs [reloadAll] (off the main thread) so installed 18+ extensions appear or hide. */
+    fun setShowNsfw(on: Boolean) {
+        _showNsfw.value = on
+        prefs.edit().putBoolean("show_nsfw", on).apply()
+    }
+
+    private val allowAdult: Boolean get() = _showNsfw.value
+
     fun setSourceEnabled(id: Long, enabled: Boolean) {
         val next = if (enabled) _disabledSourceIds.value - id else _disabledSourceIds.value + id
         _disabledSourceIds.value = next
@@ -205,9 +222,9 @@ class ExtensionManager(private val context: Context) {
         val isExtension = info.reqFeatures?.any { it.name == ANIYOMI_FEATURE } == true ||
             !meta?.getString(METADATA_SOURCE_CLASS).isNullOrBlank()
         if (!isExtension) error("The downloaded file is not an anime extension")
-        if (isAdultExtension(info)) {
+        if (!allowAdult && isAdultExtension(info)) {
             apk.delete()
-            error("18+ extensions are blocked by the built-in content filter")
+            error("18+ extensions are hidden. Turn on NSFW in the Extensions menu to use them")
         }
 
         val target = privateFile(info.packageName)
@@ -227,9 +244,9 @@ class ExtensionManager(private val context: Context) {
 
     /** Stores a downloaded CloudStream plugin (`.cs3`) in the private folder, like an APK, and loads it. */
     private fun installCloudStream(file: File, manifest: CloudStreamExtensionLoader.Manifest): InstalledExtension {
-        if (ContentFilter.isAdultName(manifest.name)) {
+        if (!allowAdult && ContentFilter.isAdultName(manifest.name)) {
             file.delete()
-            error("18+ extensions are blocked by the built-in content filter")
+            error("18+ extensions are hidden. Turn on NSFW in the Extensions menu to use them")
         }
         val target = privateFile(manifest.packageName)
         if (target.exists()) {
@@ -251,9 +268,8 @@ class ExtensionManager(private val context: Context) {
 
     /**
      * Re-scans the device and the private folder and (re)loads every discoverable extension. Call off the main thread.
-     * The built-in 18+ filter applies here: an adult extension is never loaded, so none of its sources reach Home,
-     * title matching or the player. One that was downloaded inside Ansu is deleted; one installed on the phone
-     * itself cannot be removed silently, so it is only skipped.
+     * While the Extensions NSFW checkbox is off, an adult extension is skipped (kept on disk, not loaded), so none of
+     * its sources reach Home, title matching or the player; switching it on and reloading brings them back.
      */
     @Synchronized
     fun reloadAll(): List<InstalledExtension> = try {
@@ -269,16 +285,11 @@ class ExtensionManager(private val context: Context) {
         val candidates = privatePackages.map { it to true } +
             findAvailableExtensions().filter { it.packageName !in privateNames }.map { it to false }
         val loaded = candidates.mapNotNull { (pkg, isPrivate) ->
-            if (isAdultExtension(pkg)) {
-                if (isPrivate) deletePrivate(pkg.packageName)
-                return@mapNotNull null
-            }
+            // Hidden, not deleted: switching NSFW back on brings an installed 18+ extension straight back.
+            if (!allowAdult && isAdultExtension(pkg)) return@mapNotNull null
             val ext = loadExtension(pkg, isPrivate = isPrivate)
             // Second pass on what actually loaded: the loader's own NSFW reading and the sources' names.
-            if (ext.isNsfw || ext.sources.any { ContentFilter.isAdultName(it.name) }) {
-                if (isPrivate) deletePrivate(pkg.packageName)
-                return@mapNotNull null
-            }
+            if (!allowAdult && (ext.isNsfw || ext.sources.any { ContentFilter.isAdultName(it.name) })) return@mapNotNull null
             ext
         }
         // CloudStream plugins keep no Android package, so they are scanned separately. Every plugin is unregistered
@@ -296,10 +307,7 @@ class ExtensionManager(private val context: Context) {
                     isCloudStreamFormat = true,
                 )
             }
-            if (ext.isNsfw || ext.sources.any { ContentFilter.isAdultName(it.name) }) {
-                deletePrivate(manifest.packageName)
-                return@mapNotNull null
-            }
+            if (!allowAdult && (ext.isNsfw || ext.sources.any { ContentFilter.isAdultName(it.name) })) return@mapNotNull null
             ext.copy(isPrivate = true)
         }
         val everything = loaded + cloudStream

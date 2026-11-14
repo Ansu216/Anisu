@@ -12,12 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-14
+
 ### Added
 
+- [APK] **An NSFW checkbox in a three-dot menu on the Extensions screen.**
 - [APK] **Commits now lists the repository's real history, not just the build's SHA.**
 
 ### Changed
 
+- [APK] **The settings top bars fade out at their bottom edge instead of ending in a hard line.**
 - [APK] **Updates is called Updates, sits in the app bar, and no longer shows the package name.**
 - [APK] **The download counters are back under The project, and Developer options unlock from App version.**
 - [APK] **About and Playback put their titles in the app bar too.**
@@ -25,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [APK] **The update subscreen now carries the app's mark, like vivi's updater.**
 - [APK] **Notification settings all live in Updates, and Developer options have a category of their own with an off switch.**
 - [APK] **Build logs and scratch files live in `.ignore/`.**
+
+### Fixed
+
+- [APK] **The search bar is a visible pill again.**
 
 ## [1.1.0] - 2026-11-13
 

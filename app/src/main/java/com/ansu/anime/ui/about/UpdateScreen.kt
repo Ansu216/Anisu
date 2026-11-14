@@ -36,7 +36,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.ansu.anime.ui.components.FadingTopAppBar
+import com.ansu.anime.ui.components.withoutTop
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -88,7 +89,7 @@ fun UpdateScreen(container: AppContainer, navController: NavHostController) {
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            TopAppBar(
+            FadingTopAppBar(
                 title = { Text("Update") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
@@ -103,7 +104,6 @@ fun UpdateScreen(container: AppContainer, navController: NavHostController) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Check again")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         },
     ) { padding ->
@@ -114,8 +114,9 @@ fun UpdateScreen(container: AppContainer, navController: NavHostController) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(padding.withoutTop())
                 .verticalScroll(rememberScrollState())
+                .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

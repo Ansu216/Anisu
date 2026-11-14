@@ -1,6 +1,6 @@
-1.1.0
+1.1.1
 2026111305
-stable
+nightly
 # version.txt - the release metadata, read by app/build.gradle.kts and by the
 # workflows. Three value lines, then these notes:
 #   line 1 = version            line 2 = version code            line 3 = channel

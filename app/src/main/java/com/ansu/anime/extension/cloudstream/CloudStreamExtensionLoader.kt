@@ -101,7 +101,7 @@ internal class CloudStreamExtensionLoader(private val context: Context) {
             if (apis.isEmpty()) return failed("The plugin registered no providers")
 
             // The built-in 18+ filter: a provider that declares NSFW, or is named like one, marks the whole plugin adult
-            // and ExtensionManager then refuses and deletes it, as for an adult Aniyomi extension.
+            // and ExtensionManager then hides it unless NSFW is switched on, as for an adult Aniyomi extension.
             val adult = apis.any { TvType.NSFW in it.supportedTypes || ContentFilter.isAdultName(it.name) } ||
                 ContentFilter.isAdultName(manifest.name)
 

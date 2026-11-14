@@ -35,7 +35,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -71,9 +74,11 @@ import com.ansu.anime.di.AppContainer
 import com.ansu.anime.extension.ExtensionRepoEntry
 import com.ansu.anime.extension.JsonUrlResult
 import com.ansu.anime.extension.SiteStatus
+import com.ansu.anime.extension.isAdult
 import com.ansu.anime.extension.SourceTestResult
 import com.ansu.anime.extension.TestTarget
 import com.ansu.anime.extension.aniyomi.AniyomiSourceAdapter
+import com.ansu.anime.ui.components.GlassDropdownMenu
 import com.ansu.anime.ui.components.backdropBlurSupported
 import com.ansu.anime.ui.components.backdropSource
 import com.ansu.anime.ui.components.frostedBackdrop
@@ -102,6 +107,8 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
 
     val extensions by manager.extensions.collectAsStateWithLifecycle()
     val disabledIds by manager.disabledSourceIds.collectAsStateWithLifecycle()
+    val showNsfw by manager.showNsfw.collectAsStateWithLifecycle()
+    var menuOpen by remember { mutableStateOf(false) }
 
     val backdrop = rememberBackdropState()
     var tab by rememberSaveable { mutableStateOf(ExtensionsTab.Available) }
@@ -156,6 +163,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     val available = availableByRepo
         .filterKeys { it !in disabledRepos }
         .flatMap { (indexUrl, entries) -> entries.map { AvailableExtension(indexUrl, it) } }
+        .filter { showNsfw || !it.entry.isAdult() }
         .sortedByDescending { it.entry.code }
         .distinctBy { it.entry.pkg }
     val installedCodes = extensions.associate { it.packageName to it.versionCode }
@@ -307,6 +315,21 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                 )
                 IconButton(onClick = { searching = !searching; if (!searching) query = "" }) {
                     Icon(Icons.Filled.Search, "Search")
+                }
+                // Three dots at the far right, search beside it. The menu holds the NSFW checkbox.
+                Box {
+                    IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "More") }
+                    GlassDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("NSFW") },
+                            trailingIcon = { Checkbox(checked = showNsfw, onCheckedChange = null) },
+                            onClick = {
+                                val next = !showNsfw
+                                manager.setShowNsfw(next)
+                                scope.launch { withContext(Dispatchers.IO) { manager.reloadAll() } }
+                            },
+                        )
+                    }
                 }
             }
             AnimatedVisibility(

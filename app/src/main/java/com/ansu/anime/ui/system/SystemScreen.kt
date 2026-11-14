@@ -35,7 +35,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.ansu.anime.ui.components.FadingTopAppBar
+import com.ansu.anime.ui.components.withoutTop
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -92,7 +93,7 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
-            TopAppBar(
+            FadingTopAppBar(
                 title = { Text("System") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
@@ -105,8 +106,9 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(padding.withoutTop())
                 .verticalScroll(rememberScrollState())
+                .padding(top = padding.calculateTopPadding())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {

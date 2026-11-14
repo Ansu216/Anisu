@@ -59,7 +59,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.ansu.anime.ui.components.FadingTopAppBar
+import com.ansu.anime.ui.components.withoutTop
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -128,9 +129,8 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            TopAppBar(
+            FadingTopAppBar(
                 title = { Text("Playback") },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -142,9 +142,10 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(padding.withoutTop())
                 .onGloballyPositioned { autoScroll.viewport = it }
                 .verticalScroll(scrollState)
+                .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp),
         ) {

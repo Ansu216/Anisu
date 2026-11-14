@@ -255,8 +255,8 @@ class ExtensionRepo(
             runCatching { json.decodeFromJsonElement(ExtensionRepoEntry.serializer(), obj) }.getOrNull()
         }
         if (entries.isEmpty() && array.isNotEmpty() && !skippedCloudStream) error("The list is not in a supported extension repo format")
-        // The built-in adult filter: 18+ extensions are never listed, so they cannot be installed.
-        return entries.filterNot { it.isAdult() }
+        // 18+ entries are kept here; the Extensions screen hides them unless its NSFW checkbox is on.
+        return entries
     }
 
     /** One row of a CloudStream `plugins.json`; null when the plugin is marked down or serves no anime. */

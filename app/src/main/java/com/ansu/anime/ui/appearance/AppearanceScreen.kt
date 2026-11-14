@@ -49,7 +49,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import com.ansu.anime.ui.components.FadingTopAppBar
+import com.ansu.anime.ui.components.withoutTop
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -133,7 +134,7 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            FadingTopAppBar(
                 title = { Text("Appearance") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
@@ -146,8 +147,9 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(padding.withoutTop())
                 .verticalScroll(rememberScrollState())
+                .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp),
         ) {

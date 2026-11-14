@@ -61,7 +61,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.ansu.anime.ui.components.FadingTopAppBar
+import com.ansu.anime.ui.components.withoutTop
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -169,22 +170,22 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                TopAppBar(
+                FadingTopAppBar(
                     title = { Text("About") },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 )
             },
         ) { padding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
+                    .padding(padding.withoutTop())
                     .verticalScroll(rememberScrollState())
+                    .padding(top = padding.calculateTopPadding())
                     .padding(horizontal = 16.dp),
             ) {
                 Spacer(Modifier.height(12.dp))

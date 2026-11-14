@@ -20,8 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-14
+
 ### Added
 
+- [APK] **An NSFW checkbox in a three-dot menu on the Extensions screen.**
+  `ui/extensions/ExtensionsScreen.kt`: the top bar now ends with Search and a `MoreVert` button; the
+  button opens a `GlassDropdownMenu` with one row, `NSFW`, and a checkbox. `ExtensionManager.showNsfw`
+  (persisted as `show_nsfw` in the `extension_sources` prefs, off by default) decides whether 18+
+  extensions are listed in Available (`ExtensionRepo.parseEntries` no longer drops them; the screen
+  filters with `isAdult()`), may be installed, and are loaded. Switching it off only hides installed
+  18+ extensions (they are skipped, no longer deleted), switching it on runs `reloadAll()` and they
+  return. The title filter is untouched and always on: `isAdult: false` and `genre_not_in: ["Hentai"]`
+  in `AniListApi.kt` and `ContentFilter.isAdultGenres` still keep hentai out of Search, Home and
+  Details, and source-chip search results are still matched to AniList titles.
 - [APK] **Commits now lists the repository's real history, not just the build's SHA.**
   `data/update/GitHubCommits.kt` reads `https://api.github.com/repos/Ansu216/Anisu/commits?branch=main&per_page=50`
   through the shared `OkHttpClient` (same `User-Agent` rule as `GitHubStats`), keeps the first
@@ -35,6 +47,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [APK] **The settings top bars fade out at their bottom edge instead of ending in a hard line.**
+  New `ui/components/FadingTopBar.kt`: `FadingTopAppBar` is a `TopAppBar` with a transparent container and an
+  eased vertical gradient of `AnsuColors.Background` (solid behind the status bar and title, then fading to
+  clear over its last 8 dp and 36 dp past its bounds, drawn with `drawBehind`, so it follows the AMOLED switch).
+  `PaddingValues.withoutTop()` lets the scrolling content start under the bar: each screen now pads the column
+  with `padding.withoutTop()` and adds the scaffold's top padding inside the scroll, so the page scrolls under the
+  fade rather than being cut off at the bar. Applied to Appearance, Settings, System, Backup, Playback, About,
+  Licenses, Updates, Update, Notifications, Commits, Developer options and the project doc screen. Your
+  downloads keeps its plain bar (its header sits in a fixed column above the list).
 - [APK] **Updates is called Updates, sits in the app bar, and no longer shows the package name.**
   `ui/about/UpdatesScreen.kt`: the content heading `Update Settings` moved into the `TopAppBar` as
   `Updates` (the same treatment Notifications already had), and the `Package` row was removed from
@@ -83,6 +104,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gitignored `.ignore/` folder instead of the repository root, which keeps `git status` clean and
   keeps `fix.zip` free of them. `screenshots/` remains the deliberate exception, because
   `ScreenshotTest` writes the visual proofs there.
+
+### Fixed
+
+- [APK] **The search bar is a visible pill again.**
+  `SearchField` in `ui/search/SearchScreen.kt` drew its pill as a translucent black fill (optionally over a blur of
+  the results behind it). On the AMOLED black page that is black on black, so only the magnifier and the hint showed.
+  It now sits on `HeavyGlassCard` with a `CircleShape`, the card the list/grid and filter buttons next to it already
+  use (page-dark fill with a light rim), so the pill reads the same on every background.
 
 ## [1.1.0] - 2026-11-13
 

@@ -567,28 +567,9 @@ private fun SearchField(
         keyboardActions = KeyboardActions(onSearch = { onSearch() }),
         modifier = modifier.onFocusChanged { if (it.isFocused) onFocused() },
         decorationBox = { innerTextField ->
-            // With the Frosted blur switch on, the pill blurs the results scrolling behind it, the way a
-            // Telegram search bar blurs its chat list. Off, or below Android 12, it keeps the plain dark glass.
-            val blurOn = LocalNavBarBackdropBlur.current
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(
-                        if (blurOn) {
-                            Modifier.frostedBackdrop(backdrop, enabled = true, shape = CircleShape, radius = 28.dp)
-                        } else {
-                            Modifier
-                        },
-                    )
-                    .clip(CircleShape)
-                    .background(
-                        if (blurOn && backdropBlurSupported) {
-                            Color.Black.copy(alpha = 0.42f)
-                        } else {
-                            AnsuColors.SurfaceGlassBase.copy(alpha = 0.82f)
-                        },
-                    ),
-            ) {
+            // The same card as the list and filter buttons beside it (page-dark fill, light rim), so the pill is
+            // visible on a pure black page too: the old translucent black fill vanished on AMOLED black.
+            HeavyGlassCard(modifier = Modifier.fillMaxSize(), shape = CircleShape) {
                 Row(
                     modifier = Modifier.fillMaxSize().padding(start = 8.dp, end = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
