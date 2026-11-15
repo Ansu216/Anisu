@@ -1,5 +1,6 @@
 package com.ansu.anime.ui.player
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import com.ansu.anime.ui.components.GlassModalBottomSheet
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -142,7 +143,7 @@ private fun PanelHeader(title: String, onClose: () -> Unit, headerExtra: @Compos
             modifier = Modifier.weight(1f),
         )
         headerExtra()
-        IconButton(onClick = onClose) {
+        BouncyIconButton(onClick = onClose) {
             Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(22.dp))
         }
     }
@@ -424,7 +425,7 @@ internal fun SourcesPanel(
         modifier = modifier,
         sheet = sheet,
         headerExtra = {
-            IconButton(onClick = onRetry) {
+            BouncyIconButton(onClick = onRetry) {
                 Icon(Icons.Rounded.Refresh, contentDescription = "Retry", tint = Color.White, modifier = Modifier.size(22.dp))
             }
         },

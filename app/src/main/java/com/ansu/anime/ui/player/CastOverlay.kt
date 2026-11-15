@@ -1,5 +1,6 @@
 package com.ansu.anime.ui.player
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.animation.core.LinearEasing
@@ -118,11 +119,11 @@ fun CastOverlay(
             modifier = Modifier.align(Alignment.TopStart).fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) {
+            BouncyIconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White)
             }
             Box(modifier = Modifier.weight(1f))
-            IconButton(onClick = onDevice) {
+            BouncyIconButton(onClick = onDevice) {
                 Icon(Icons.Rounded.CastConnected, contentDescription = "Cast device", tint = AnsuColors.Accent)
             }
         }
@@ -248,10 +249,10 @@ fun CastOverlay(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { onSeekBy(-seekSeconds * 1000L) }) {
+                    BouncyIconButton(onClick = { onSeekBy(-seekSeconds * 1000L) }) {
                         Icon(Icons.Rounded.FastRewind, contentDescription = "Back $seekSeconds seconds", tint = Color.White)
                     }
-                    IconButton(onClick = onPlayPause, modifier = Modifier.size(if (compact) 44.dp else 52.dp)) {
+                    BouncyIconButton(onClick = onPlayPause, modifier = Modifier.size(if (compact) 44.dp else 52.dp)) {
                         if (state.buffering) {
                             CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
                         } else {
@@ -263,7 +264,7 @@ fun CastOverlay(
                             )
                         }
                     }
-                    IconButton(onClick = { onSeekBy(seekSeconds * 1000L) }) {
+                    BouncyIconButton(onClick = { onSeekBy(seekSeconds * 1000L) }) {
                         Icon(Icons.Rounded.FastForward, contentDescription = "Forward $seekSeconds seconds", tint = Color.White)
                     }
                 }

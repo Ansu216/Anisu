@@ -482,6 +482,7 @@ fun ContinueWatchingActionOverlay(
 
             Box(modifier = Modifier.fillMaxWidth().revealWith(menu, density)) {
                 ActionMenu(
+                    backdrop = backdrop,
                     onGoToDetails = {
                         if (phase == ActionPhase.Menu) onGoToDetails(entry)
                     },
@@ -513,11 +514,14 @@ private fun Modifier.revealWith(progress: Animatable<Float, *>, density: Density
     }
 
 @Composable
-private fun ActionMenu(onGoToDetails: () -> Unit, onPlayManually: () -> Unit, onRemove: () -> Unit) {
+private fun ActionMenu(backdrop: BackdropState, onGoToDetails: () -> Unit, onPlayManually: () -> Unit, onRemove: () -> Unit) {
+    // The menu frosts the blurred screen behind it (not the animated background), so it reads as glass over the page.
+    val shape = RoundedCornerShape(20.dp)
     HeavyGlassCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        tintAlpha = 0.66f,
+        modifier = Modifier.fillMaxWidth().frostedBackdrop(backdrop, enabled = true, shape = shape, radius = 26.dp),
+        shape = shape,
+        tintAlpha = if (backdropBlurSupported) 0.5f else 0.66f,
+        sampleBackground = !backdropBlurSupported,
     ) {
         Column {
             ActionMenuRow("View details", Icons.Outlined.Info, AnsuColors.TextPrimary, onGoToDetails)

@@ -1,5 +1,8 @@
 package com.ansu.anime.ui.details
 
+import com.ansu.anime.ui.components.pressGroupMember
+import com.ansu.anime.ui.components.pressGroupWidth
+import com.ansu.anime.ui.components.BouncyIconButton
 import com.ansu.anime.ui.components.recordGlassBackground
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.outlined.NotificationsNone
@@ -624,7 +627,7 @@ private fun DetailsHero(title: String, imageUrl: String?, logoUrl: String?, onBa
                 .height(96.dp)
                 .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.4f), Color.Transparent))),
         )
-        IconButton(
+        BouncyIconButton(
             onClick = onBack,
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -724,6 +727,7 @@ private fun PlayLikeRow(
     listStatus: String?,
     onSetListStatus: (String?) -> Unit,
 ) {
+    val pressGroup = com.ansu.anime.ui.components.rememberPressGroup()
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -736,7 +740,7 @@ private fun PlayLikeRow(
                 onPlay
             },
             enabled = notifyMode || playEnabled,
-            modifier = Modifier.weight(1f).height(50.dp),
+            modifier = Modifier.weight(1f).height(50.dp).pressGroupMember(pressGroup, 0),
             colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
             shape = RoundedCornerShape(14.dp),
         ) {
@@ -760,8 +764,8 @@ private fun PlayLikeRow(
                 modifier = Modifier.padding(start = 8.dp),
             )
         }
-        HeavyGlassCard(modifier = Modifier.size(50.dp), shape = CircleShape, tintAlpha = 0.5f) {
-            IconButton(onClick = { onToggleLike() }, modifier = Modifier.fillMaxSize()) {
+        HeavyGlassCard(modifier = Modifier.height(50.dp).pressGroupWidth(pressGroup, 1, 50.dp), shape = CircleShape, tintAlpha = 0.5f) {
+            BouncyIconButton(onClick = { onToggleLike() }, modifier = Modifier.fillMaxSize()) {
                 Icon(
                     imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                     contentDescription = "Favourite",
@@ -772,8 +776,8 @@ private fun PlayLikeRow(
         if (showListButton) {
             var menuOpen by remember { mutableStateOf(false) }
             Box {
-                HeavyGlassCard(modifier = Modifier.size(50.dp), shape = CircleShape, tintAlpha = 0.5f) {
-                    IconButton(onClick = { menuOpen = true }, modifier = Modifier.fillMaxSize()) {
+                HeavyGlassCard(modifier = Modifier.height(50.dp).pressGroupWidth(pressGroup, 2, 50.dp), shape = CircleShape, tintAlpha = 0.5f) {
+                    BouncyIconButton(onClick = { menuOpen = true }, modifier = Modifier.fillMaxSize()) {
                         Icon(
                             imageVector = if (listStatus != null) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                             contentDescription = ListStatus.label(listStatus),

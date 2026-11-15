@@ -1,5 +1,6 @@
 package com.ansu.anime.ui.extensions
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -309,19 +310,19 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                 modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                BouncyIconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                 Text(
                     "Extensions",
                     style = MaterialTheme.typography.titleLarge,
                     color = AnsuColors.TextPrimary,
                     modifier = Modifier.weight(1f).padding(start = 4.dp),
                 )
-                IconButton(onClick = { searching = !searching; if (!searching) query = "" }) {
+                BouncyIconButton(onClick = { searching = !searching; if (!searching) query = "" }) {
                     Icon(Icons.Filled.Search, "Search")
                 }
                 // Three dots at the far right, search beside it. The menu holds the NSFW checkbox.
                 Box {
-                    IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "More") }
+                    BouncyIconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "More") }
                     GlassDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
                             text = { Text("NSFW") },

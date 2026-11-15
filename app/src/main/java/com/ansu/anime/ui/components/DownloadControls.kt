@@ -42,7 +42,7 @@ import com.ansu.anime.ui.theme.AnsuColors
 @Composable
 fun EpisodeDownloadButton(status: DownloadStatus?, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val phase = status?.phase
-    IconButton(onClick = onClick, modifier = modifier.size(40.dp)) {
+    BouncyIconButton(onClick = onClick, modifier = modifier.size(40.dp)) {
         when (phase) {
             DownloadPhase.Completed ->
                 Icon(Icons.Filled.DownloadDone, contentDescription = "Downloaded", tint = AnsuColors.Accent, modifier = Modifier.size(22.dp))

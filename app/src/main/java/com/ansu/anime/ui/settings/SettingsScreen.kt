@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.settings
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -71,7 +72,7 @@ fun SettingsScreen(container: AppContainer, navController: NavHostController) {
             FadingTopAppBar(
                 title = { Text("Settings") },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    BouncyIconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },

@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.downloads
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -108,14 +109,14 @@ fun DownloadsScreen(container: AppContainer, navController: NavHostController) {
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    BouncyIconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
                     if (hasQueue || pause == PauseState.User) {
                         val paused = pause != PauseState.None
-                        IconButton(onClick = { container.downloads.setPausedAll(pause != PauseState.User) }) {
+                        BouncyIconButton(onClick = { container.downloads.setPausedAll(pause != PauseState.User) }) {
                             Icon(
                                 imageVector = if (pause == PauseState.User) Icons.Filled.PlayArrow else Icons.Filled.Pause,
                                 contentDescription = if (pause == PauseState.User) "Resume all downloads" else "Pause all downloads",
@@ -229,23 +230,23 @@ private fun DownloadCard(
             // Waiting downloads can be put in a different order; the arrows move one place, the bar jumps to the front.
             if (status.queuePosition > 0) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    IconButton(onClick = onMoveToTop, enabled = status.queuePosition > 1, modifier = Modifier.size(32.dp)) {
+                    BouncyIconButton(onClick = onMoveToTop, enabled = status.queuePosition > 1, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Filled.VerticalAlignTop, contentDescription = "Download next", tint = if (status.queuePosition > 1) AnsuColors.TextSecondary else AnsuColors.TextTertiary, modifier = Modifier.size(18.dp))
                     }
-                    IconButton(onClick = onMoveUp, enabled = status.queuePosition > 1, modifier = Modifier.size(32.dp)) {
+                    BouncyIconButton(onClick = onMoveUp, enabled = status.queuePosition > 1, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Move up", tint = if (status.queuePosition > 1) AnsuColors.TextSecondary else AnsuColors.TextTertiary)
                     }
-                    IconButton(onClick = onMoveDown, enabled = status.queuePosition < waitingCount, modifier = Modifier.size(32.dp)) {
+                    BouncyIconButton(onClick = onMoveDown, enabled = status.queuePosition < waitingCount, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Move down", tint = if (status.queuePosition < waitingCount) AnsuColors.TextSecondary else AnsuColors.TextTertiary)
                     }
                 }
             }
             if (status.retryable) {
-                IconButton(onClick = onRetry) {
+                BouncyIconButton(onClick = onRetry) {
                     Icon(Icons.Filled.Refresh, contentDescription = "Try again", tint = AnsuColors.Accent)
                 }
             }
-            IconButton(onClick = onDelete) {
+            BouncyIconButton(onClick = onDelete) {
                 Icon(Icons.Filled.Delete, contentDescription = "Delete download", tint = AnsuColors.TextSecondary)
             }
         }

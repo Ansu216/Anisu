@@ -111,7 +111,7 @@ fun UpdateBanner(
                 TextButton(onClick = onOpen) {
                     Text("Update", color = AnsuColors.Accent, fontWeight = FontWeight.Bold)
                 }
-                IconButton(onClick = onDismiss) {
+                BouncyIconButton(onClick = onDismiss) {
                     Icon(Icons.Filled.Close, contentDescription = "Dismiss", tint = AnsuColors.TextTertiary)
                 }
             }

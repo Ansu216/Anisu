@@ -1,5 +1,6 @@
 package com.ansu.anime.ui.details
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import com.ansu.anime.ui.components.GlassModalBottomSheet
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -85,7 +86,7 @@ fun CommentsSheet(container: AppContainer, mediaId: Int, mediaTitle: String, onD
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (thread != null) {
-                    IconButton(onClick = viewModel::closeThread) {
+                    BouncyIconButton(onClick = viewModel::closeThread) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to discussions", tint = AnsuColors.TextPrimary)
                     }
                 }
@@ -104,7 +105,7 @@ fun CommentsSheet(container: AppContainer, mediaId: Int, mediaTitle: String, onD
                         fontSize = 13.sp,
                     )
                 }
-                IconButton(onClick = onDismiss) {
+                BouncyIconButton(onClick = onDismiss) {
                     Icon(Icons.Filled.Close, contentDescription = "Close", tint = AnsuColors.TextPrimary)
                 }
             }
@@ -341,7 +342,7 @@ private fun Composer(
                             fontSize = 12.sp,
                             modifier = Modifier.weight(1f),
                         )
-                        IconButton(onClick = onCancelReply, modifier = Modifier.size(28.dp)) {
+                        BouncyIconButton(onClick = onCancelReply, modifier = Modifier.size(28.dp)) {
                             Icon(Icons.Filled.Close, contentDescription = "Cancel reply", tint = AnsuColors.TextSecondary, modifier = Modifier.size(16.dp))
                         }
                     }
@@ -358,7 +359,7 @@ private fun Composer(
                     if (state.sending) {
                         CircularProgressIndicator(color = AnsuColors.Accent, strokeWidth = 2.dp, modifier = Modifier.padding(12.dp).size(24.dp))
                     } else {
-                        IconButton(onClick = onSend, enabled = draft.isNotBlank()) {
+                        BouncyIconButton(onClick = onSend, enabled = draft.isNotBlank()) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Send,
                                 contentDescription = "Send",

@@ -1,5 +1,6 @@
 package com.ansu.anime.ui.player
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import android.app.Activity
 import android.content.Context
 import android.widget.Toast
@@ -1046,7 +1047,7 @@ private fun PlayerSurface(
 
             // While loading or failed there are no controls, so keep a way out.
             if (state.isLoadingSources || state.error != null) {
-                IconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
+                BouncyIconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White)
                 }
             }

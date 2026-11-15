@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.about
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -173,7 +174,7 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                 FadingTopAppBar(
                     title = { Text("About") },
                     navigationIcon = {
-                        IconButton(onClick = { navController.popBackStack() }) {
+                        BouncyIconButton(onClick = { navController.popBackStack() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                     },

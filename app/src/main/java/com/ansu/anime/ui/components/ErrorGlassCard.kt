@@ -197,7 +197,7 @@ fun ErrorGlassCard(
             }
 
             if (onDismiss != null) {
-                IconButton(
+                BouncyIconButton(
                     onClick = onDismiss,
                     modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(36.dp),
                 ) {

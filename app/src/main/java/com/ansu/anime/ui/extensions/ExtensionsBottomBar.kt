@@ -112,6 +112,7 @@ fun ExtensionsTabBar(
             modifier = Modifier.frostedBackdrop(backdrop, backdropBlur, shape),
             shape = shape,
             tintAlpha = tintAlpha,
+            sampleBackground = !blurActive,
         ) {
             Spacer(Modifier.size(width = TabSlotWidth * tabs.size + 10.dp, height = ExtensionsBarHeight))
         }
@@ -232,6 +233,7 @@ fun ExtensionsActionButton(
             modifier = Modifier.frostedBackdrop(backdrop, backdropBlur, CircleShape),
             shape = CircleShape,
             tintAlpha = tintAlpha,
+            sampleBackground = !blurActive,
         ) {
             Box(
                 modifier = Modifier

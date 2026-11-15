@@ -174,7 +174,7 @@ fun PagedPosterRow(
                     contentAlignment = Alignment.Center,
                 ) {
                     if (loadFailed) {
-                        IconButton(onClick = onLoadMore) {
+                        BouncyIconButton(onClick = onLoadMore) {
                             Icon(
                                 imageVector = Icons.Filled.Refresh,
                                 contentDescription = "Retry loading more",
@@ -820,7 +820,7 @@ private fun HeroSlide(
                     Text("View Details", color = AnsuColors.OnAccent, fontWeight = FontWeight.Bold)
                 }
                 HeavyGlassCard(modifier = Modifier.size(48.dp), shape = CircleShape, tintAlpha = 0.5f) {
-                    IconButton(onClick = { onToggleFavourite() }, modifier = Modifier.fillMaxSize()) {
+                    BouncyIconButton(onClick = { onToggleFavourite() }, modifier = Modifier.fillMaxSize()) {
                         Icon(
                             imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                             contentDescription = if (isLiked) "Unlike" else "Like",
@@ -923,7 +923,7 @@ private fun TabletHeroInfo(
                 Text("View Details", color = AnsuColors.OnAccent, fontWeight = FontWeight.Bold)
             }
             HeavyGlassCard(modifier = Modifier.size(48.dp), shape = CircleShape, tintAlpha = 0.5f) {
-                IconButton(onClick = { onToggleFavourite() }, modifier = Modifier.fillMaxSize()) {
+                BouncyIconButton(onClick = { onToggleFavourite() }, modifier = Modifier.fillMaxSize()) {
                     Icon(
                         imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                         contentDescription = if (isLiked) "Unlike" else "Like",
@@ -933,7 +933,7 @@ private fun TabletHeroInfo(
             }
             // The third button: save to the Planning list.
             HeavyGlassCard(modifier = Modifier.size(48.dp), shape = CircleShape, tintAlpha = 0.5f) {
-                IconButton(onClick = { onToggleSave() }, modifier = Modifier.fillMaxSize()) {
+                BouncyIconButton(onClick = { onToggleSave() }, modifier = Modifier.fillMaxSize()) {
                     Icon(
                         imageVector = if (isSaved) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                         contentDescription = if (isSaved) "Remove from Planning" else "Save to Planning",

@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.appearance
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -137,7 +138,7 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
             FadingTopAppBar(
                 title = { Text("Appearance") },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    BouncyIconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -432,7 +433,7 @@ private fun FontCard(name: String, onDelete: () -> Unit) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onDelete) {
+        BouncyIconButton(onClick = onDelete) {
             Icon(Icons.Filled.Delete, contentDescription = "Remove font", tint = AnsuColors.Error)
         }
     }

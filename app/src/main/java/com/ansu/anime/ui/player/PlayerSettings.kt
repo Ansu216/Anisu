@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.player
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import com.ansu.anime.ui.components.GlassModalBottomSheet
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -71,7 +72,7 @@ fun SubtitleSettingsSheet(
                     "Subtitles",
                     style = MaterialTheme.typography.titleMedium,
                 )
-                IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                BouncyIconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
                     Icon(Icons.Filled.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
                 }
             }
@@ -209,7 +210,7 @@ fun SubtitleSettingsSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                IconButton(onClick = { }, modifier = Modifier.size(32.dp)) {
+                BouncyIconButton(onClick = { }, modifier = Modifier.size(32.dp)) {
                     Text("-", color = Color.White, style = MaterialTheme.typography.titleSmall)
                 }
                 Slider(
@@ -223,7 +224,7 @@ fun SubtitleSettingsSheet(
                         inactiveTrackColor = Color.White.copy(alpha = 0.2f),
                     ),
                 )
-                IconButton(onClick = { }, modifier = Modifier.size(32.dp)) {
+                BouncyIconButton(onClick = { }, modifier = Modifier.size(32.dp)) {
                     Text("+", color = Color.White, style = MaterialTheme.typography.titleSmall)
                 }
             }
@@ -263,7 +264,7 @@ fun StreamSelectionSheet(
                     "Select Stream",
                     style = MaterialTheme.typography.titleMedium,
                 )
-                IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                BouncyIconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
                     Icon(Icons.Filled.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
                 }
             }

@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.about
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -75,7 +76,7 @@ fun NotificationsScreen(container: AppContainer, navController: NavHostControlle
             FadingTopAppBar(
                 title = { Text("Notification setting") },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    BouncyIconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },

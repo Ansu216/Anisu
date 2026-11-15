@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.search
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import com.ansu.anime.ui.components.recordGlassBackground
 import androidx.compose.foundation.background
 import androidx.activity.compose.BackHandler
@@ -120,6 +121,11 @@ import com.ansu.anime.ui.components.LocalNavBarBackdropBlur
 import com.ansu.anime.ui.components.backdropBlurSupported
 import com.ansu.anime.ui.components.backdropSource
 import com.ansu.anime.ui.components.frostedBackdrop
+import com.ansu.anime.ui.components.GlassTuning
+import com.ansu.anime.ui.components.PressGroup
+import com.ansu.anime.ui.components.pressBounce
+import com.ansu.anime.ui.components.pressGroupMember
+import com.ansu.anime.ui.components.pressGroupWidth
 import com.ansu.anime.ui.components.HeavyGlassCard
 import com.ansu.anime.ui.components.PosterOriginHandle
 import com.ansu.anime.ui.components.posterTransitionAnchor
@@ -458,6 +464,7 @@ fun SearchScreen(
               )
           }
 
+          val pressGroup = com.ansu.anime.ui.components.rememberPressGroup()
           Row(
               modifier = Modifier
                   .fillMaxWidth()
@@ -477,6 +484,7 @@ fun SearchScreen(
                   modifier = Modifier
                       .weight(1f)
                       .height(52.dp)
+                      .pressGroupMember(pressGroup, 0)
                       .onGloballyPositioned { if (!searching && expand.value == 0f) barBounds = it.boundsInRoot() },
               )
               // While the bar is open it takes the whole row; the two buttons fold away and come back with it.
@@ -490,6 +498,9 @@ fun SearchScreen(
                       icon = if (isGrid) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
                       contentDescription = if (isGrid) "Switch to list view" else "Switch to grid view",
                       onClick = { container.appearancePrefs.setSearchGrid(!isGrid) },
+                      backdrop = backdrop,
+                      group = pressGroup,
+                      index = 1,
                       modifier = Modifier.padding(start = 10.dp),
                   )
               }
@@ -502,6 +513,9 @@ fun SearchScreen(
                       icon = Icons.Filled.Tune,
                       contentDescription = "Filters",
                       badgeCount = filters.activeCount,
+                      backdrop = backdrop,
+                      group = pressGroup,
+                      index = 2,
                       onClick = {
                           focusManager.clearFocus()
                           showFilters = true
@@ -570,7 +584,13 @@ private fun SearchField(
         decorationBox = { innerTextField ->
             // The same card as the list and filter buttons beside it (page-dark fill, light rim), so the pill is
             // visible on a pure black page too: the old translucent black fill vanished on AMOLED black.
-            HeavyGlassCard(modifier = Modifier.fillMaxSize(), shape = CircleShape) {
+            val blurActive = LocalNavBarBackdropBlur.current && backdropBlurSupported && backdrop != null
+            HeavyGlassCard(
+                modifier = Modifier.fillMaxSize().frostedBackdrop(backdrop, LocalNavBarBackdropBlur.current, CircleShape),
+                shape = CircleShape,
+                tintAlpha = if (blurActive) 0.45f else GlassTuning.cardTintAlpha,
+                sampleBackground = !blurActive,
+            ) {
                 Row(
                     modifier = Modifier.fillMaxSize().padding(start = 8.dp, end = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -578,7 +598,7 @@ private fun SearchField(
                     // The magnifier turns into a back arrow while the bar is open.
                     Crossfade(targetState = searching, label = "searchLeadingIcon") { open ->
                         if (open) {
-                            IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                            BouncyIconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = "Close search",
@@ -612,7 +632,7 @@ private fun SearchField(
                         innerTextField()
                     }
                     if (value.isNotEmpty()) {
-                        IconButton(onClick = onClear, modifier = Modifier.size(36.dp)) {
+                        BouncyIconButton(onClick = onClear, modifier = Modifier.size(36.dp)) {
                             Icon(
                                 imageVector = Icons.Filled.Close,
                                 contentDescription = "Clear search",
@@ -841,7 +861,7 @@ private fun SuggestionRow(title: String, onOpen: () -> Unit, onFill: () -> Unit)
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(horizontal = 16.dp, vertical = 14.dp),
         )
-        IconButton(onClick = onFill, modifier = Modifier.size(40.dp)) {
+        BouncyIconButton(onClick = onFill, modifier = Modifier.size(40.dp)) {
             Icon(
                 imageVector = Icons.Filled.NorthWest,
                 contentDescription = "Use in search bar",
@@ -894,7 +914,7 @@ private fun SearchHistoryRow(text: String, onPick: () -> Unit, onFill: () -> Uni
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(horizontal = 16.dp, vertical = 14.dp),
         )
-        IconButton(onClick = onRemove, modifier = Modifier.size(40.dp)) {
+        BouncyIconButton(onClick = onRemove, modifier = Modifier.size(40.dp)) {
             Icon(
                 imageVector = Icons.Filled.Close,
                 contentDescription = "Remove from history",
@@ -902,7 +922,7 @@ private fun SearchHistoryRow(text: String, onPick: () -> Unit, onFill: () -> Uni
                 modifier = Modifier.size(18.dp),
             )
         }
-        IconButton(onClick = onFill, modifier = Modifier.size(40.dp)) {
+        BouncyIconButton(onClick = onFill, modifier = Modifier.size(40.dp)) {
             Icon(
                 imageVector = Icons.Filled.NorthWest,
                 contentDescription = "Use in search bar",
@@ -921,9 +941,20 @@ private fun GlassIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     badgeCount: Int = 0,
+    backdrop: BackdropState? = null,
+    group: PressGroup? = null,
+    index: Int = 0,
 ) {
-    Box(modifier = modifier.size(52.dp)) {
-        HeavyGlassCard(modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(18.dp), tintAlpha = 0.55f) {
+    // In the search row the buttons swell and squeeze each other; on their own they just bounce.
+    val sizing = if (group != null) Modifier.height(52.dp).pressGroupWidth(group, index, 52.dp) else Modifier.size(52.dp).pressBounce()
+    Box(modifier = modifier.then(sizing)) {
+        val blurActive = LocalNavBarBackdropBlur.current && backdropBlurSupported && backdrop != null
+        HeavyGlassCard(
+            modifier = Modifier.fillMaxSize().frostedBackdrop(backdrop, LocalNavBarBackdropBlur.current, RoundedCornerShape(18.dp)),
+            shape = RoundedCornerShape(18.dp),
+            tintAlpha = if (blurActive) 0.4f else 0.55f,
+            sampleBackground = !blurActive,
+        ) {
             Box(
                 modifier = Modifier.fillMaxSize().clickable(onClick = onClick),
                 contentAlignment = Alignment.Center,

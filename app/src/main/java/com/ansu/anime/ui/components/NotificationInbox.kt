@@ -115,10 +115,12 @@ fun NotificationInbox(
         HeavyGlassCard(
             modifier = Modifier.size(38.dp),
             shape = CircleShape,
-            tintAlpha = 0.5f,
+            // Thin tint, so the banner art shows through the bell instead of a solid dark disc.
+            tintAlpha = 0.28f,
+            sampleBackground = false,
         ) {
             Box(modifier = Modifier.size(38.dp)) {
-                IconButton(
+                BouncyIconButton(
                     onClick = {
                         InboxOverlayState.open = true
                     },
@@ -212,7 +214,7 @@ fun NotificationInboxOverlay() {
                             Text("Clear", color = AnsuColors.TextSecondary, fontSize = 14.sp)
                         }
                     }
-                    IconButton(onClick = { InboxOverlayState.close() }, modifier = Modifier.size(44.dp)) {
+                    BouncyIconButton(onClick = { InboxOverlayState.close() }, modifier = Modifier.size(44.dp)) {
                         Icon(
                             imageVector = Icons.Filled.Close,
                             contentDescription = "Close notifications",

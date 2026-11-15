@@ -316,6 +316,7 @@ fun NavBarSurface(
             modifier = Modifier.frostedBackdrop(backdrop, backdropBlur, shape),
             shape = shape,
             tintAlpha = tintAlpha,
+            sampleBackground = !blurActive,
         ) {
             Spacer(Modifier.size(width = NavSlotWidth * barItems.size + 10.dp, height = NavSlotHeight + 10.dp))
         }

@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.playersettings
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import androidx.compose.foundation.layout.Arrangement
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineStart
@@ -132,7 +133,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
             FadingTopAppBar(
                 title = { Text("Playback") },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    BouncyIconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },

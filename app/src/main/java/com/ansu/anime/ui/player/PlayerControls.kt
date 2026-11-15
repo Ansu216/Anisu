@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.player
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import com.ansu.anime.ui.components.GlassModalBottomSheet
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
@@ -123,7 +124,7 @@ class PlayerActions(
 /** The Chromecast button of the top bar; it turns accent-coloured while a TV is connected. */
 @Composable
 private fun CastIconButton(actions: PlayerActions, iconSize: Dp) {
-    IconButton(onClick = actions.onCast) {
+    BouncyIconButton(onClick = actions.onCast) {
         Icon(
             if (actions.castConnected) Icons.Rounded.CastConnected else Icons.Rounded.Cast,
             contentDescription = "Cast to TV",
@@ -239,10 +240,10 @@ fun PlayerControlsOverlay(
                 )
             }
             if (actions.showCastButton) CastIconButton(actions, 26.dp)
-            IconButton(onClick = actions.onLock) {
+            BouncyIconButton(onClick = actions.onLock) {
                 Icon(Icons.Rounded.Lock, contentDescription = "Lock controls", tint = Color.White, modifier = Modifier.size(26.dp))
             }
-            IconButton(onClick = actions.onBack) {
+            BouncyIconButton(onClick = actions.onBack) {
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(28.dp))
             }
         }
@@ -271,7 +272,7 @@ fun PlayerControlsOverlay(
                 modifier = Modifier.fillMaxWidth().clipToBounds().growVertically(panelProgress),
                 horizontalArrangement = Arrangement.End,
             ) {
-                IconButton(onClick = actions.onRotate, modifier = Modifier.size(36.dp)) {
+                BouncyIconButton(onClick = actions.onRotate, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Rounded.FullscreenExit, contentDescription = "Exit fullscreen", tint = Color.White, modifier = Modifier.size(22.dp))
                 }
             }
@@ -293,7 +294,7 @@ fun PlayerControlsOverlay(
                     actions = actions,
                     modifier = Modifier.align(Alignment.Center),
                 )
-                IconButton(onClick = actions.onRotate, modifier = Modifier.align(Alignment.CenterEnd)) {
+                BouncyIconButton(onClick = actions.onRotate, modifier = Modifier.align(Alignment.CenterEnd)) {
                     Icon(Icons.Rounded.ScreenRotation, contentDescription = "Rotate screen", tint = Color.White, modifier = Modifier.size(24.dp))
                 }
             }
@@ -328,7 +329,7 @@ private fun Modifier.growVertically(progress: () -> Float): Modifier = layout { 
 fun LockedOverlay(onUnlock: () -> Unit, isBuffering: Boolean = false, modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxSize()) {
         BufferingIndicator(buffering = isBuffering, modifier = Modifier.align(Alignment.Center))
-        IconButton(onClick = onUnlock, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
+        BouncyIconButton(onClick = onUnlock, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
             Icon(Icons.Rounded.Lock, contentDescription = "Unlock controls", tint = Color.White, modifier = Modifier.size(26.dp))
         }
     }
@@ -359,7 +360,7 @@ private fun TransportRow(
 
 @Composable
 private fun EpisodeSkipButton(icon: ImageVector, description: String, enabled: Boolean, scale: Float, onClick: () -> Unit) {
-    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size((48 * scale).dp)) {
+    BouncyIconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size((48 * scale).dp)) {
         Icon(
             icon,
             contentDescription = description,
@@ -512,16 +513,16 @@ fun PlayerControlsCompact(
             modifier = Modifier.align(Alignment.TopStart).fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = actions.onBack) {
+            BouncyIconButton(onClick = actions.onBack) {
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White)
             }
             Box(modifier = Modifier.weight(1f))
             AutoplayToggle(checked = actions.autoplayNext, onCheckedChange = actions.onAutoplayNext, modifier = Modifier.padding(horizontal = 6.dp))
             if (actions.showCastButton) CastIconButton(actions, 22.dp)
-            IconButton(onClick = actions.onLock) {
+            BouncyIconButton(onClick = actions.onLock) {
                 Icon(Icons.Rounded.Lock, contentDescription = "Lock controls", tint = Color.White, modifier = Modifier.size(22.dp))
             }
-            IconButton(onClick = actions.onSettings) {
+            BouncyIconButton(onClick = actions.onSettings) {
                 Icon(Icons.Rounded.Settings, contentDescription = "Player settings", tint = Color.White, modifier = Modifier.size(22.dp))
             }
         }
@@ -560,7 +561,7 @@ fun PlayerControlsCompact(
                 Text(formatDuration(state.positionMs / 1000), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(formatDuration(state.durationMs / 1000), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    IconButton(onClick = actions.onRotate, modifier = Modifier.size(36.dp)) {
+                    BouncyIconButton(onClick = actions.onRotate, modifier = Modifier.size(36.dp)) {
                         Icon(Icons.Rounded.ScreenRotation, contentDescription = "Rotate screen", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                 }
@@ -678,7 +679,7 @@ fun SourceSelectSheet(
                     "Select source",
                     style = MaterialTheme.typography.titleMedium,
                 )
-                IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                BouncyIconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
                     Icon(Icons.Filled.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
                 }
             }

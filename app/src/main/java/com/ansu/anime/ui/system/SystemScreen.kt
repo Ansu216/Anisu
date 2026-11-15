@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.system
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -96,7 +97,7 @@ fun SystemScreen(container: AppContainer, navController: NavHostController) {
             FadingTopAppBar(
                 title = { Text("System") },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    BouncyIconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },

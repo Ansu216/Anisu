@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.docs
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -79,12 +80,12 @@ fun ProjectDocScreen(doc: ProjectDoc, container: AppContainer, navController: Na
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    BouncyIconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    IconButton(onClick = { reload++ }) {
+                    BouncyIconButton(onClick = { reload++ }) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Reload")
                     }
                 },

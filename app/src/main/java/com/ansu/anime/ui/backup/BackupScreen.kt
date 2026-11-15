@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.backup
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
@@ -159,7 +160,7 @@ fun BackupScreen(container: AppContainer, navController: NavHostController) {
             FadingTopAppBar(
                 title = { Text("Backup") },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    BouncyIconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },

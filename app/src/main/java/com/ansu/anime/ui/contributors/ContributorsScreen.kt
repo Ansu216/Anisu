@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.contributors
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -74,12 +75,12 @@ fun ContributorsScreen(container: AppContainer, navController: NavHostController
             TopAppBar(
                 title = { Text("Contributors") },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    BouncyIconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    IconButton(onClick = { reload++ }) {
+                    BouncyIconButton(onClick = { reload++ }) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Reload")
                     }
                 },

@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.about
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
@@ -121,12 +122,12 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
             FadingTopAppBar(
                 title = { Text("Updates") },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    BouncyIconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    IconButton(
+                    BouncyIconButton(
                         onClick = {
                             container.diagnostics.log(LogCategory.CLICK, "Updates → check from the top bar")
                             container.updateManager.check()
@@ -236,7 +237,7 @@ fun UpdatesScreen(container: AppContainer, navController: NavHostController) {
                     title = "Clear downloaded updates",
                     description = if (apkCount > 0) "$apkCount APKs found" else "No downloaded APKs",
                     trailing = {
-                        IconButton(
+                        BouncyIconButton(
                             onClick = { showStorageInfo = true },
                             modifier = Modifier.size(34.dp),
                         ) {

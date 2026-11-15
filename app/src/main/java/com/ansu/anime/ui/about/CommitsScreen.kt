@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.about
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -98,12 +99,12 @@ fun CommitsScreen(container: AppContainer, navController: NavHostController) {
             FadingTopAppBar(
                 title = { Text("Commits") },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    BouncyIconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    IconButton(
+                    BouncyIconButton(
                         onClick = { refreshes++ },
                         enabled = !loading,
                     ) {

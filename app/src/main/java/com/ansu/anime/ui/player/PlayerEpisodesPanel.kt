@@ -1,5 +1,6 @@
 package com.ansu.anime.ui.player
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.core.tween
@@ -78,7 +79,7 @@ internal fun EpisodesPanel(
         modifier = modifier,
         headerExtra = {
             // Shows the style you would switch to.
-            IconButton(onClick = { onGridChange(!grid) }) {
+            BouncyIconButton(onClick = { onGridChange(!grid) }) {
                 Icon(
                     imageVector = if (grid) Icons.AutoMirrored.Rounded.ViewList else Icons.Rounded.GridView,
                     contentDescription = if (grid) "Show as list" else "Show as grid",

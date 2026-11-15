@@ -49,6 +49,7 @@ fun FrostedGlassCard(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(16.dp),
     tintAlpha: Float = GlassTuning.cardTintAlpha,
+    sampleBackground: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val glassBackground = LocalGlassBackground.current
@@ -63,7 +64,7 @@ fun FrostedGlassCard(
             .onGloballyPositioned { place.origin = it.positionInWindow() }
             .drawBehind {
                 // Sample the blurred background slice lying behind this card
-                drawGlassBackground(glassBackground, place)
+                if (sampleBackground) drawGlassBackground(glassBackground, place)
             },
     ) {
         val backgroundModifier = Modifier
@@ -138,11 +139,13 @@ fun HeavyGlassCard(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(16.dp),
     tintAlpha: Float = GlassTuning.cardTintAlpha,
+    sampleBackground: Boolean = true,
     content: @Composable () -> Unit,
 ) = FrostedGlassCard(
     modifier = modifier,
     shape = shape,
     tintAlpha = tintAlpha.coerceAtMost(GlassTuning.cardTintAlpha),
+    sampleBackground = sampleBackground,
     content = content,
 )
 

@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.about
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -57,7 +58,7 @@ fun DeveloperOptionsScreen(container: AppContainer, navController: NavHostContro
             FadingTopAppBar(
                 title = { Text("Developer options") },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    BouncyIconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },

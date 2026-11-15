@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.details
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import com.ansu.anime.ui.components.GlassModalBottomSheet
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -162,12 +163,12 @@ fun TrailerSheet(trailer: Trailer, trailerRepository: TrailerRepository, onDismi
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                IconButton(onClick = {
+                BouncyIconButton(onClick = {
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailer.watchUrl))) }
                 }) {
                     Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open in YouTube", tint = AnsuColors.TextPrimary)
                 }
-                IconButton(onClick = onDismiss) {
+                BouncyIconButton(onClick = onDismiss) {
                     Icon(Icons.Filled.Close, contentDescription = "Close", tint = AnsuColors.TextPrimary)
                 }
             }

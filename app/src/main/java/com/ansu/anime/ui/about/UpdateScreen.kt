@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.about
 
+import com.ansu.anime.ui.components.BouncyIconButton
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -92,12 +93,12 @@ fun UpdateScreen(container: AppContainer, navController: NavHostController) {
             FadingTopAppBar(
                 title = { Text("Update") },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    BouncyIconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    IconButton(
+                    BouncyIconButton(
                         onClick = { container.updateManager.check() },
                         enabled = !state.isChecking && !state.isDownloading,
                     ) {
