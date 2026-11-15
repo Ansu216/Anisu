@@ -27,6 +27,7 @@ class AnsuApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        com.ansu.anime.ui.components.GlassTuning.load(this)
         container = AppContainer(this)
         // Scheduling touches WorkManager (which initializes on first use) and the disk, so it must not run before
         // the first frame. It starts a few milliseconds later and changes nothing the person can see.

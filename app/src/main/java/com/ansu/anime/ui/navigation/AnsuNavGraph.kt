@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.ansu.anime.ui.components.recordGlassBackground
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -197,7 +198,10 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         label = "navBarHide",
     )
 
+    // One recorded + blurred copy of the animated background, shared by every frosted card (Pixel OS glass).
+    val glassBackground = com.ansu.anime.ui.components.rememberGlassBackground()
     CompositionLocalProvider(
+        com.ansu.anime.ui.components.LocalGlassBackground provides glassBackground,
         LocalNavBarRoundness provides navBarRoundness,
         LocalNavBarFrostiness provides navBarFrostiness,
         LocalNavBarBackdropBlur provides navBarBackdropBlur,
@@ -207,7 +211,10 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
     Box(modifier = Modifier.fillMaxSize().background(com.ansu.anime.ui.theme.AnsuColors.Background).nestedScroll(barHideConnection)) {
     // The animated background sits at the very back; the screens above it are see-through where they have no
     // content, while posters, cards and every opaque surface hide it completely.
-    com.ansu.anime.ui.components.BackgroundAnimation(style = backgroundStyle)
+    com.ansu.anime.ui.components.BackgroundAnimation(
+        style = backgroundStyle,
+        modifier = Modifier.recordGlassBackground(glassBackground, com.ansu.anime.ui.theme.AnsuColors.Background),
+    )
     // Screen transitions are about half the platform default, which makes the whole app feel snappier.
     // Switching between the four bottom-bar tabs is a cross-fade: the page you leave fades out while the
     // page you open fades in, in place. The same fade is used whether the move pushes or pops (tab

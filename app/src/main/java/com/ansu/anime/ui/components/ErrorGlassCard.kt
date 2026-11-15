@@ -67,7 +67,6 @@ fun ErrorGlassCard(
     onRetry: (() -> Unit)? = null,
     retryEnabled: Boolean = true,
     onDismiss: (() -> Unit)? = null,
-    blurRadius: androidx.compose.ui.unit.Dp = 12.dp,
     compact: Boolean = false,
 ) {
     var showDetails by remember { mutableStateOf(false) }
@@ -79,7 +78,6 @@ fun ErrorGlassCard(
         modifier = modifier.fillMaxWidth(),
         shape = shape,
         tintAlpha = 0.88f,
-        blurRadius = blurRadius,
     ) {
         Box(
             modifier = Modifier

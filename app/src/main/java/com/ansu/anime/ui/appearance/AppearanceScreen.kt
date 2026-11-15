@@ -356,6 +356,9 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                 )
             }
 
+            GlassGroupLabel("Frosted glass")
+            com.ansu.anime.ui.components.GlassFineTuneCard()
+
             GlassGroupLabel("Reset")
             GlassGroup {
                 GlassRow(
@@ -369,6 +372,7 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
                         container.appearancePrefs.setAccent(AccentPalette.WHITE)
                         container.appearancePrefs.setAmoledBlack(AppearancePrefs.DEFAULT_AMOLED)
                         container.appearancePrefs.setBackgroundStyle(com.ansu.anime.data.prefs.BackgroundStyle.NONE)
+                        com.ansu.anime.ui.components.GlassTuning.resetToPixelOsDefaults(context)
                     },
                 )
             }

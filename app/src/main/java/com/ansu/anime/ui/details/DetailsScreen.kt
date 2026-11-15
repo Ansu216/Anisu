@@ -1,5 +1,6 @@
 package com.ansu.anime.ui.details
 
+import com.ansu.anime.ui.components.recordGlassBackground
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.foundation.background
@@ -211,9 +212,16 @@ fun DetailsScreen(
     }
 
     val detailsBackgroundStyle by container.appearancePrefs.backgroundStyle.collectAsStateWithLifecycle()
+    val glassBackground = com.ansu.anime.ui.components.rememberGlassBackground()
+    androidx.compose.runtime.CompositionLocalProvider(
+        com.ansu.anime.ui.components.LocalGlassBackground provides glassBackground,
+    ) {
     Box(modifier = Modifier.fillMaxSize().background(AnsuColors.Background)) {
         // Same animation as the rest of the app (it is driven by the frame clock, so it lines up with the one behind).
-        com.ansu.anime.ui.components.BackgroundAnimation(style = detailsBackgroundStyle)
+        com.ansu.anime.ui.components.BackgroundAnimation(
+            style = detailsBackgroundStyle,
+            modifier = Modifier.recordGlassBackground(glassBackground, AnsuColors.Background),
+        )
         LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
             item {
                 // Art of this exact entry: a first season keeps the series backdrop, while later seasons,
@@ -495,6 +503,7 @@ fun DetailsScreen(
                 }
             }
         }
+    }
     }
 
     selectedPerson?.let { person ->

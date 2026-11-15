@@ -117,7 +117,6 @@ private fun WelcomeGlassCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(32.dp),
         tintAlpha = 0.88f,
-        blurRadius = 12.dp,
     ) {
         Box(
             modifier = Modifier

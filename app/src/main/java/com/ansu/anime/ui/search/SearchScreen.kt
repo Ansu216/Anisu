@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.search
 
+import com.ansu.anime.ui.components.recordGlassBackground
 import androidx.compose.foundation.background
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -668,6 +669,10 @@ private fun SearchPanel(
     } else {
         history
     }
+    val glassBackground = com.ansu.anime.ui.components.rememberGlassBackground()
+    androidx.compose.runtime.CompositionLocalProvider(
+        com.ansu.anime.ui.components.LocalGlassBackground provides glassBackground,
+    ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -692,7 +697,10 @@ private fun SearchPanel(
             .pointerInput(Unit) { detectTapGestures { } },
     ) {
         // The panel covers the results with solid colour, so the animated background is drawn inside it too.
-        com.ansu.anime.ui.components.BackgroundAnimation(style = panelBackgroundStyle)
+        com.ansu.anime.ui.components.BackgroundAnimation(
+            style = panelBackgroundStyle,
+            modifier = Modifier.recordGlassBackground(glassBackground, AnsuColors.Background),
+        )
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -773,6 +781,7 @@ private fun SearchPanel(
                 }
             }
         }
+    }
     }
 }
 
