@@ -12,10 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-11-16
+
 ### Added
 
+- [APK] **The discussion list has no cap and shows how many discussions there are.**
+- [APK] **The portrait player has a "Comments" section under the episode description, per episode, from AniList.**
+- [APK] **The Extensions, Search and source-picker screens have the frosted, fading top too.**
+- [APK] **Every settings screen has the frosted, fading top bar.**
 - [APK] **Adult extensions say "18+" in their description line, with the version and language.**
+- [APK] **Dropdown lists grow out of what opened them.**
 - [APK] **The manual source picker shows each stream's size.**
+
+### Changed
+
+- [APK] **The portrait player's ambient glow is smooth, like YouTube's.**
+
+### Fixed
+
+- [APK] **The Links panel, the welcome card and the error card no longer show the page sharp through the card.**
+- [APK] **Choosing "None" for the background animation clears the shapes still showing in blurred cards; the animation also moves on the details page.**
+- [APK] **Home banner fades smoothly into the page; the background animation is no longer cut off under it.**
 
 ## [1.1.1] - 2026-11-14
 

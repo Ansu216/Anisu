@@ -1,6 +1,7 @@
 package com.ansu.anime.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,8 +49,19 @@ fun BackgroundAnimation(
     speed: Float = 1f,
     /** Draws only the first few shapes (a tile has little room). */
     maxShapes: Int = Int.MAX_VALUE,
+    /**
+     * True for a page that sits on top of another one (the details page): it keeps moving once the open animation
+     * has finished, instead of staying still for as long as the page under it is held blurred.
+     */
+    settledOnly: Boolean = false,
 ) {
-    if (style == BackgroundStyle.NONE) return
+    if (style == BackgroundStyle.NONE) {
+        // Still an (empty) element that carries [modifier]: the glass cards read a recorded, blurred copy of this
+        // element, and that copy is only refreshed while the element draws. Returning with nothing left the last frame
+        // of the old animation stuck in every blurred card.
+        Box(modifier = modifier.fillMaxSize())
+        return
+    }
 
     // Frame time in nanoseconds. It is only read inside the draw block, so a new frame redraws the canvas
     // without recomposing anything.
@@ -64,7 +76,8 @@ fun BackgroundAnimation(
             while (true) withFrameNanos { frame ->
                 // Held still while a details page opens or closes: the drift is a few pixels, and every redraw here
                 // would otherwise re-blur the page under that animation on every frame.
-                if (PosterTransition.blurBehindEntryId == null && frame - last >= FRAME_INTERVAL_NANOS) {
+                val held = PosterTransition.blurBehindEntryId != null && !(settledOnly && PosterTransition.blurProgress >= 0.999f)
+                if (!held && frame - last >= FRAME_INTERVAL_NANOS) {
                     last = frame
                     frameNanos.longValue = frame
                 }

@@ -223,6 +223,7 @@ fun DetailsScreen(
         // Same animation as the rest of the app (it is driven by the frame clock, so it lines up with the one behind).
         com.ansu.anime.ui.components.BackgroundAnimation(
             style = detailsBackgroundStyle,
+            settledOnly = true,
             modifier = Modifier.recordGlassBackground(glassBackground, AnsuColors.Background),
         )
         LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {

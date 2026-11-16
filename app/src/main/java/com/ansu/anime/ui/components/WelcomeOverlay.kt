@@ -117,6 +117,7 @@ private fun WelcomeGlassCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(32.dp),
         tintAlpha = 0.88f,
+        overlay = true,
     ) {
         Box(
             modifier = Modifier

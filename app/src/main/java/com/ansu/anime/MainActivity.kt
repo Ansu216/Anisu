@@ -176,7 +176,7 @@ class MainActivity : FragmentActivity() {
                     Box(modifier = Modifier.fillMaxSize()) {
                         // The whole app blurs behind the outage card (Android 12+; older versions just dim it).
                         val outageBlur by animateDpAsState(
-                            targetValue = if ((outageShowing || welcomeVisible) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 18.dp else 0.dp,
+                            targetValue = if ((outageShowing || welcomeVisible) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 22.dp else 0.dp,
                             animationSpec = tween(280),
                             label = "outageBlur",
                         )

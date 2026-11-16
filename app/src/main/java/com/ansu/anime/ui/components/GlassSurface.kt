@@ -130,6 +130,9 @@ fun BottomScrim(modifier: Modifier = Modifier, midAlpha: Float = 0.35f, midStop:
 val GLASS_MIN_TINT: Float
     get() = GlassTuning.cardTintAlpha
 
+/** The least tint a card in a full-screen panel gets (see the `overlay` flag of [HeavyGlassCard]). */
+const val OVERLAY_MIN_TINT: Float = 0.90f
+
 /**
  * A [FrostedGlassCard] for content cards and buttons that now participates in the Pixel OS
  * frosted backdrop blur and reacts live to [GlassTuning].
@@ -140,11 +143,14 @@ fun HeavyGlassCard(
     shape: Shape = RoundedCornerShape(16.dp),
     tintAlpha: Float = GlassTuning.cardTintAlpha,
     sampleBackground: Boolean = true,
+    overlay: Boolean = false,
     content: @Composable () -> Unit,
 ) = FrostedGlassCard(
     modifier = modifier,
     shape = shape,
-    tintAlpha = tintAlpha.coerceAtMost(GlassTuning.cardTintAlpha),
+    // A card in a full-screen panel (welcome, error, links) sits over page content the shared glass copy never
+    // contains, so it needs a firm tint of its own: at the card tint the sharp page showed straight through it.
+    tintAlpha = if (overlay) tintAlpha.coerceAtLeast(OVERLAY_MIN_TINT) else tintAlpha.coerceAtMost(GlassTuning.cardTintAlpha),
     sampleBackground = sampleBackground,
     content = content,
 )

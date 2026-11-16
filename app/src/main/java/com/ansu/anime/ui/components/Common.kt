@@ -81,6 +81,7 @@ import kotlin.math.abs
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -687,7 +688,31 @@ private fun HeroSlide(
         else ImageRequest.Builder(context).data(heroImage).size(imageSize.width, imageSize.height).crossfade(false).build()
     }
     Box(modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
+        // The artwork, its reading scrim and the fade are drawn into one layer, and the fade is a MASK on that layer
+        // (the picture itself becomes see-through towards the bottom). The old fade painted the page colour over the
+        // picture, which is opaque, so it hid the background animation under the banner and the animation's shapes
+        // were chopped off along the banner's bottom edge.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clipToBounds()
+                .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0f to Color.Black,
+                            0.40f to Color.Black,
+                            0.55f to Color.Black.copy(alpha = 0.85f),
+                            0.68f to Color.Black.copy(alpha = 0.58f),
+                            0.80f to Color.Black.copy(alpha = 0.30f),
+                            0.91f to Color.Black.copy(alpha = 0.09f),
+                            1f to Color.Transparent,
+                        ),
+                        blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                    )
+                },
+        ) {
             // AniList's own portrait cover (extraLarge); the banner is only a fallback.
             // Slightly oversized and shifted against the swipe, so the art trails the page (parallax).
             if (heroImage.isNullOrBlank()) {
@@ -716,20 +741,13 @@ private fun HeroSlide(
                         },
                 )
             }
+            // Darkens the lower half so the title and buttons stay readable; it is inside the masked layer, so it fades too.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Brush.verticalGradient(0.35f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.55f))),
+            )
         }
-        // Fade into the page colour: the banner melts into "Continue Watching" below.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        0.45f to Color.Transparent,
-                        0.72f to AnsuColors.Background.copy(alpha = 0.7f),
-                        1f to AnsuColors.Background,
-                    ),
-                ),
-        )
         if (tablet) {
             // Wide banner: the picture melts into the page colour along its left edge (towards the rail), which also
             // keeps the text on that side readable. The bottom edge already fades by the gradient above.

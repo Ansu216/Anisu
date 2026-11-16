@@ -21,6 +21,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import com.ansu.anime.ui.components.backdropSource
+import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.components.FadingTopAppBar
 import com.ansu.anime.ui.components.withoutTop
 import androidx.compose.runtime.Composable
@@ -68,10 +70,12 @@ fun ProjectDocScreen(doc: ProjectDoc, container: AppContainer, navController: Na
 
     val blocks = remember(text) { parseDoc(text, markdown = doc == ProjectDoc.CHANGELOG) }
 
+    val topBackdrop = rememberBackdropState()
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             FadingTopAppBar(
+                backdrop = topBackdrop,
                 title = {
                     Text(
                         text = doc.title,
@@ -93,7 +97,7 @@ fun ProjectDocScreen(doc: ProjectDoc, container: AppContainer, navController: Na
         },
     ) { padding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding.withoutTop()),
+            modifier = Modifier.fillMaxSize().padding(padding.withoutTop()).backdropSource(topBackdrop),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp + padding.calculateTopPadding(), bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {

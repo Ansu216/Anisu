@@ -133,9 +133,11 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
     val appFontPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { importFont(it, false) }
     val subtitleFontPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { importFont(it, true) }
 
+    val topBackdrop = rememberBackdropState()
     Scaffold(
         topBar = {
             FadingTopAppBar(
+                backdrop = topBackdrop,
                 title = { Text("Appearance") },
                 navigationIcon = {
                     BouncyIconButton(onClick = { navController.popBackStack() }) {
@@ -149,6 +151,7 @@ fun AppearanceScreen(container: AppContainer, navController: NavHostController) 
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding.withoutTop())
+                .backdropSource(topBackdrop)
                 .verticalScroll(rememberScrollState())
                 .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = 16.dp)

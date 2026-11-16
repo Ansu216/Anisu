@@ -14,6 +14,11 @@ data class CommentsUiState(
     val threads: List<AniListThread>? = null,
     val loadingThreads: Boolean = true,
     val threadsFailed: Boolean = false,
+    /** How many discussions the show has on AniList in all (the list loads 50 at a time and keeps going). */
+    val threadTotal: Int = 0,
+    val threadsHasNext: Boolean = false,
+    val threadsPage: Int = 1,
+    val loadingMoreThreads: Boolean = false,
     /** The thread being read; null while the list of threads is showing. */
     val thread: AniListThread? = null,
     val comments: List<AniListComment> = emptyList(),
@@ -33,24 +38,53 @@ class CommentsViewModel(
     private val repository: AniListRepository,
     private val mediaId: Int,
     private val mediaTitle: String,
+    initialThread: AniListThread? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(CommentsUiState())
     val state: StateFlow<CommentsUiState> = _state
 
     init {
-        loadThreads()
+        if (initialThread != null) openThread(initialThread) else loadThreads()
     }
 
     fun loadThreads() {
         _state.value = _state.value.copy(loadingThreads = true, threadsFailed = false)
         viewModelScope.launch {
-            val threads = repository.getMediaThreads(mediaId)
+            val result = repository.getMediaThreadsPage(mediaId, 1)
             _state.value = _state.value.copy(
-                threads = threads.orEmpty(),
+                threads = result?.threads.orEmpty(),
                 loadingThreads = false,
-                threadsFailed = threads == null,
+                threadsFailed = result == null,
+                threadTotal = result?.total ?: 0,
+                threadsHasNext = result?.hasNextPage == true,
+                threadsPage = 1,
             )
+        }
+    }
+
+    /** Adds the next 50 discussions to the list; the list calls this when the reader reaches its end. */
+    fun loadMoreThreads() {
+        val s = _state.value
+        if (s.loadingMoreThreads || s.loadingThreads || !s.threadsHasNext) return
+        _state.value = s.copy(loadingMoreThreads = true)
+        viewModelScope.launch {
+            val next = s.threadsPage + 1
+            val result = repository.getMediaThreadsPage(mediaId, next)
+            val current = _state.value
+            _state.value = if (result == null) {
+                // Stays at the end of what is loaded; reaching the end again tries once more.
+                current.copy(loadingMoreThreads = false)
+            } else {
+                val known = current.threads.orEmpty().map { it.id }.toSet()
+                current.copy(
+                    threads = current.threads.orEmpty() + result.threads.filter { it.id !in known },
+                    loadingMoreThreads = false,
+                    threadTotal = result.total,
+                    threadsHasNext = result.hasNextPage,
+                    threadsPage = next,
+                )
+            }
         }
     }
 

@@ -31,7 +31,27 @@ fun FadingTopAppBar(
     actions: @Composable RowScope.() -> Unit = {},
     fadeBelow: Dp = 36.dp,
     fadeInside: Dp = 8.dp,
+    /**
+     * The scrolling content's recorded layer (`Modifier.backdropSource`). When given, the bar is the HyperOS-style one:
+     * the content scrolling under it is blurred behind the title and fades out at the bottom ([BlurFadeHeader]).
+     * Without it the bar keeps the plain solid-then-fade look.
+     */
+    backdrop: BackdropState? = null,
 ) {
+    if (backdrop != null) {
+        BlurFadeHeader(backdrop = backdrop, modifier = modifier, fade = fadeBelow) {
+            TopAppBar(
+                title = title,
+                navigationIcon = navigationIcon,
+                actions = actions,
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                ),
+            )
+        }
+        return
+    }
     val base = AnsuColors.Background
     TopAppBar(
         title = title,

@@ -213,5 +213,8 @@ data class AniListComment(
     val replies: List<AniListComment> = emptyList(),
 )
 
+/** One page of a show's discussion threads, with how many there are in all. */
+data class AniListThreadPage(val threads: List<AniListThread>, val total: Int, val hasNextPage: Boolean)
+
 /** One page of a thread's top-level comments. */
 data class AniListCommentPage(val comments: List<AniListComment>, val hasNextPage: Boolean)

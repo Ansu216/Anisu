@@ -37,6 +37,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import com.ansu.anime.ui.components.backdropSource
+import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.components.FadingTopAppBar
 import com.ansu.anime.ui.components.withoutTop
 import androidx.compose.runtime.Composable
@@ -154,10 +156,12 @@ fun BackupScreen(container: AppContainer, navController: NavHostController) {
         applyRestore(backupManager.restoreFrom(uri))
     }
 
+    val topBackdrop = rememberBackdropState()
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
             FadingTopAppBar(
+                backdrop = topBackdrop,
                 title = { Text("Backup") },
                 navigationIcon = {
                     BouncyIconButton(onClick = { navController.popBackStack() }) {
@@ -171,6 +175,7 @@ fun BackupScreen(container: AppContainer, navController: NavHostController) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding.withoutTop())
+                .backdropSource(topBackdrop)
                 .verticalScroll(rememberScrollState())
                 .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = 16.dp)

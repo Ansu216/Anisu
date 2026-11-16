@@ -29,7 +29,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,7 +48,11 @@ import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.ansu.anime.data.contributors.Contributor
 import com.ansu.anime.di.AppContainer
+import com.ansu.anime.ui.components.FadingTopAppBar
 import com.ansu.anime.ui.components.HeavyGlassCard
+import com.ansu.anime.ui.components.backdropSource
+import com.ansu.anime.ui.components.rememberBackdropState
+import com.ansu.anime.ui.components.withoutTop
 import com.ansu.anime.ui.theme.AnsuColors
 
 /**
@@ -70,9 +73,11 @@ fun ContributorsScreen(container: AppContainer, navController: NavHostController
         loading = false
     }
 
+    val topBackdrop = rememberBackdropState()
     Scaffold(
         topBar = {
-            TopAppBar(
+            FadingTopAppBar(
+                backdrop = topBackdrop,
                 title = { Text("Contributors") },
                 navigationIcon = {
                     BouncyIconButton(onClick = { navController.popBackStack() }) {
@@ -88,8 +93,8 @@ fun ContributorsScreen(container: AppContainer, navController: NavHostController
         },
     ) { padding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+            modifier = Modifier.fillMaxSize().padding(padding.withoutTop()).backdropSource(topBackdrop),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp + padding.calculateTopPadding(), bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {

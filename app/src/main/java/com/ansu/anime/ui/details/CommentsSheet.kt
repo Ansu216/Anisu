@@ -69,10 +69,17 @@ private const val MAX_INDENT_LEVELS = 3
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CommentsSheet(container: AppContainer, mediaId: Int, mediaTitle: String, onDismiss: () -> Unit) {
+fun CommentsSheet(
+    container: AppContainer,
+    mediaId: Int,
+    mediaTitle: String,
+    onDismiss: () -> Unit,
+    /** When given, the sheet opens straight into this thread (an episode's discussion) instead of the list of threads. */
+    initialThread: AniListThread? = null,
+) {
     val viewModel: CommentsViewModel = viewModel(
-        key = "comments-$mediaId",
-        factory = viewModelFactory { initializer { CommentsViewModel(container.aniListRepository, mediaId, mediaTitle) } },
+        key = "comments-$mediaId-${initialThread?.id ?: 0}",
+        factory = viewModelFactory { initializer { CommentsViewModel(container.aniListRepository, mediaId, mediaTitle, initialThread) } },
     )
     val state by viewModel.state.collectAsStateWithLifecycle()
     val signedIn by container.aniListRepository.isLoggedIn.collectAsStateWithLifecycle()
@@ -100,7 +107,13 @@ fun CommentsSheet(container: AppContainer, mediaId: Int, mediaTitle: String, onD
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = if (thread == null) "Discussions on AniList" else "${thread.replyCount} replies on AniList",
+                        text = if (thread == null) {
+                            val total = maxOf(state.threadTotal, state.threads.orEmpty().size)
+                            if (state.loadingThreads && total == 0) "Discussions on AniList"
+                            else "$total ${if (total == 1) "discussion" else "discussions"} on AniList"
+                        } else {
+                            "${thread.replyCount} replies on AniList"
+                        },
                         color = AnsuColors.TextSecondary,
                         fontSize = 13.sp,
                     )
@@ -160,6 +173,15 @@ private fun ThreadList(state: CommentsUiState, signedIn: Boolean, viewModel: Com
             }
             items(threads, key = { it.id }) { thread ->
                 ThreadRow(thread, onClick = { viewModel.openThread(thread) })
+            }
+            if (state.threadsHasNext) {
+                // Reaching this row loads the next 50, so the list never stops at a fixed number.
+                item(key = "more-threads") {
+                    androidx.compose.runtime.LaunchedEffect(threads.size) { viewModel.loadMoreThreads() }
+                    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = AnsuColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                    }
+                }
             }
             item {
                 if (signedIn) {
@@ -393,7 +415,7 @@ private fun Message(text: String, action: String?, onAction: () -> Unit) {
 }
 
 /** "5m ago", "3h ago", "2d ago", then the plain date. [epochSeconds] of 0 (unknown) gives an empty string. */
-private fun timeAgo(epochSeconds: Long): String {
+internal fun timeAgo(epochSeconds: Long): String {
     if (epochSeconds <= 0L) return ""
     val seconds = (System.currentTimeMillis() / 1000 - epochSeconds).coerceAtLeast(0)
     return when {
@@ -409,7 +431,7 @@ private fun timeAgo(epochSeconds: Long): String {
  * AniList comments are markdown with a few site-specific tags. This keeps the words: images, videos and links lose their
  * markup (a link keeps its text), spoilers are marked as such, and plain HTML tags and emphasis marks are dropped.
  */
-private fun plainComment(raw: String): String = raw
+internal fun plainComment(raw: String): String = raw
     .replace(Regex("img\\d*\\([^)]*\\)", RegexOption.IGNORE_CASE), "[image]")
     .replace(Regex("(webm|youtube)\\([^)]*\\)", RegexOption.IGNORE_CASE), "[video]")
     .replace(Regex("~!([\\s\\S]*?)!~"), "[spoiler: $1]")

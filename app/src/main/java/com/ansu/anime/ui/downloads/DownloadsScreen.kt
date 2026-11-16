@@ -35,7 +35,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,7 +59,11 @@ import com.ansu.anime.data.download.DownloadItem
 import com.ansu.anime.data.download.DownloadPhase
 import com.ansu.anime.data.download.PauseState
 import com.ansu.anime.di.AppContainer
+import com.ansu.anime.ui.components.FadingTopAppBar
 import com.ansu.anime.ui.components.HeavyGlassCard
+import com.ansu.anime.ui.components.backdropSource
+import com.ansu.anime.ui.components.rememberBackdropState
+import com.ansu.anime.ui.components.withoutTop
 import com.ansu.anime.ui.components.GlassAlertDialog
 import com.ansu.anime.ui.navigation.Dest
 import com.ansu.anime.ui.theme.AnsuColors
@@ -97,10 +100,12 @@ fun DownloadsScreen(container: AppContainer, navController: NavHostController) {
             dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } },
         )
     }
+    val topBackdrop = rememberBackdropState()
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
-            TopAppBar(
+            FadingTopAppBar(
+                backdrop = topBackdrop,
                 title = {
                     Text(
                         text = "Your downloads",
@@ -128,53 +133,55 @@ fun DownloadsScreen(container: AppContainer, navController: NavHostController) {
             )
         },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Text(
-                text = "Saved on this device with every subtitle the source offers. They play without a connection.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = AnsuColors.TextSecondary,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
-            )
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding.withoutTop()).backdropSource(topBackdrop),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = padding.calculateTopPadding(), bottom = 24.dp),
+        ) {
+            item(key = "intro") {
+                Text(
+                    text = "Saved on this device with every subtitle the source offers. They play without a connection.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AnsuColors.TextSecondary,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
             if (items.isEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 48.dp), contentAlignment = Alignment.TopCenter) {
-                    Text(
-                        text = "Nothing downloaded yet. Open a show and tap the download icon next to an episode.",
-                        color = AnsuColors.TextSecondary,
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
-                ) {
-                    items(items, key = { it.entry.id }) { item ->
-                        DownloadCard(
-                            item = item,
-                            onPlay = {
-                                val entry = item.entry
-                                val anime = SAnime(
-                                    id = entry.anilistId.toString(),
-                                    title = entry.animeTitle,
-                                    posterUrl = entry.posterUrl,
-                                    bannerUrl = entry.bannerUrl,
-                                    anilistId = entry.anilistId,
-                                    origin = MediaOrigin.Extension(sourceId = entry.sourceId ?: 1L, urlPath = entry.anilistId.toString()),
-                                )
-                                val episode = SEpisode(id = entry.episodeId, name = entry.episodeName, episodeNumber = entry.episodeNumber)
-                                container.selectionHolder.selectOffline(anime, episode, entry.id)
-                                navController.navigate(Dest.PLAYER)
-                            },
-                            onDelete = { pendingDelete = item },
-                            onRetry = { container.downloads.retry(item.entry.id) },
-                            onMoveUp = { container.downloads.moveUp(item.entry.id) },
-                            onMoveDown = { container.downloads.moveDown(item.entry.id) },
-                            onMoveToTop = { container.downloads.moveToTop(item.entry.id) },
-                            waitingCount = waitingCount,
+                item(key = "empty") {
+                    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 36.dp), contentAlignment = Alignment.TopCenter) {
+                        Text(
+                            text = "Nothing downloaded yet. Open a show and tap the download icon next to an episode.",
+                            color = AnsuColors.TextSecondary,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyMedium,
                         )
                     }
+                }
+            } else {
+                items(items, key = { it.entry.id }) { item ->
+                    DownloadCard(
+                        item = item,
+                        onPlay = {
+                            val entry = item.entry
+                            val anime = SAnime(
+                                id = entry.anilistId.toString(),
+                                title = entry.animeTitle,
+                                posterUrl = entry.posterUrl,
+                                bannerUrl = entry.bannerUrl,
+                                anilistId = entry.anilistId,
+                                origin = MediaOrigin.Extension(sourceId = entry.sourceId ?: 1L, urlPath = entry.anilistId.toString()),
+                            )
+                            val episode = SEpisode(id = entry.episodeId, name = entry.episodeName, episodeNumber = entry.episodeNumber)
+                            container.selectionHolder.selectOffline(anime, episode, entry.id)
+                            navController.navigate(Dest.PLAYER)
+                        },
+                        onDelete = { pendingDelete = item },
+                        onRetry = { container.downloads.retry(item.entry.id) },
+                        onMoveUp = { container.downloads.moveUp(item.entry.id) },
+                        onMoveDown = { container.downloads.moveDown(item.entry.id) },
+                        onMoveToTop = { container.downloads.moveToTop(item.entry.id) },
+                        waitingCount = waitingCount,
+                    )
                 }
             }
         }

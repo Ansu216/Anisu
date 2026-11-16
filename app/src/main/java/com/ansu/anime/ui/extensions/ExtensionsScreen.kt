@@ -1,5 +1,7 @@
 package com.ansu.anime.ui.extensions
 
+import androidx.compose.runtime.mutableIntStateOf
+import com.ansu.anime.ui.components.BlurFadeHeader
 import com.ansu.anime.ui.components.BouncyIconButton
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -298,60 +300,18 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     val availableState = rememberLazyListState()
     val installedState = rememberLazyListState()
 
+    val density = LocalDensity.current
+    var headerPx by remember { mutableIntStateOf(0) }
+    // The lists scroll up under the blurred header, so they start below it (minus most of its fade).
+    val topInset = (with(density) { headerPx.toDp() } - 20.dp).coerceAtLeast(0.dp)
     Box(modifier = Modifier.fillMaxSize()) {
         // ---------------- Content (what the bar and the cards blur) ----------------
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .backdropSource(backdrop)
-                .statusBarsPadding(),
+                .backdropSource(backdrop),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BouncyIconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-                Text(
-                    "Extensions",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = AnsuColors.TextPrimary,
-                    modifier = Modifier.weight(1f).padding(start = 4.dp),
-                )
-                BouncyIconButton(onClick = { searching = !searching; if (!searching) query = "" }) {
-                    Icon(Icons.Filled.Search, "Search")
-                }
-                // Three dots at the far right, search beside it. The menu holds the NSFW checkbox.
-                Box {
-                    BouncyIconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "More") }
-                    GlassDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(
-                            text = { Text("NSFW") },
-                            trailingIcon = { Checkbox(checked = showNsfw, onCheckedChange = null) },
-                            onClick = {
-                                val next = !showNsfw
-                                manager.setShowNsfw(next)
-                                scope.launch { withContext(Dispatchers.IO) { manager.reloadAll() } }
-                            },
-                        )
-                    }
-                }
-            }
-            AnimatedVisibility(
-                visible = searching,
-                enter = fadeIn(tween(160)) + expandVertically(tween(220)),
-                exit = fadeOut(tween(120)) + shrinkVertically(tween(180)),
-            ) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    placeholder = { Text("Search by name or language") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(50),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                )
-            }
-
-            val listPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = barBottom + ExtensionsBarHeight + 40.dp)
+            val listPadding = PaddingValues(start = 16.dp, end = 16.dp, top = topInset + 10.dp, bottom = barBottom + ExtensionsBarHeight + 40.dp)
             Crossfade(targetState = tab, animationSpec = tween(220), modifier = Modifier.weight(1f), label = "extensionsTab") { current ->
                 when (current) {
                     ExtensionsTab.Available -> LazyColumn(
@@ -458,6 +418,59 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                             )
                         }
                     }
+                }
+            }
+        }
+
+        // ---------------- Blurred header: the title row (and the search field) fade out over the lists ----------------
+        BlurFadeHeader(
+            backdrop = backdrop,
+            modifier = Modifier.align(Alignment.TopCenter).onSizeChanged { headerPx = it.height },
+        ) {
+            Column(modifier = Modifier.statusBarsPadding()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BouncyIconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                    Text(
+                        "Extensions",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = AnsuColors.TextPrimary,
+                        modifier = Modifier.weight(1f).padding(start = 4.dp),
+                    )
+                    BouncyIconButton(onClick = { searching = !searching; if (!searching) query = "" }) {
+                        Icon(Icons.Filled.Search, "Search")
+                    }
+                    // Three dots at the far right, search beside it. The menu holds the NSFW checkbox.
+                    Box {
+                        BouncyIconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "More") }
+                        GlassDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("NSFW") },
+                                trailingIcon = { Checkbox(checked = showNsfw, onCheckedChange = null) },
+                                onClick = {
+                                    val next = !showNsfw
+                                    manager.setShowNsfw(next)
+                                    scope.launch { withContext(Dispatchers.IO) { manager.reloadAll() } }
+                                },
+                            )
+                        }
+                    }
+                }
+                AnimatedVisibility(
+                    visible = searching,
+                    enter = fadeIn(tween(160)) + expandVertically(tween(220)),
+                    exit = fadeOut(tween(120)) + shrinkVertically(tween(180)),
+                ) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        placeholder = { Text("Search by name or language") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(50),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
                 }
             }
         }

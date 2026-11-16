@@ -309,6 +309,14 @@ class AniListRepository(
     suspend fun getMediaThreads(mediaId: Int): List<AniListThread>? =
         guarded<List<AniListThread>?>("Loading discussions", null) { api.getMediaThreads(mediaId) }
 
+    /** One page of a show's discussion threads with the total count; null when the request failed. */
+    suspend fun getMediaThreadsPage(mediaId: Int, page: Int): AniListThreadPage? =
+        guarded<AniListThreadPage?>("Loading discussions", null) { api.getMediaThreadsPage(mediaId, page) }
+
+    /** The threads that discuss one episode of a show (see [AniListApi.getEpisodeThreads]); null when the request failed. */
+    suspend fun getEpisodeThreads(mediaId: Int, episode: Int): List<AniListThread>? =
+        guarded<List<AniListThread>?>("Loading discussions", null) { api.getEpisodeThreads(mediaId, episode) }
+
     /** One page of a thread's comments; null when the request failed. */
     suspend fun getThreadComments(threadId: Int, page: Int = 1): AniListCommentPage? =
         guarded<AniListCommentPage?>("Loading comments", null) { api.getThreadComments(threadId, page) }

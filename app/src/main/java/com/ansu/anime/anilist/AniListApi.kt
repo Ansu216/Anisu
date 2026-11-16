@@ -889,6 +889,73 @@ class AniListApi(
         }
     }
 
+    /** One thread from a `threads { id title replyCount isLocked user { name } }` answer, or null when it has no id. */
+    private fun threadFrom(obj: JsonObject): AniListThread? = AniListThread(
+        id = obj["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null,
+        title = obj["title"]?.jsonPrimitive?.contentOrNull.orEmpty().ifBlank { "Untitled discussion" },
+        replyCount = obj["replyCount"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+        userName = (obj["user"] as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull,
+        isLocked = obj["isLocked"]?.jsonPrimitive?.content == "true",
+    )
+
+    /** One page (50) of a show's discussion threads, newest activity first, with the total number of threads. */
+    suspend fun getMediaThreadsPage(mediaId: Int, page: Int): AniListThreadPage? {
+        val query = """
+            query (${'$'}mediaId: Int, ${'$'}page: Int) {
+              Page(page: ${'$'}page, perPage: 50) {
+                pageInfo { total hasNextPage }
+                threads(mediaCategoryId: ${'$'}mediaId, sort: [REPLIED_AT_DESC]) {
+                  id title replyCount isLocked user { name }
+                }
+              }
+            }
+        """.trimIndent()
+        val data = execute(query, mapOf("mediaId" to mediaId, "page" to page)) ?: return null
+        val pageObj = data["Page"]?.jsonObject ?: return null
+        val info = pageObj["pageInfo"] as? JsonObject
+        val threads = (pageObj["threads"] as? JsonArray).orEmpty().mapNotNull { element -> (element as? JsonObject)?.let { threadFrom(it) } }
+        return AniListThreadPage(
+            threads = threads,
+            total = info?.get("total")?.jsonPrimitive?.content?.toIntOrNull() ?: threads.size,
+            hasNextPage = info?.get("hasNextPage")?.jsonPrimitive?.content == "true",
+        )
+    }
+
+    /**
+     * The forum threads of [mediaId] about one episode. AniList has no comments per episode of its own; what it has
+     * is discussion threads titled like "Episode 3 Discussion", so this asks for the show's threads that mention
+     * "Episode [episode]", page after page until there are no more, and keeps the ones whose title names exactly
+     * that number ("Episode 1" must not match "Episode 12"). Busiest first. Empty when nobody has opened a thread
+     * for that episode.
+     */
+    suspend fun getEpisodeThreads(mediaId: Int, episode: Int): List<AniListThread> {
+        val query = """
+            query (${'$'}mediaId: Int, ${'$'}search: String, ${'$'}page: Int) {
+              Page(page: ${'$'}page, perPage: 50) {
+                pageInfo { hasNextPage }
+                threads(mediaCategoryId: ${'$'}mediaId, search: ${'$'}search, sort: [REPLIED_AT_DESC]) {
+                  id title replyCount isLocked user { name }
+                }
+              }
+            }
+        """.trimIndent()
+        val named = Regex("(?i)\\b(?:episode|ep)\\.?\\s*#?0*$episode(?!\\d)")
+        val found = mutableListOf<AniListThread>()
+        var page = 1
+        // The page limit is only a guard against a request that never ends; a show has nowhere near that many.
+        while (page <= 40) {
+            val data = execute(query, mapOf("mediaId" to mediaId, "search" to "Episode $episode", "page" to page)) ?: break
+            val pageObj = data["Page"]?.jsonObject ?: break
+            (pageObj["threads"] as? JsonArray).orEmpty().forEach { element ->
+                val thread = (element as? JsonObject)?.let { threadFrom(it) } ?: return@forEach
+                if (named.containsMatchIn(thread.title)) found += thread
+            }
+            if ((pageObj["pageInfo"] as? JsonObject)?.get("hasNextPage")?.jsonPrimitive?.content != "true") break
+            page++
+        }
+        return found.sortedByDescending { it.replyCount }
+    }
+
     /** One page of a thread's top-level comments, each with its replies nested (never cached: comments change). */
     suspend fun getThreadComments(threadId: Int, page: Int): AniListCommentPage? {
         val query = """

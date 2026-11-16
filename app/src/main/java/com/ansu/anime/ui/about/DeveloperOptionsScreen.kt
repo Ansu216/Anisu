@@ -22,6 +22,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import com.ansu.anime.ui.components.backdropSource
+import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.components.FadingTopAppBar
 import com.ansu.anime.ui.components.withoutTop
 import androidx.compose.material3.TopAppBarDefaults
@@ -52,10 +54,12 @@ import com.ansu.anime.ui.theme.AnsuColors
 fun DeveloperOptionsScreen(container: AppContainer, navController: NavHostController) {
     val seasonalOverride by container.appearancePrefs.seasonalOverride.collectAsStateWithLifecycle()
 
+    val topBackdrop = rememberBackdropState()
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
             FadingTopAppBar(
+                backdrop = topBackdrop,
                 title = { Text("Developer options") },
                 navigationIcon = {
                     BouncyIconButton(onClick = { navController.popBackStack() }) {
@@ -69,6 +73,7 @@ fun DeveloperOptionsScreen(container: AppContainer, navController: NavHostContro
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding.withoutTop())
+                .backdropSource(topBackdrop)
                 .verticalScroll(rememberScrollState())
                 .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = 16.dp)

@@ -706,6 +706,7 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
                         onPlayEpisode = viewModel::playEpisode,
                         downloads = container.downloads,
                         playerPrefs = container.playerPrefs,
+                        container = container,
                         modifier = Modifier.weight(1f),
                     )
                 }

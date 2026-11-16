@@ -28,6 +28,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import com.ansu.anime.ui.components.backdropSource
+import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.components.FadingTopAppBar
 import com.ansu.anime.ui.components.withoutTop
 import androidx.compose.material3.TopAppBarDefaults
@@ -70,10 +72,12 @@ fun NotificationsScreen(container: AppContainer, navController: NavHostControlle
     val releaseEnabled by container.notificationPrefs.enabled.collectAsStateWithLifecycle()
     val watchingAlerts by container.notificationPrefs.newEpisodes.collectAsStateWithLifecycle()
 
+    val topBackdrop = rememberBackdropState()
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
             FadingTopAppBar(
+                backdrop = topBackdrop,
                 title = { Text("Notification setting") },
                 navigationIcon = {
                     BouncyIconButton(onClick = { navController.popBackStack() }) {
@@ -87,6 +91,7 @@ fun NotificationsScreen(container: AppContainer, navController: NavHostControlle
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding.withoutTop())
+                .backdropSource(topBackdrop)
                 .verticalScroll(rememberScrollState())
                 .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = 16.dp)

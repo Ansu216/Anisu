@@ -139,6 +139,7 @@ fun EpisodeInfoPane(
     onPlayEpisode: (SEpisode) -> Unit,
     downloads: com.ansu.anime.data.download.DownloadsRepository,
     playerPrefs: com.ansu.anime.data.prefs.PlayerPrefs,
+    container: com.ansu.anime.di.AppContainer,
     modifier: Modifier = Modifier,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -219,6 +220,18 @@ fun EpisodeInfoPane(
                         color = Color.White.copy(alpha = 0.85f),
                         fontSize = 14.sp,
                         modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                // The episode's AniList discussion, under its description (needs the show's AniList id).
+                val commentsMedia = anilistKey
+                val commentsEpisode = state.episode?.episodeNumber?.toInt()
+                if (commentsMedia != null && commentsEpisode != null && commentsEpisode > 0) {
+                    EpisodeCommentsSection(
+                        container = container,
+                        mediaId = commentsMedia,
+                        mediaTitle = state.anime?.title.orEmpty(),
+                        episode = commentsEpisode,
+                        modifier = Modifier.padding(top = 20.dp),
                     )
                 }
                 if (episodes.isNotEmpty()) {

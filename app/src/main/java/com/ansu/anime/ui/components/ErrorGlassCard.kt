@@ -78,6 +78,7 @@ fun ErrorGlassCard(
         modifier = modifier.fillMaxWidth(),
         shape = shape,
         tintAlpha = 0.88f,
+        overlay = true,
     ) {
         Box(
             modifier = Modifier

@@ -7,12 +7,37 @@ import android.os.Build
 import android.view.View
 import android.view.WindowManager
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -160,7 +185,16 @@ fun GlassModalBottomSheet(
     }
 }
 
-/** A dropdown menu in Pixel OS frosted glass. */
+/**
+ * A dropdown list in frosted glass that grows out of the thing that opened it, as in the reference recording:
+ * it starts small and blurred at the anchor's corner, scales up on a soft spring while the blur clears and the
+ * rows fade in, and closing runs the same thing backwards a little faster (shrinking back into the anchor,
+ * blurring and fading out). Same call as the Material menu, so every caller keeps working.
+ *
+ * It is a plain popup rather than Material's DropdownMenu, whose own open/close animation cannot be replaced.
+ * The window-level blur is not used here: a fixed blurred rectangle behind a menu that is still scaling
+ * would show as a box, so the fill is firmer instead.
+ */
 @Composable
 fun GlassDropdownMenu(
     expanded: Boolean,
@@ -168,19 +202,94 @@ fun GlassDropdownMenu(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val state = remember { MutableTransitionState(false) }
+    state.targetState = expanded
+    // Stays composed while it plays the closing animation, then leaves.
+    if (!state.currentState && !state.targetState) return
+
+    val marginPx = with(LocalDensity.current) { 8.dp.roundToPx() }
+    var origin by remember { mutableStateOf(TransformOrigin(1f, 0f)) }
+    val positioner = remember(marginPx) { GlassMenuPositionProvider(marginPx) { origin = it } }
+    val shape = RoundedCornerShape(22.dp)
     val strokeColor = Color.White.copy(alpha = GlassTuning.borderAlpha.coerceIn(0f, 0.8f))
-    DropdownMenu(
-        expanded = expanded,
+    val fill = glassPopupFill().let { it.copy(alpha = it.alpha.coerceAtLeast(0.92f)) }
+
+    Popup(
+        popupPositionProvider = positioner,
         onDismissRequest = onDismissRequest,
-        modifier = modifier,
-        shape = RoundedCornerShape(22.dp),
-        containerColor = glassPopupFill(),
-        tonalElevation = 0.dp,
-        shadowElevation = 12.dp,
-        border = BorderStroke(1.dp, strokeColor),
+        properties = PopupProperties(focusable = true),
     ) {
-        WindowBlurBehind()
-        content()
+        val transition = updateTransition(state, label = "glassMenu")
+        val progress by transition.animateFloat(
+            transitionSpec = {
+                if (targetState) {
+                    spring(dampingRatio = 0.80f, stiffness = 420f)
+                } else {
+                    tween(durationMillis = 190, easing = FastOutLinearInEasing)
+                }
+            },
+            label = "glassMenuProgress",
+        ) { open -> if (open) 1f else 0f }
+
+        Box(
+            modifier = modifier
+                .graphicsLayer {
+                    val p = progress
+                    val s = 0.35f + 0.65f * p
+                    scaleX = s
+                    scaleY = s
+                    transformOrigin = origin
+                    alpha = (p * 1.8f).coerceIn(0f, 1f)
+                    val blurPx = (1f - p).coerceIn(0f, 1f) * 14.dp.toPx()
+                    renderEffect = if (blurPx > 0.5f && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        BlurEffect(blurPx, blurPx, TileMode.Decal)
+                    } else {
+                        null
+                    }
+                }
+                .clip(shape)
+                .background(fill)
+                .border(1.dp, strokeColor, shape),
+        ) {
+            Column(
+                modifier = Modifier
+                    .width(IntrinsicSize.Max)
+                    .defaultMinSize(minWidth = 112.dp)
+                    .padding(vertical = 8.dp)
+                    .verticalScroll(rememberScrollState()),
+                content = content,
+            )
+        }
+    }
+}
+
+/**
+ * Puts the list under its anchor with its right edge on the anchor's (where the value of a settings row sits),
+ * flips it above when there is no room below, keeps it inside the window, and tells the menu which corner it
+ * grows out of.
+ */
+private class GlassMenuPositionProvider(
+    private val marginPx: Int,
+    private val onOrigin: (TransformOrigin) -> Unit,
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset {
+        val maxX = (windowSize.width - popupContentSize.width - marginPx).coerceAtLeast(marginPx)
+        val endAligned = anchorBounds.right - popupContentSize.width
+        val x = (if (endAligned >= marginPx) endAligned else anchorBounds.left).coerceIn(marginPx, maxX)
+
+        val roomBelow = windowSize.height - marginPx - anchorBounds.bottom
+        val opensDown = popupContentSize.height <= roomBelow || anchorBounds.top < roomBelow
+        val maxY = (windowSize.height - popupContentSize.height - marginPx).coerceAtLeast(marginPx)
+        val y = (if (opensDown) anchorBounds.bottom else anchorBounds.top - popupContentSize.height).coerceIn(marginPx, maxY)
+
+        val pivotX = ((anchorBounds.center.x - x).toFloat() / popupContentSize.width.coerceAtLeast(1)).coerceIn(0f, 1f)
+        onOrigin(TransformOrigin(pivotX, if (opensDown) 0f else 1f))
+        return IntOffset(x, y)
     }
 }
 

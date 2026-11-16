@@ -318,10 +318,11 @@ fun SearchScreen(
     }
 
     Scaffold(containerColor = Color.Transparent, bottomBar = { AppBottomBarReserve() }) { padding ->
+        // The results run up under the status bar (blurred and faded there), so the bar row and the lists add its height.
+        val topInset = padding.calculateTopPadding()
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = padding.calculateTopPadding())
                 .onGloballyPositioned { areaBounds = it.boundsInRoot() },
         ) {
           // Filter chips and results sit under the bar row, which is drawn last so the panel can slide beneath it.
@@ -334,7 +335,7 @@ fun SearchScreen(
             // puts the first card under the bar; as it scrolls, cards pass behind the bar, which is what the
             // frosted backdrop blurs. With a chip row, the row takes that space instead.
             val chipsRow = sourceId != null || chips.isNotEmpty()
-            if (chipsRow) Spacer(Modifier.height(SearchBarRowHeight))
+            if (chipsRow) Spacer(Modifier.height(SearchBarRowHeight + topInset))
             if (sourceId != null) {
                 // The chosen source stays visible under the bar; its cross switches the search back to everything.
                 LazyRow(
@@ -370,7 +371,7 @@ fun SearchScreen(
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 val contentPadding = PaddingValues(
                     start = 12.dp,
-                    top = if (chipsRow) 6.dp else SearchBarRowHeight + 6.dp,
+                    top = if (chipsRow) 6.dp else SearchBarRowHeight + topInset + 6.dp,
                     end = 12.dp,
                     bottom = 12.dp + padding.calculateBottomPadding(),
                 )
@@ -443,6 +444,9 @@ fun SearchScreen(
             }
           }
 
+          // Blurred, fading status bar: results scrolling up under it are softened instead of cut off.
+          com.ansu.anime.ui.components.StatusBarBlurFade(backdrop = backdrop, modifier = Modifier.align(Alignment.TopCenter))
+
           if (panelVisible) {
               SearchPanel(
                   panelBackgroundStyle = container.appearancePrefs.backgroundStyle.collectAsStateWithLifecycle().value,
@@ -456,6 +460,7 @@ fun SearchScreen(
                   isGrid = isGrid,
                   filter = query.trim(),
                   bottomPadding = padding.calculateBottomPadding(),
+                  topInset = topInset,
                   onPick = { submit(it) },
                   onFill = { query = it },
                   onRemove = container.searchHistory::remove,
@@ -468,8 +473,8 @@ fun SearchScreen(
           Row(
               modifier = Modifier
                   .fillMaxWidth()
-                  .height(SearchBarRowHeight)
-                  .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 10.dp),
+                  .height(SearchBarRowHeight + topInset)
+                  .padding(start = 16.dp, end = 16.dp, top = 12.dp + topInset, bottom = 10.dp),
               verticalAlignment = Alignment.CenterVertically,
           ) {
               SearchField(
@@ -675,6 +680,7 @@ private fun SearchPanel(
     topSearching: Boolean,
     isGrid: Boolean,
     bottomPadding: Dp,
+    topInset: Dp = 0.dp,
     onPick: (String) -> Unit,
     onFill: (String) -> Unit,
     onRemove: (String) -> Unit,
@@ -730,7 +736,7 @@ private fun SearchPanel(
                     alpha = ((p - 0.25f) / 0.6f).coerceIn(0f, 1f)
                     translationY = (1f - p) * 24.dp.toPx()
                 },
-            contentPadding = PaddingValues(top = SearchBarRowHeight + 4.dp, bottom = 12.dp + bottomPadding),
+            contentPadding = PaddingValues(top = SearchBarRowHeight + topInset + 4.dp, bottom = 12.dp + bottomPadding),
         ) {
             if (!typing) {
                 if (history.isEmpty()) {

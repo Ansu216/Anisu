@@ -29,6 +29,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import com.ansu.anime.ui.components.backdropSource
+import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.components.FadingTopAppBar
 import com.ansu.anime.ui.components.withoutTop
 import androidx.compose.material3.TopAppBarDefaults
@@ -93,10 +95,12 @@ fun CommitsScreen(container: AppContainer, navController: NavHostController) {
             }
     }
 
+    val topBackdrop = rememberBackdropState()
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
             FadingTopAppBar(
+                backdrop = topBackdrop,
                 title = { Text("Commits") },
                 navigationIcon = {
                     BouncyIconButton(onClick = { navController.popBackStack() }) {
@@ -118,6 +122,7 @@ fun CommitsScreen(container: AppContainer, navController: NavHostController) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding.withoutTop())
+                .backdropSource(topBackdrop)
                 .verticalScroll(rememberScrollState())
                 .padding(top = padding.calculateTopPadding())
                 .padding(horizontal = 16.dp)

@@ -62,6 +62,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import com.ansu.anime.ui.components.backdropSource
+import com.ansu.anime.ui.components.blurWhile
+import com.ansu.anime.ui.components.rememberBackdropState
 import com.ansu.anime.ui.components.FadingTopAppBar
 import com.ansu.anime.ui.components.withoutTop
 import androidx.compose.material3.TopAppBarDefaults
@@ -168,10 +171,14 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        val topBackdrop = rememberBackdropState()
         Scaffold(
+            // The page blurs while the Links panel is up, so its text no longer shows sharp behind the card.
+            modifier = Modifier.fillMaxSize().blurWhile(showLinks),
             containerColor = Color.Transparent,
             topBar = {
                 FadingTopAppBar(
+                    backdrop = topBackdrop,
                     title = { Text("About") },
                     navigationIcon = {
                         BouncyIconButton(onClick = { navController.popBackStack() }) {
@@ -185,6 +192,7 @@ fun AboutScreen(container: AppContainer, navController: NavHostController) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding.withoutTop())
+                    .backdropSource(topBackdrop)
                     .verticalScroll(rememberScrollState())
                     .padding(top = padding.calculateTopPadding())
                     .padding(horizontal = 16.dp),
@@ -570,6 +578,7 @@ private fun LinksOverlay(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
             shape = RoundedCornerShape(32.dp),
             tintAlpha = 0.9f,
+            overlay = true,
         ) {
             Box(
                 modifier = Modifier

@@ -2,6 +2,7 @@
 
 package com.ansu.anime.ui.sources
 
+import com.ansu.anime.ui.components.backdropSource
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -128,8 +129,11 @@ fun SourcePickerScreen(container: AppContainer, navController: NavHostController
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
 
+    val pickerBackdrop = com.ansu.anime.ui.components.rememberBackdropState()
+    val pickerListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val pickerScrolled by remember { androidx.compose.runtime.derivedStateOf { pickerListState.firstVisibleItemIndex > 0 || pickerListState.firstVisibleItemScrollOffset > 200 } }
     Box(modifier = Modifier.fillMaxSize().background(AnsuColors.Background)) {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(modifier = Modifier.fillMaxSize().backdropSource(pickerBackdrop), state = pickerListState) {
             item(key = "hero") {
                 PickerHero(
                     imageUrl = episode?.thumbnailUrl ?: anime?.bannerUrl ?: anime?.posterUrl,
@@ -227,6 +231,11 @@ fun SourcePickerScreen(container: AppContainer, navController: NavHostController
             }
             item(key = "end") { Spacer(Modifier.navigationBarsPadding().height(28.dp)) }
         }
+        com.ansu.anime.ui.components.StatusBarBlurFade(
+            backdrop = pickerBackdrop,
+            visible = pickerScrolled,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
     }
 }
 
