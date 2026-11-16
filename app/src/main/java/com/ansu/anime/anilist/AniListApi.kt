@@ -890,13 +890,16 @@ class AniListApi(
     }
 
     /** One thread from a `threads { id title replyCount isLocked user { name } }` answer, or null when it has no id. */
-    private fun threadFrom(obj: JsonObject): AniListThread? = AniListThread(
-        id = obj["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null,
-        title = obj["title"]?.jsonPrimitive?.contentOrNull.orEmpty().ifBlank { "Untitled discussion" },
-        replyCount = obj["replyCount"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
-        userName = (obj["user"] as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull,
-        isLocked = obj["isLocked"]?.jsonPrimitive?.content == "true",
-    )
+    private fun threadFrom(obj: JsonObject): AniListThread? {
+        val id = obj["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null
+        return AniListThread(
+            id = id,
+            title = obj["title"]?.jsonPrimitive?.contentOrNull.orEmpty().ifBlank { "Untitled discussion" },
+            replyCount = obj["replyCount"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+            userName = (obj["user"] as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull,
+            isLocked = obj["isLocked"]?.jsonPrimitive?.content == "true",
+        )
+    }
 
     /** One page (50) of a show's discussion threads, newest activity first, with the total number of threads. */
     suspend fun getMediaThreadsPage(mediaId: Int, page: Int): AniListThreadPage? {

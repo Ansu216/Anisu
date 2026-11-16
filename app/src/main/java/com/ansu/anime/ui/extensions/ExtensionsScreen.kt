@@ -300,7 +300,6 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     val availableState = rememberLazyListState()
     val installedState = rememberLazyListState()
 
-    val density = LocalDensity.current
     var headerPx by remember { mutableIntStateOf(0) }
     // The lists scroll up under the blurred header, so they start below it (minus most of its fade).
     val topInset = (with(density) { headerPx.toDp() } - 20.dp).coerceAtLeast(0.dp)

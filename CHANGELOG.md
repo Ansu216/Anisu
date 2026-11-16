@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- [APK] **The build compiles again: four compile errors that broke the debug and release builds are fixed.**
 - [APK] **The Links panel, the welcome card and the error card no longer show the page sharp through the card.**
 - [APK] **Choosing "None" for the background animation clears the shapes still showing in blurred cards; the animation also moves on the details page.**
 - [APK] **Home banner fades smoothly into the page; the background animation is no longer cut off under it.**
