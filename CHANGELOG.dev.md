@@ -50,6 +50,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [APK] **The portrait player's ambient glow is smooth, like YouTube's.** `ui/player/AmbientGlow.kt` was rewritten. The old glow retargeted five colour blobs every 350 ms with a 900 ms linear tween, so it stepped and lagged. Now the video is read at 64x36 every 250 ms into a 16x6 grid of colours (`AmbientColors`), and `AmbientGlowBackdrop` eases a drawn copy towards each reading on every frame (exponential smoothing, redrawn at most 30 times a second, asleep when settled or paused), stretches it into a small bitmap scaled up with filtering, blurs it (`BlurEffect`, Android 12+) and fades it to black below the video. Black bars around a 4:3 or ultra-wide picture are detected and left out of the colours, so they no longer darken the glow. The glow fades in with the first reading and out when it stops. A video on a `TextureView` is read too. `PlayerScreen.kt` is unchanged: `rememberAmbientColors` and `AmbientGlowBackdrop` keep their names and arguments, only the type passed between them changed.
 
 ### Fixed
+- [APK] **Playback finds sources on a slow connection instead of saying "No playable sources found".**
+  The title search that finds an episode in the other sources gave each source 8 s for the search plus up to
+  three episode-list fetches. On a slow link every request was cancelled ("IOException: Canceled" in the
+  diagnostics) and the player reported no sources, while the Extensions test (20-45 s budgets) passed.
+  `SourceMatching.kt`: `SOURCE_TIMEOUT_MS` 8 s -> 25 s, remembered-page fetch gets its own
+  `REMEMBERED_TIMEOUT_MS` (12 s) so a hung remembered page cannot eat the whole budget, and
+  `FAILURE_COOLDOWN_MS` 10 min -> 2 min so one slow attempt does not skip a source for the next ten minutes.
+  A fast source is still used the moment it answers (`onPartial`), so nothing waits for the slowest one.
 
 - [APK] **The build compiles again: four compile errors that broke the debug and release builds are fixed.**
   CI run 118765405622 failed in `compileDebugKotlin` / `compileReleaseKotlin`. `GlassPopups.kt` lacked the `androidx.compose.animation.core.animateFloat` import for the new dropdown animation (the other errors there, `targetState` and the uninferred lambda parameters, followed from it); `AmbientGlow.kt` lacked `androidx.compose.ui.unit.dp`; `AniListApi.threadFrom` used `return null` inside an expression body, so it is a block body now; `ExtensionsScreen.kt` declared `val density` twice (the second, left over from the frosted-header change, was removed). 1.1.4 was never published, so the entry sits in its section.

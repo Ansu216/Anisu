@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [APK] **The portrait player's ambient glow is smooth, like YouTube's.**
 
 ### Fixed
+- [APK] **Playback finds sources on a slow connection instead of saying "No playable sources found".**
 
 - [APK] **The build compiles again: four compile errors that broke the debug and release builds are fixed.**
 - [APK] **The Links panel, the welcome card and the error card no longer show the page sharp through the card.**

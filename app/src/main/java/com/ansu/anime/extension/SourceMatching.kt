@@ -18,13 +18,21 @@ private const val MIN_MATCH_SCORE = 0.5
 
 /** A title this similar, with episodes, is accepted straight away without waiting for the other searches. */
 private const val GOOD_MATCH_SCORE = 0.8
-private const val SOURCE_TIMEOUT_MS = 8_000L
+/**
+ * Time one source gets to search a title and fetch its episode list. 8 s was too tight for a slow connection:
+ * every request was cancelled and the player said "No playable sources found" while the Extensions test
+ * (which waits 20-45 s) passed. A source that answers sooner is still used the moment it does (see onPartial).
+ */
+private const val SOURCE_TIMEOUT_MS = 25_000L
 
 /** Title variants searched at the same time in each source; the rest only run when these find nothing good. */
 private const val FIRST_STAGE_QUERIES = 2
 
 /** A source that timed out or errored is skipped for this long, so one dead site does not slow every title. */
-private const val FAILURE_COOLDOWN_MS = 10 * 60_000L
+/** A remembered page is one request; if it hangs, the normal search (with its own budget) takes over. */
+private const val REMEMBERED_TIMEOUT_MS = 12_000L
+
+private const val FAILURE_COOLDOWN_MS = 2 * 60_000L
 
 private val recentFailures = java.util.concurrent.ConcurrentHashMap<Long, Long>()
 
@@ -310,7 +318,7 @@ private suspend fun rememberedMatch(source: AnimeCatalogueSource, titleKey: Stri
         origin = com.ansu.anime.core.model.MediaOrigin.Extension(source.id, saved.urlPath),
     )
     val episodes = try {
-        withTimeoutOrNull(SOURCE_TIMEOUT_MS) { source.getEpisodeList(page) }
+        withTimeoutOrNull(REMEMBERED_TIMEOUT_MS) { source.getEpisodeList(page) }
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
     } catch (e: Throwable) {
