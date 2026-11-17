@@ -120,9 +120,9 @@ class ExtensionManager(private val context: Context) {
     private val _showNsfw = MutableStateFlow(prefs.getBoolean("show_nsfw", false))
 
     /**
-     * The Extensions screen's NSFW checkbox (off by default): when on, 18+ extensions are listed, can be installed and
-     * are loaded. It only concerns extensions; the title filter (no hentai in Search, Home or Details) is separate and
-     * always on.
+     * The Extensions screen's NSFW checkbox (off by default): when on, 18+ extensions are shown in the Available list.
+     * It no longer blocks anything: installed 18+ extensions always load and stream. The title filter (no hentai in
+     * Search, Home or Details) is separate and always on.
      */
     val showNsfw: StateFlow<Boolean> = _showNsfw
 
@@ -132,7 +132,8 @@ class ExtensionManager(private val context: Context) {
         prefs.edit().putBoolean("show_nsfw", on).apply()
     }
 
-    private val allowAdult: Boolean get() = _showNsfw.value
+    /** 18+ extensions are never blocked: they install, load, search and stream like any other. The checkbox only decides whether they are listed. */
+    private val allowAdult: Boolean get() = true
 
     fun setSourceEnabled(id: Long, enabled: Boolean) {
         val next = if (enabled) _disabledSourceIds.value - id else _disabledSourceIds.value + id

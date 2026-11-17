@@ -19,20 +19,21 @@ private const val MIN_MATCH_SCORE = 0.5
 /** A title this similar, with episodes, is accepted straight away without waiting for the other searches. */
 private const val GOOD_MATCH_SCORE = 0.8
 /**
- * Time one source gets to search a title and fetch its episode list. 8 s was too tight for a slow connection:
- * every request was cancelled and the player said "No playable sources found" while the Extensions test
- * (which waits 20-45 s) passed. A source that answers sooner is still used the moment it does (see onPartial).
+ * Time one source gets to search a title and fetch its episode list on the FIRST pass. Kept short so one dead
+ * site never holds playback up. Only when no source answered at all (a slow connection) is a second pass
+ * run with [SLOW_SOURCE_TIMEOUT_MS], so the slow-connection fix stays without slowing the normal case.
  */
-private const val SOURCE_TIMEOUT_MS = 25_000L
+private const val SOURCE_TIMEOUT_MS = 8_000L
+private const val SLOW_SOURCE_TIMEOUT_MS = 25_000L
 
 /** Title variants searched at the same time in each source; the rest only run when these find nothing good. */
 private const val FIRST_STAGE_QUERIES = 2
 
-/** A source that timed out or errored is skipped for this long, so one dead site does not slow every title. */
 /** A remembered page is one request; if it hangs, the normal search (with its own budget) takes over. */
-private const val REMEMBERED_TIMEOUT_MS = 12_000L
+private const val REMEMBERED_TIMEOUT_MS = 6_000L
 
-private const val FAILURE_COOLDOWN_MS = 2 * 60_000L
+/** A source that timed out or errored is skipped for this long, so one dead site does not slow every title. */
+private const val FAILURE_COOLDOWN_MS = 10 * 60_000L
 
 private val recentFailures = java.util.concurrent.ConcurrentHashMap<Long, Long>()
 
@@ -272,36 +273,53 @@ suspend fun ExtensionManager.findEpisodesByTitle(
         async { runCatching { withTimeoutOrNull(1_000L) { provider() } }.getOrNull().orEmpty() }
     }
     val matches = mutableListOf<SourceMatch>()
-    candidates
-        .map { source ->
-            async {
-                // "Nothing found" is a normal answer; only an error or a timeout counts against the source.
-                var answered = false
-                val match = try {
-                    rememberedMatch(source, titleKey)?.also { answered = true } ?: withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
-                        val extras = extrasDeferred?.await() ?: extraTitles
-                        val allTitles = (listOf(anime.title) + extras).distinct()
-                        val queries = allTitles.flatMap { titleQueries(it) }.distinct().take(5)
-                        matchIn(source, allTitles, queries).also { answered = true }
-                    }?.also { found ->
-                        found.candidate?.let { SourceMatchMemory.remember(titleKey, source.id, it, found.score) }
+    val answeredIds = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
+
+    suspend fun searchAll(sources: List<AnimeCatalogueSource>, timeoutMs: Long, markFailures: Boolean) {
+        sources
+            .map { source ->
+                async {
+                    // "Nothing found" is a normal answer; only an error or a timeout counts against the source.
+                    var answered = false
+                    val match = try {
+                        rememberedMatch(source, titleKey)?.also { answered = true } ?: withTimeoutOrNull(timeoutMs) {
+                            val extras = extrasDeferred?.await() ?: extraTitles
+                            val allTitles = (listOf(anime.title) + extras).distinct()
+                            val queries = allTitles.flatMap { titleQueries(it) }.distinct().take(5)
+                            matchIn(source, allTitles, queries).also { answered = true }
+                        }?.also { found ->
+                            found.candidate?.let { SourceMatchMemory.remember(titleKey, source.id, it, found.score) }
+                        }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        android.util.Log.w("SourceMatching", "${source.name}: ${e::class.simpleName}: ${e.message}")
+                        null
                     }
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (e: Throwable) {
-                    android.util.Log.w("SourceMatching", "${source.name}: ${e::class.simpleName}: ${e.message}")
-                    null
+                    if (answered) { answeredIds.add(source.id); recentFailures.remove(source.id) }
+                    else if (markFailures) recentFailures[source.id] = System.currentTimeMillis()
+                    // Publish as each source finishes so the fastest one shows episodes straight away.
+                    if (match != null) synchronized(matches) {
+                        matches += match
+                        onPartial?.invoke(mergeMatches(matches.sortedByDescending { it.score }))
+                    }
+                    Unit
                 }
-                if (answered) recentFailures.remove(source.id) else recentFailures[source.id] = System.currentTimeMillis()
-                // Publish as each source finishes so the fastest one shows episodes straight away.
-                if (match != null) synchronized(matches) {
-                    matches += match
-                    onPartial?.invoke(mergeMatches(matches.sortedByDescending { it.score }))
-                }
-                Unit
             }
-        }
-        .awaitAll()
+            .awaitAll()
+    }
+
+    // Fast pass: a source that does not answer in a few seconds is left behind.
+    searchAll(candidates, SOURCE_TIMEOUT_MS, markFailures = false)
+    // Nothing answered at all: probably a slow connection, so give every source one longer try.
+    if (synchronized(matches) { matches.isEmpty() }) {
+        searchAll(candidates, SLOW_SOURCE_TIMEOUT_MS, markFailures = true)
+    } else {
+        // Some answered: the ones that did not are the dead ones, skip them for a while.
+        val now2 = System.currentTimeMillis()
+        candidates.filter { it.id !in answeredIds && SourceMatchMemory.get(titleKey, it.id) == null }
+            .forEach { recentFailures[it.id] = now2 }
+    }
     synchronized(matches) { mergeMatches(matches.sortedByDescending { it.score }) }
 }
 
