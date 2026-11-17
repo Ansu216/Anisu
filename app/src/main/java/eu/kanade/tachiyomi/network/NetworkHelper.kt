@@ -22,6 +22,7 @@ class NetworkHelper(
     val cookieJar = AndroidCookieJar()
 
     val client: OkHttpClient = baseClient.newBuilder()
+        .dns(FallbackDns())
         .cookieJar(cookieJar)
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)

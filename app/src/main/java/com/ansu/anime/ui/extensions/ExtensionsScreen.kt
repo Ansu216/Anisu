@@ -167,7 +167,6 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     val available = availableByRepo
         .filterKeys { it !in disabledRepos }
         .flatMap { (indexUrl, entries) -> entries.map { AvailableExtension(indexUrl, it) } }
-        .filter { showNsfw || !it.entry.isAdult() }
         .sortedByDescending { it.entry.code }
         .distinctBy { it.entry.pkg }
     val installedCodes = extensions.associate { it.packageName to it.versionCode }
@@ -440,21 +439,6 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                     )
                     BouncyIconButton(onClick = { searching = !searching; if (!searching) query = "" }) {
                         Icon(Icons.Filled.Search, "Search")
-                    }
-                    // Three dots at the far right, search beside it. The menu holds the NSFW checkbox.
-                    Box {
-                        BouncyIconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "More") }
-                        GlassDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            DropdownMenuItem(
-                                text = { Text("NSFW") },
-                                trailingIcon = { Checkbox(checked = showNsfw, onCheckedChange = null) },
-                                onClick = {
-                                    val next = !showNsfw
-                                    manager.setShowNsfw(next)
-                                    scope.launch { withContext(Dispatchers.IO) { manager.reloadAll() } }
-                                },
-                            )
-                        }
                     }
                 }
                 AnimatedVisibility(

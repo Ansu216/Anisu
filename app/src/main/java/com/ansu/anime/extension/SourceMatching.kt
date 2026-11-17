@@ -23,7 +23,7 @@ private const val GOOD_MATCH_SCORE = 0.8
  * site never holds playback up. Only when no source answered at all (a slow connection) is a second pass
  * run with [SLOW_SOURCE_TIMEOUT_MS], so the slow-connection fix stays without slowing the normal case.
  */
-private const val SOURCE_TIMEOUT_MS = 8_000L
+private const val SOURCE_TIMEOUT_MS = 12_000L
 private const val SLOW_SOURCE_TIMEOUT_MS = 25_000L
 
 /** Title variants searched at the same time in each source; the rest only run when these find nothing good. */
@@ -315,10 +315,8 @@ suspend fun ExtensionManager.findEpisodesByTitle(
     if (synchronized(matches) { matches.isEmpty() }) {
         searchAll(candidates, SLOW_SOURCE_TIMEOUT_MS, markFailures = true)
     } else {
-        // Some answered: the ones that did not are the dead ones, skip them for a while.
-        val now2 = System.currentTimeMillis()
-        candidates.filter { it.id !in answeredIds && SourceMatchMemory.get(titleKey, it.id) == null }
-            .forEach { recentFailures[it.id] = now2 }
+        // Some answered. A source that only missed the fast pass is slow, not dead: it is NOT put on cooldown, so it
+        // gets another full try on the next episode or title (only the slow pass below, where nothing answered, does that).
     }
     synchronized(matches) { mergeMatches(matches.sortedByDescending { it.score }) }
 }
