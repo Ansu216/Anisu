@@ -96,6 +96,15 @@ val LocalNavBarFrostiness = compositionLocalOf { AppearancePrefs.DEFAULT_NAV_FRO
  */
 val LocalNavBarBackdropBlur = compositionLocalOf { AppearancePrefs.DEFAULT_NAV_BACKDROP_BLUR }
 
+/**
+ * How far the navigation bar has slid away while the page is dragged up: 0 = shown, 1 = fully hidden. Anything that
+ * floats with the bar (the Schedule / News pill) reads it so it goes down and comes back together with the bar.
+ */
+val LocalNavBarHide = compositionLocalOf<androidx.compose.runtime.State<Float>?> { null }
+
+/** The distance the bar (and whatever floats with it) travels when hidden. */
+val NavBarHideDistance = 220.dp
+
 /** Maps frostiness/opacity 0..1 to the background tint opacity: 0.05 (nearly see-through) … 1.0 (solid). */
 fun navBarTintAlpha(frostiness: Float): Float = 0.05f + frostiness.coerceIn(0f, 1f) * 0.95f
 

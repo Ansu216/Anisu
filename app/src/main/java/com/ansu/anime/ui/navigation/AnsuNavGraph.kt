@@ -205,6 +205,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
         LocalNavBarRoundness provides navBarRoundness,
         LocalNavBarFrostiness provides navBarFrostiness,
         LocalNavBarBackdropBlur provides navBarBackdropBlur,
+        com.ansu.anime.ui.components.LocalNavBarHide provides barHide,
         LocalTabletMode provides tabletMode,
         com.ansu.anime.ui.components.LocalTabletRailRight provides railRight,
     ) {
@@ -481,7 +482,7 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
             visible = currentRoute in bottomNavDestinations,
             enter = fadeIn(animationSpec = tween(durationMillis = 150)),
             exit = fadeOut(animationSpec = tween(durationMillis = 150)),
-            modifier = Modifier.align(Alignment.BottomCenter).graphicsLayer { translationY = barHide.value * 220.dp.toPx() },
+            modifier = Modifier.align(Alignment.BottomCenter).graphicsLayer { translationY = barHide.value * com.ansu.anime.ui.components.NavBarHideDistance.toPx() },
         ) {
             if (!tabletMode) {
                 AppBottomBar(

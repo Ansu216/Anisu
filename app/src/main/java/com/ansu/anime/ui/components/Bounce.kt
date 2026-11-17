@@ -18,6 +18,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -56,6 +58,18 @@ fun Modifier.pressBounce(): Modifier = composed {
             scaleY = scale
         }
 }
+
+/**
+ * A tap target in the shape of its button: the press highlight (ripple) is clipped to [shape] instead of filling the
+ * rectangle around it, and the button bounces on press when [bounce] is on. Put it on the glass card / chip itself.
+ */
+fun Modifier.shapedClickable(
+    shape: androidx.compose.ui.graphics.Shape,
+    bounce: Boolean = true,
+    onClick: () -> Unit,
+): Modifier = (if (bounce) this.pressBounce() else this)
+    .clip(shape)
+    .clickable(onClick = onClick)
 
 /** [IconButton] with [pressBounce]: every tap, close and back button in the app bounces the same way. */
 @Composable

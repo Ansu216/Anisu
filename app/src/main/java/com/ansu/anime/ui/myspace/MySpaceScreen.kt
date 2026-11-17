@@ -77,6 +77,8 @@ import com.ansu.anime.core.model.SAnime
 import com.ansu.anime.data.repository.ListStatus
 import com.ansu.anime.data.repository.toSAnime
 import com.ansu.anime.di.AppContainer
+import com.ansu.anime.ui.components.shapedClickable
+import com.ansu.anime.ui.components.pressBounce
 import com.ansu.anime.ui.components.AppBottomBarReserve
 import com.ansu.anime.ui.components.BackdropState
 import com.ansu.anime.ui.components.backdropSource
@@ -341,6 +343,7 @@ private fun ProfileBanner(name: String?, avatarUrl: String?, bannerUrl: String?,
                     onClick = onConnect,
                     colors = ButtonDefaults.buttonColors(containerColor = AnsuColors.Accent, contentColor = AnsuColors.OnAccent),
                     shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.pressBounce(),
                 ) { Text("Connect", fontWeight = FontWeight.Bold) }
             }
         }
@@ -383,7 +386,7 @@ private fun ShiftingGradient(modifier: Modifier = Modifier) {
 @Composable
 private fun ShortcutBox(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
     HeavyGlassCard(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().shapedClickable(RoundedCornerShape(16.dp), onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         tintAlpha = 0.4f,
     ) {
@@ -402,7 +405,7 @@ private fun ShortcutBox(icon: androidx.compose.ui.graphics.vector.ImageVector, l
 /** Small frosted pill with a sync icon; shows a spinner while a sync is running. */
 @Composable
 private fun SyncButton(syncing: Boolean, onClick: () -> Unit) {
-    HeavyGlassCard(modifier = Modifier.clickable(onClick = onClick), shape = RoundedCornerShape(20.dp), tintAlpha = 0.45f) {
+    HeavyGlassCard(modifier = Modifier.shapedClickable(RoundedCornerShape(20.dp), onClick = onClick), shape = RoundedCornerShape(20.dp), tintAlpha = 0.45f) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -424,11 +427,11 @@ private fun ListChip(text: String, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(20.dp)
     if (selected) {
         Box(
-            modifier = Modifier.clip(shape).background(AnsuColors.Accent).clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 9.dp),
+            modifier = Modifier.shapedClickable(shape, onClick = onClick).background(AnsuColors.Accent).padding(horizontal = 18.dp, vertical = 9.dp),
             contentAlignment = Alignment.Center,
         ) { Text(text, color = AnsuColors.OnAccent, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
     } else {
-        HeavyGlassCard(modifier = Modifier.clickable(onClick = onClick), shape = shape, tintAlpha = 0.45f) {
+        HeavyGlassCard(modifier = Modifier.shapedClickable(shape, onClick = onClick), shape = shape, tintAlpha = 0.45f) {
             Text(
                 text,
                 color = AnsuColors.TextSecondary,
@@ -447,7 +450,7 @@ private fun ListItemRow(media: AniListMedia, onDetails: () -> Unit) {
     // A tap anywhere on the card opens the page out of its poster, not only a tap on the poster itself.
     val originHandle = remember { PosterOriginHandle() }
     HeavyGlassCard(
-        modifier = Modifier.fillMaxWidth().posterTransitionTrigger(originHandle, media.posterUrl, 10.dp).clickable(onClick = onDetails),
+        modifier = Modifier.fillMaxWidth().posterTransitionTrigger(originHandle, media.posterUrl, 10.dp).shapedClickable(RoundedCornerShape(16.dp), bounce = false, onClick = onDetails),
         shape = RoundedCornerShape(16.dp),
         tintAlpha = 0.4f,
     ) {

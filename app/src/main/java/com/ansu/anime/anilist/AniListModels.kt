@@ -48,6 +48,8 @@ data class AniListSearchFilters(
     val tags: Set<String> = emptySet(),
     val season: String? = null,
     val year: Int? = null,
+    /** The filter sheet's NSFW switch: off (default) asks AniList for non-adult titles only, on lifts that limit. */
+    val nsfw: Boolean = false,
 ) {
     /** How many things differ from the default; drives the badge on the filter button. */
     val activeCount: Int

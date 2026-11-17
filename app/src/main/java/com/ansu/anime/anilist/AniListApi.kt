@@ -275,6 +275,8 @@ class AniListApi(
                 ?.let { list -> add("tag_in: [${list.joinToString { "\"$it\"" }}]") }
             filters.season?.takeIf { safeLiteral(it) }?.let { add("season: $it") }
             filters.year?.let { add("seasonYear: $it") }
+            // Adult (18+) titles only come back when the NSFW switch in the filter sheet is on.
+            if (!filters.nsfw) add("isAdult: false")
         }.joinToString(", ")
         val searchVar = if (hasText) ", ${'$'}search: String" else ""
         val gql = """

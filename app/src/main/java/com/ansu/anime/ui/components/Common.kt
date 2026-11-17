@@ -81,6 +81,7 @@ import kotlin.math.abs
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateDpAsState
@@ -687,7 +688,19 @@ private fun HeroSlide(
         if (imageSize == null || heroImage == null) heroImage
         else ImageRequest.Builder(context).data(heroImage).size(imageSize.width, imageSize.height).crossfade(false).build()
     }
-    Box(modifier = Modifier.fillMaxSize()) {
+    val pageColor = AnsuColors.Background
+    Box(modifier = Modifier.fillMaxSize().drawBehind {
+        // Solid page colour behind the whole banner, so the background animation never shows through the picture,
+        // the not-yet-loaded picture or the fade. It only thins out over the last stretch, so the animation fades in
+        // under the banner's bottom edge instead of being cut off by a hard line.
+        drawRect(
+            brush = Brush.verticalGradient(
+                0f to pageColor,
+                0.86f to pageColor,
+                1f to Color.Transparent,
+            ),
+        )
+    }) {
         // The artwork, its reading scrim and the fade are drawn into one layer, and the fade is a MASK on that layer
         // (the picture itself becomes see-through towards the bottom). The old fade painted the page colour over the
         // picture, which is opaque, so it hid the background animation under the banner and the animation's shapes

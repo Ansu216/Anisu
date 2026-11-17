@@ -32,6 +32,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -144,6 +146,7 @@ internal fun activeFilterChips(f: AniListSearchFilters): List<ActiveFilter> = bu
     f.year?.let { y -> add(ActiveFilter(y.toString()) { it.copy(year = null) }) }
     f.genres.forEach { g -> add(ActiveFilter(g) { it.copy(genres = it.genres - g) }) }
     f.tags.forEach { t -> add(ActiveFilter(t) { it.copy(tags = it.tags - t) }) }
+    if (f.nsfw) add(ActiveFilter("NSFW") { it.copy(nsfw = false) })
 }
 
 private fun <T> Set<T>.toggled(value: T): Set<T> = if (value in this) this - value else this + value
@@ -185,7 +188,7 @@ fun SearchFilterSheet(
                 )
                 TextButton(
                     onClick = { draft = AniListSearchFilters(); draftSource = null },
-                    enabled = draft.isActive || draftSource != null,
+                    enabled = draft.isActive || draft.nsfw || draftSource != null,
                     colors = ButtonDefaults.textButtonColors(contentColor = AnsuColors.Accent),
                 ) {
                     Text("Reset")
@@ -208,6 +211,35 @@ fun SearchFilterSheet(
                                 OptionChip(name, selected = draftSource == id) { draftSource = id }
                             }
                         }
+                    }
+                }
+
+                FilterSection(title = "NSFW content") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(AnsuColors.SurfaceGlassBase.copy(alpha = 0.6f))
+                            .clickable { draft = draft.copy(nsfw = !draft.nsfw) }
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Show NSFW (18+) titles", style = MaterialTheme.typography.bodyLarge, color = AnsuColors.TextPrimary)
+                            Text(
+                                "Off by default. When on, adult titles can appear in search results.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = AnsuColors.TextSecondary,
+                            )
+                        }
+                        Switch(
+                            checked = draft.nsfw,
+                            onCheckedChange = { draft = draft.copy(nsfw = it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = AnsuColors.OnAccent,
+                                checkedTrackColor = AnsuColors.Accent,
+                            ),
+                        )
                     }
                 }
 

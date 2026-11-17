@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ansu.anime.ui.theme.AnsuColors
 
 /**
@@ -29,7 +30,7 @@ fun FadingTopAppBar(
     modifier: Modifier = Modifier,
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
-    fadeBelow: Dp = 36.dp,
+    fadeBelow: Dp = 10.dp,
     fadeInside: Dp = 8.dp,
     /**
      * The scrolling content's recorded layer (`Modifier.backdropSource`). When given, the bar is the HyperOS-style one:
@@ -38,10 +39,20 @@ fun FadingTopAppBar(
      */
     backdrop: BackdropState? = null,
 ) {
+    // Bigger header title; the bar itself no longer reserves a tall fade zone below it, so content sits close.
+    val bigTitle: @Composable () -> Unit = {
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.material3.LocalTextStyle provides androidx.compose.material3.LocalTextStyle.current.copy(
+                fontSize = 28.sp,
+                lineHeight = 34.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+            ),
+        ) { title() }
+    }
     if (backdrop != null) {
         BlurFadeHeader(backdrop = backdrop, modifier = modifier, fade = fadeBelow) {
             TopAppBar(
-                title = title,
+                title = bigTitle,
                 navigationIcon = navigationIcon,
                 actions = actions,
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -54,7 +65,7 @@ fun FadingTopAppBar(
     }
     val base = AnsuColors.Background
     TopAppBar(
-        title = title,
+        title = bigTitle,
         modifier = modifier.drawBehind {
             val below = fadeBelow.toPx()
             val total = size.height + below

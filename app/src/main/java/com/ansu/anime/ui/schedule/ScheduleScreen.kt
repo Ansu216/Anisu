@@ -207,12 +207,18 @@ private fun SubTabToggle(
     val slotHeight = barHeight - inset * 2
     val slotPx = with(LocalDensity.current) { slotWidth.toPx() }
 
+    // Slides down and back up with the navigation bar (same amount, same moment), instead of staying put.
+    val navHide = com.ansu.anime.ui.components.LocalNavBarHide.current
+    val hideDistancePx = with(LocalDensity.current) { com.ansu.anime.ui.components.NavBarHideDistance.toPx() }
     Box(
         modifier = modifier.graphicsLayer {
             scaleX = 1f + 0.04f * holdAmount
             scaleY = 1f + 0.06f * holdAmount
+            translationY = (navHide?.value ?: 0f) * hideDistancePx
         },
     ) {
+        // Like the nav bar, once the live backdrop blur is on the card must not also paint the animated-background
+        // glass: that is drawn over the blur and hid it.
         FrostedGlassCard(
             modifier = Modifier
                 .width(barWidth)
@@ -220,6 +226,7 @@ private fun SubTabToggle(
                 .frostedBackdrop(backdrop, backdropBlur, shape),
             shape = shape,
             tintAlpha = tintAlpha,
+            sampleBackground = !blurActive,
         ) {}
         Box(modifier = Modifier.padding(inset)) {
             // The glass indicator: accent gradient, white sheen and a hairline edge, as on the nav bar's pill.

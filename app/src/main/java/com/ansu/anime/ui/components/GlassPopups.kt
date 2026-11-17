@@ -193,8 +193,8 @@ fun GlassModalBottomSheet(
  * blurring and fading out). Same call as the Material menu, so every caller keeps working.
  *
  * It is a plain popup rather than Material's DropdownMenu, whose own open/close animation cannot be replaced.
- * The window-level blur is not used here: a fixed blurred rectangle behind a menu that is still scaling
- * would show as a box, so the fill is firmer instead.
+ * The window blur behind it and its fill follow the user's glass settings. The blur is only faded in once the menu
+ * has grown to full size, because a blurred rectangle behind a still-scaling menu would show as a box.
  */
 @Composable
 fun GlassDropdownMenu(
@@ -213,7 +213,9 @@ fun GlassDropdownMenu(
     val positioner = remember(marginPx) { GlassMenuPositionProvider(marginPx) { origin = it } }
     val shape = RoundedCornerShape(22.dp)
     val strokeColor = Color.White.copy(alpha = GlassTuning.borderAlpha.coerceIn(0f, 0.8f))
-    val fill = glassPopupFill().let { it.copy(alpha = it.alpha.coerceAtLeast(0.92f)) }
+    // Follows the user's glass settings (menu opacity and window blur) exactly, like sheets and dialogs do.
+    val fill = glassPopupFill()
+    val density = LocalDensity.current
 
     Popup(
         popupPositionProvider = positioner,
@@ -231,6 +233,13 @@ fun GlassDropdownMenu(
             },
             label = "glassMenuProgress",
         ) { open -> if (open) 1f else 0f }
+
+        // The same blur-behind sheets and dialogs use, at the user's window blur strength. It is a rectangle the size of
+        // the whole menu, so it is ramped in only as the menu reaches full size (and out as it starts to close), in
+        // steps so the window is not re-laid-out on every frame.
+        val ramp = progress.coerceIn(0f, 1f).let { it * it * it * it }
+        val blurPx = (GlassTuning.windowBlurDp * density.density * ramp / 4f).toInt() * 4
+        WindowBlurBehind(radius = with(density) { blurPx.toDp() })
 
         Box(
             modifier = modifier
