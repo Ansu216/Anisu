@@ -169,6 +169,8 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
         .flatMap { (indexUrl, entries) -> entries.map { AvailableExtension(indexUrl, it) } }
         .sortedByDescending { it.entry.code }
         .distinctBy { it.entry.pkg }
+    // The checkbox only trims the Available tab; updates and installed state still see every entry.
+    val listedAvailable = if (showNsfw) available else available.filter { !it.entry.isAdult() }
     val installedCodes = extensions.associate { it.packageName to it.versionCode }
 
     val extensionSources = extensions.flatMap { it.sources }
@@ -254,7 +256,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
     }
 
     val q = query.trim()
-    val shownAvailable = if (q.isEmpty()) available else available.filter { item ->
+    val shownAvailable = if (q.isEmpty()) listedAvailable else listedAvailable.filter { item ->
         item.entry.name.contains(q, true) || item.entry.pkg.contains(q, true) || item.entry.lang.contains(q, true) ||
             item.entry.sources.any { it.name.contains(q, true) }
     }
@@ -324,7 +326,7 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                         if (shownAvailable.isEmpty()) {
                             item(key = "empty") {
                                 Text(
-                                    if (available.isEmpty()) "Nothing here yet. Tap + to add a repo." else "No extension matches \"$q\".",
+                                    if (listedAvailable.isEmpty()) "Nothing here yet. Tap + to add a repo." else "No extension matches \"$q\".",
                                     color = AnsuColors.TextSecondary,
                                     style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.padding(vertical = 24.dp),
@@ -439,6 +441,27 @@ fun ExtensionsScreen(container: AppContainer, navController: NavHostController) 
                     )
                     BouncyIconButton(onClick = { searching = !searching; if (!searching) query = "" }) {
                         Icon(Icons.Filled.Search, "Search")
+                    }
+                    Box {
+                        BouncyIconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "More") }
+                        GlassDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text("Show 18+ sources")
+                                        Text(
+                                            "Off hides them from the Available list",
+                                            color = AnsuColors.TextSecondary,
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    }
+                                },
+                                trailingIcon = { Checkbox(checked = showNsfw, onCheckedChange = null) },
+                                onClick = {
+                                    manager.setShowNsfw(!showNsfw)
+                                },
+                            )
+                        }
                     }
                 }
                 AnimatedVisibility(

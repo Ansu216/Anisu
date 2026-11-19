@@ -89,7 +89,13 @@ class EpisodeCommentsViewModel(
                 return@launch
             }
             val thread = threads.firstOrNull()
-            val comments = thread?.let { repository.getThreadComments(it.id, 1)?.comments }.orEmpty()
+            val page = thread?.let { repository.getThreadComments(it.id, 1) }
+            if (thread != null && page == null) {
+                // The discussion exists but its comments did not load: say so, never "no comments yet".
+                _state.value = EpisodeCommentsState(loading = false, failed = true)
+                return@launch
+            }
+            val comments = page?.comments.orEmpty()
             _state.value = EpisodeCommentsState(loading = false, thread = thread, comments = comments, threadCount = threads.size)
         }
     }
@@ -238,6 +244,15 @@ private fun PreviewComment(comment: AniListComment) {
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp),
             )
+            // The first picture of the comment, small; a spoiler picture stays hidden here.
+            com.ansu.anime.ui.details.firstOpenPicture(comment.text)?.let { url ->
+                AsyncImage(
+                    model = url,
+                    contentDescription = "Picture in the comment",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.padding(top = 6.dp).size(64.dp).clip(RoundedCornerShape(10.dp)).background(AnsuColors.BackgroundElevated),
+                )
+            }
             if (comment.likeCount > 0 || comment.replies.isNotEmpty()) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                     if (comment.likeCount > 0) {

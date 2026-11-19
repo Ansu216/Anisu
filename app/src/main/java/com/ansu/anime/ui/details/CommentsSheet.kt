@@ -3,6 +3,13 @@ package com.ansu.anime.ui.details
 import com.ansu.anime.ui.components.BouncyIconButton
 import com.ansu.anime.ui.components.GlassModalBottomSheet
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -79,11 +86,12 @@ fun CommentsSheet(
 ) {
     val viewModel: CommentsViewModel = viewModel(
         key = "comments-$mediaId-${initialThread?.id ?: 0}",
-        factory = viewModelFactory { initializer { CommentsViewModel(container.aniListRepository, mediaId, mediaTitle, initialThread) } },
+        factory = viewModelFactory { initializer { CommentsViewModel(container.aniListRepository, mediaId, mediaTitle, container.imageUploader, initialThread) } },
     )
     val state by viewModel.state.collectAsStateWithLifecycle()
     val signedIn by container.aniListRepository.isLoggedIn.collectAsStateWithLifecycle()
     var draft by rememberSaveable { mutableStateOf("") }
+    var spoiler by rememberSaveable { mutableStateOf(false) }
 
     GlassModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f).imePadding()) {
@@ -138,8 +146,12 @@ fun CommentsSheet(
                     signedIn = signedIn,
                     draft = draft,
                     onDraftChange = { draft = it },
-                    onSend = { viewModel.send(draft) { draft = "" } },
+                    onSend = { viewModel.send(draft, spoiler) { draft = ""; spoiler = false } },
+                    spoiler = spoiler,
+                    onSpoilerChange = { spoiler = it },
                     onCancelReply = { viewModel.setReplyTarget(null) },
+                    onPickPicture = viewModel::attachPicture,
+                    onRemovePicture = viewModel::removeAttachment,
                 )
             }
         }
@@ -298,13 +310,7 @@ private fun CommentRow(row: CommentLine, canInteract: Boolean, onLike: () -> Uni
                     fontSize = 12.sp,
                 )
             }
-            Text(
-                text = plainComment(comment.text),
-                color = AnsuColors.TextPrimary,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                modifier = Modifier.padding(top = 3.dp),
-            )
+            CommentBody(raw = comment.text, modifier = Modifier.padding(top = 3.dp))
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -340,7 +346,17 @@ private fun Composer(
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
     onCancelReply: () -> Unit,
+    spoiler: Boolean,
+    onSpoilerChange: (Boolean) -> Unit,
+    onPickPicture: (android.net.Uri) -> Unit,
+    onRemovePicture: () -> Unit,
 ) {
+    // The system photo picker: no storage permission is needed, the app only receives the picture that was chosen.
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) onPickPicture(uri)
+    }
+    val attachment = state.attachment
+    val canSend = (draft.isNotBlank() || attachment?.url != null) && attachment?.uploading != true
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 12.dp, top = 4.dp)) {
         when {
             !signedIn -> Text(
@@ -369,7 +385,28 @@ private fun Composer(
                         }
                     }
                 }
+                attachment?.let { picture ->
+                    AttachmentPreview(picture, onRemove = onRemovePicture, onRetry = { picture.localUri.let { onPickPicture(android.net.Uri.parse(it)) } })
+                }
+                if (spoiler) {
+                    Text(
+                        text = "Spoiler on: everyone sees your comment hidden until they tap it.",
+                        color = AnsuColors.Accent,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(start = 8.dp, bottom = 6.dp),
+                    )
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    BouncyIconButton(onClick = { onSpoilerChange(!spoiler) }) {
+                        Icon(
+                            if (spoiler) Icons.Filled.VisibilityOff else Icons.Outlined.VisibilityOff,
+                            contentDescription = if (spoiler) "Spoiler on" else "Mark as spoiler",
+                            tint = if (spoiler) AnsuColors.Accent else AnsuColors.TextSecondary,
+                        )
+                    }
+                    BouncyIconButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
+                        Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = "Attach a picture", tint = AnsuColors.TextSecondary)
+                    }
                     OutlinedTextField(
                         value = draft,
                         onValueChange = onDraftChange,
@@ -381,16 +418,49 @@ private fun Composer(
                     if (state.sending) {
                         CircularProgressIndicator(color = AnsuColors.Accent, strokeWidth = 2.dp, modifier = Modifier.padding(12.dp).size(24.dp))
                     } else {
-                        BouncyIconButton(onClick = onSend, enabled = draft.isNotBlank()) {
+                        BouncyIconButton(onClick = onSend, enabled = canSend) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Send,
                                 contentDescription = "Send",
-                                tint = if (draft.isNotBlank()) AnsuColors.Accent else AnsuColors.TextSecondary,
+                                tint = if (canSend) AnsuColors.Accent else AnsuColors.TextSecondary,
                             )
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+/** The picture chosen for the comment: a thumbnail with a spinner while it uploads, a retry when it did not, and a remove button. */
+@Composable
+private fun AttachmentPreview(picture: CommentAttachment, onRemove: () -> Unit, onRetry: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)) {
+        Box(modifier = Modifier.size(72.dp).clip(RoundedCornerShape(12.dp)).background(AnsuColors.BackgroundElevated)) {
+            AsyncImage(
+                model = picture.localUri,
+                contentDescription = "Attached picture",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (picture.uploading) {
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = AnsuColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                }
+            }
+        }
+        Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+            when {
+                picture.uploading -> Text("Uploading picture…", color = AnsuColors.TextSecondary, fontSize = 13.sp)
+                picture.failed -> {
+                    Text("Could not upload this picture.", color = AnsuColors.TextSecondary, fontSize = 13.sp)
+                    TextButton(onClick = onRetry) { Text("Try again", fontSize = 13.sp) }
+                }
+                else -> Text("Picture ready, it goes out with your comment.", color = AnsuColors.TextSecondary, fontSize = 13.sp)
+            }
+        }
+        BouncyIconButton(onClick = onRemove, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Filled.Close, contentDescription = "Remove picture", tint = AnsuColors.TextSecondary, modifier = Modifier.size(16.dp))
         }
     }
 }
@@ -434,7 +504,7 @@ internal fun timeAgo(epochSeconds: Long): String {
 internal fun plainComment(raw: String): String = raw
     .replace(Regex("img\\d*\\([^)]*\\)", RegexOption.IGNORE_CASE), "[image]")
     .replace(Regex("(webm|youtube)\\([^)]*\\)", RegexOption.IGNORE_CASE), "[video]")
-    .replace(Regex("~!([\\s\\S]*?)!~"), "[spoiler: $1]")
+    .replace(Regex("~!([\\s\\S]*?)!~"), "[spoiler]")
     .replace(Regex("!\\[[^\\]]*]\\([^)]*\\)"), "[image]")
     .replace(Regex("\\[([^\\]]+)]\\([^)]*\\)"), "$1")
     .replace(Regex("<[^>]+>"), "")

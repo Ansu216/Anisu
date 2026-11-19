@@ -136,9 +136,19 @@ private fun NextWatchCard(
                 scaleY = scale
                 alpha = 1f - 0.45f * distance
             }
-            // Tapping a card opens its details with black bars growing out of the card's top and bottom edges
-            // until the screen is covered (not the poster-window morph the other cards use).
-            .posterTransitionOrigin(posterUrl = pick.anime.bannerUrl, cornerRadius = 20.dp, bars = true)
+            // Tapping a card opens its details in two stages: the card widens until its sides touch the screen
+            // edges, then grows from its top and bottom together until it reaches the corners.
+            .posterTransitionOrigin(
+                posterUrl = pick.anime.bannerUrl?.takeIf { it.isNotBlank() },
+                cornerRadius = 20.dp,
+                // A card with no picture opens as its own "No image" gradient.
+                cover = if (pick.anime.bannerUrl.isNullOrBlank()) {
+                    { com.ansu.anime.ui.components.NoImageBanner() }
+                } else {
+                    null
+                },
+                staged = true,
+            )
             .clip(shape)
             .background(AnsuColors.BackgroundElevated)
             .clickable(onClick = onClick),

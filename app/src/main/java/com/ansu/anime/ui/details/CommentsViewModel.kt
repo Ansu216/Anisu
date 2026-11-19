@@ -1,13 +1,24 @@
 package com.ansu.anime.ui.details
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ansu.anime.anilist.AniListComment
 import com.ansu.anime.anilist.AniListRepository
 import com.ansu.anime.anilist.AniListThread
+import com.ansu.anime.data.upload.ImageUploader
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+
+/** A picture chosen for the comment being written: shown as a thumbnail while it uploads, then sent as a link. */
+data class CommentAttachment(
+    val localUri: String,
+    /** The hosted link once the upload is done. */
+    val url: String? = null,
+    val uploading: Boolean = true,
+    val failed: Boolean = false,
+)
 
 data class CommentsUiState(
     /** The show's discussion threads; null until they have loaded (see [threadsFailed]). */
@@ -28,6 +39,7 @@ data class CommentsUiState(
     val page: Int = 1,
     val replyingTo: AniListComment? = null,
     val sending: Boolean = false,
+    val attachment: CommentAttachment? = null,
 )
 
 /**
@@ -38,6 +50,7 @@ class CommentsViewModel(
     private val repository: AniListRepository,
     private val mediaId: Int,
     private val mediaTitle: String,
+    private val uploader: ImageUploader,
     initialThread: AniListThread? = null,
 ) : ViewModel() {
 
@@ -96,13 +109,14 @@ class CommentsViewModel(
             hasNextPage = false,
             replyingTo = null,
             commentsFailed = false,
+            attachment = null,
         )
         loadComments(page = 1)
     }
 
     /** Back from a thread to the list of threads (refreshing it, since the reply counts may have moved). */
     fun closeThread() {
-        _state.value = _state.value.copy(thread = null, comments = emptyList(), replyingTo = null)
+        _state.value = _state.value.copy(thread = null, comments = emptyList(), replyingTo = null, attachment = null)
         loadThreads()
     }
 
@@ -138,12 +152,38 @@ class CommentsViewModel(
         _state.value = _state.value.copy(replyingTo = comment)
     }
 
-    /** Posts [text] to the open thread (as a reply when one is being answered); [onPosted] runs on success so the field can clear. */
-    fun send(text: String, onPosted: () -> Unit) {
+    /** Takes a picture from the phone, uploads it, and keeps its link ready to go out with the next comment. */
+    fun attachPicture(uri: Uri) {
+        _state.value = _state.value.copy(attachment = CommentAttachment(localUri = uri.toString()))
+        viewModelScope.launch {
+            val link = uploader.upload(uri)
+            val current = _state.value.attachment
+            // Removed or replaced while it was uploading: this result is no longer wanted.
+            if (current == null || current.localUri != uri.toString()) return@launch
+            _state.value = _state.value.copy(
+                attachment = current.copy(url = link, uploading = false, failed = link == null),
+            )
+        }
+    }
+
+    fun removeAttachment() {
+        _state.value = _state.value.copy(attachment = null)
+    }
+
+    /**
+     * Posts [text] (and the attached picture, written the way AniList reads a picture: `img(link)`) to the open thread, as a
+     * reply when one is being answered, wrapped in `~!...!~` when [spoiler] is on; [onPosted] runs on success so the field can clear.
+     */
+    fun send(text: String, spoiler: Boolean = false, onPosted: () -> Unit) {
         val s = _state.value
         val thread = s.thread ?: return
-        val body = text.trim()
-        if (body.isEmpty() || s.sending) return
+        val picture = s.attachment
+        if (s.sending || picture?.uploading == true) return
+        val pictureLink = picture?.url
+        val content = listOfNotNull(text.trim().ifEmpty { null }, pictureLink?.let { "img($it)" }).joinToString("\n\n")
+        if (content.isEmpty()) return
+        // AniList's spoiler markup: everything between ~! and !~ is hidden until tapped.
+        val body = if (spoiler) "~!$content!~" else content
         val parent = s.replyingTo
         _state.value = s.copy(sending = true)
         viewModelScope.launch {
@@ -169,7 +209,7 @@ class CommentsViewModel(
             } else {
                 _state.value.comments.mapComments { if (it.id == parent.id) it.copy(replies = it.replies + posted) else it }
             }
-            _state.value = _state.value.copy(comments = updated, sending = false, replyingTo = null)
+            _state.value = _state.value.copy(comments = updated, sending = false, replyingTo = null, attachment = null)
             onPosted()
         }
     }

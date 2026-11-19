@@ -934,21 +934,35 @@ class AniListApi(
               }
             }
         """.trimIndent()
-        val named = Regex("(?i)\\b(?:episode|ep)\\.?\\s*#?0*$episode(?!\\d)")
-        val found = mutableListOf<AniListThread>()
-        var page = 1
-        // The page limit is only a guard against a request that never ends; a show has nowhere near that many.
-        while (page <= 40) {
-            val data = execute(query, mapOf("mediaId" to mediaId, "search" to "Episode $episode", "page" to page)) ?: break
-            val pageObj = data["Page"]?.jsonObject ?: break
-            (pageObj["threads"] as? JsonArray).orEmpty().forEach { element ->
-                val thread = (element as? JsonObject)?.let { threadFrom(it) } ?: return@forEach
-                if (named.containsMatchIn(thread.title)) found += thread
+        // "Episode 5", "Ep. 5", "Episode #05", "S2E5": AniList titles are free text.
+        val named = Regex("(?i)(?:\\b(?:episode|ep)\\.?\\s*#?0*$episode(?!\\d)|(?<![a-z0-9])e0*$episode(?!\\d)|\\bs\\d+e0*$episode(?!\\d))")
+        val found = LinkedHashMap<Int, AniListThread>()
+        // Fast path: AniList's own title search. It is fuzzy and can miss "Ep. 5" or "Episode #5", so a miss tries the
+        // next wording, and if none finds anything the show's whole thread list is read and matched here instead.
+        for (term in listOf("Episode $episode", "Ep $episode")) {
+            var page = 1
+            while (page <= 10) {
+                val data = execute(query, mapOf("mediaId" to mediaId, "search" to term, "page" to page)) ?: break
+                val pageObj = data["Page"]?.jsonObject ?: break
+                (pageObj["threads"] as? JsonArray).orEmpty().forEach { element ->
+                    val thread = (element as? JsonObject)?.let { threadFrom(it) } ?: return@forEach
+                    if (named.containsMatchIn(thread.title)) found[thread.id] = thread
+                }
+                if ((pageObj["pageInfo"] as? JsonObject)?.get("hasNextPage")?.jsonPrimitive?.content != "true") break
+                page++
             }
-            if ((pageObj["pageInfo"] as? JsonObject)?.get("hasNextPage")?.jsonPrimitive?.content != "true") break
-            page++
+            if (found.isNotEmpty()) break
         }
-        return found.sortedByDescending { it.replyCount }
+        if (found.isEmpty()) {
+            var page = 1
+            while (page <= 20) {
+                val result = getMediaThreadsPage(mediaId, page) ?: break
+                result.threads.filter { named.containsMatchIn(it.title) }.forEach { found[it.id] = it }
+                if (!result.hasNextPage) break
+                page++
+            }
+        }
+        return found.values.sortedByDescending { it.replyCount }
     }
 
     /** One page of a thread's top-level comments, each with its replies nested (never cached: comments change). */

@@ -68,6 +68,9 @@ class AppContainer(context: Context) {
         .followSslRedirects(true)
         .build()
 
+    /** Hosts a picture attached to an AniList comment (AniList itself only stores the link). */
+    val imageUploader: com.ansu.anime.data.upload.ImageUploader = com.ansu.anime.data.upload.ImageUploader(appContext, okHttpClient)
+
     val database: AppDatabase = AppDatabase.build(appContext)
 
     val extensionManager: ExtensionManager = ExtensionManager(appContext)

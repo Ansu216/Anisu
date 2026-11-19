@@ -210,6 +210,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
 
     // Aniyomi/Keiyoushi extension runtime (see extension/aniyomi and eu.kanade.tachiyomi).
     implementation(libs.androidx.preference.ktx)

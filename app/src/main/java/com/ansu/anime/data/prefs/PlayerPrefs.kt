@@ -93,6 +93,23 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putBoolean(KEY_PIP, value).apply()
     }
 
+    private val _orientationLock = MutableStateFlow(
+        prefs.getString(KEY_ORIENTATION_LOCK, ORIENTATION_LANDSCAPE).let { if (it in ORIENTATION_OPTIONS) it!! else ORIENTATION_LANDSCAPE },
+    )
+
+    /**
+     * Which way the player opens (Settings > Playback > Orientation Lock): [ORIENTATION_LANDSCAPE] (the fullscreen
+     * layout, the way it always opened), [ORIENTATION_PORTRAIT] (player on top, episodes below) or
+     * [ORIENTATION_SYSTEM] (follows the phone's auto-rotate).
+     */
+    val orientationLock: StateFlow<String> = _orientationLock
+
+    fun setOrientationLock(value: String) {
+        if (value !in ORIENTATION_OPTIONS) return
+        _orientationLock.value = value
+        prefs.edit().putString(KEY_ORIENTATION_LOCK, value).apply()
+    }
+
     private val _autoplayNext = MutableStateFlow(prefs.getBoolean(KEY_AUTOPLAY_NEXT, true))
 
     /** When an episode ends, the next one starts on its own (the pill toggle in the player's top bar). */
@@ -364,6 +381,11 @@ class PlayerPrefs(context: Context) {
     }
 
     companion object {
+        private const val KEY_ORIENTATION_LOCK = "orientation_lock"
+        const val ORIENTATION_LANDSCAPE = "landscape"
+        const val ORIENTATION_PORTRAIT = "portrait"
+        const val ORIENTATION_SYSTEM = "system"
+        val ORIENTATION_OPTIONS = listOf(ORIENTATION_LANDSCAPE, ORIENTATION_PORTRAIT, ORIENTATION_SYSTEM)
         private const val KEY_AUTOPLAY_NEXT = "autoplay_next"
         private const val KEY_SEEK_BAR_STYLE = "seek_bar_style"
         const val SEEK_STYLE_CLASSIC = "classic"
