@@ -224,7 +224,9 @@ fun EpisodeInfoPane(
                 }
                 // The episode's AniList discussion, under its description (needs the show's AniList id).
                 val commentsMedia = anilistKey
-                val commentsEpisode = state.episode?.episodeNumber?.toInt()
+                // A source that gives no usable number (0 or -1) falls back to the episode's place in the list.
+                val commentsEpisode = state.episode?.episodeNumber?.toInt()?.takeIf { it > 0 }
+                    ?: (currentIndex + 1).takeIf { currentIndex >= 0 }
                 if (commentsMedia != null && commentsEpisode != null && commentsEpisode > 0) {
                     EpisodeCommentsSection(
                         container = container,

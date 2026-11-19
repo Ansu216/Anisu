@@ -117,16 +117,16 @@ class ExtensionManager(private val context: Context) {
     /** Ids of sources the person switched off on the Extensions screen; they stay installed but are skipped by Home and Search. */
     val disabledSourceIds: StateFlow<Set<Long>> = _disabledSourceIds
 
-    private val _showNsfw = MutableStateFlow(prefs.getBoolean("show_nsfw", false))
+    private val _showNsfw = MutableStateFlow(prefs.getBoolean("show_nsfw", true))
 
     /**
-     * The Extensions screen's NSFW checkbox (off by default): when on, 18+ extensions are shown in the Available list.
-     * It no longer blocks anything: installed 18+ extensions always load and stream. The title filter (no hentai in
-     * Search, Home or Details) is separate and always on.
+     * "Show 18+ sources" in the Extensions screen's three-dot menu (on by default). It only decides whether 18+
+     * extensions are listed in the Available tab: installed ones always load and stream. The title filter (no hentai
+     * in Search, Home or Details) is separate and always on.
      */
     val showNsfw: StateFlow<Boolean> = _showNsfw
 
-    /** Remembers the choice; the caller then runs [reloadAll] (off the main thread) so installed 18+ extensions appear or hide. */
+    /** Remembers the choice; it only changes what the Available tab lists. */
     fun setShowNsfw(on: Boolean) {
         _showNsfw.value = on
         prefs.edit().putBoolean("show_nsfw", on).apply()
@@ -274,12 +274,7 @@ class ExtensionManager(private val context: Context) {
         val privateNames = privatePackages.map { it.packageName }.toSet()
         val candidates = privatePackages.map { it to true } +
             findAvailableExtensions().filter { it.packageName !in privateNames }.map { it to false }
-        val loaded = candidates.mapNotNull { (pkg, isPrivate) ->
-            // Hidden, not deleted: switching NSFW back on brings an installed 18+ extension straight back.
-            val ext = loadExtension(pkg, isPrivate = isPrivate)
-            // Second pass on what actually loaded: the loader's own NSFW reading and the sources' names.
-            ext
-        }
+        val loaded = candidates.map { (pkg, isPrivate) -> loadExtension(pkg, isPrivate = isPrivate) }
         // CloudStream plugins keep no Android package, so they are scanned separately. Every plugin is unregistered
         // first (the plugin registry is global) and then loaded again.
         cloudStreamLoader.unloadAll()

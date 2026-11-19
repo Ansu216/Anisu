@@ -12,6 +12,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-19
+
+### Added
+
+- [APK] **Extensions has a three-dot menu with "Show 18+ sources".**
+
+### Changed
+
+- [APK] **Your Next Watch, New Anime and New Movies cards open with a two-stage animation.**
+
+### Fixed
+
+- [APK] **Portrait player comments find discussions that AniList's search missed.**
+
+## [1.1.6] - 2026-11-17
+
+### Added
+
+- [APK] **Search > Filters has an NSFW switch, off by default.**
+
+### Changed
+
+- [APK] **Dropdown menus follow the user's glass settings and blur what is behind them.**
+- [APK] **Settings (and every `FadingTopAppBar` screen) has a bigger header title and less space under it.**
+- [APK] **The Schedule / News pill hides and returns with the navigation bar.**
+- [APK] **My Space buttons bounce and their press highlight follows their shape.**
+
+### Fixed
+
+- [APK] **The background animation no longer shows through the Home hero banner.**
+- [APK] **The Schedule / News pill blurs the content behind it.**
+
 ## [1.1.4] - 2026-11-16
 
 ### Added

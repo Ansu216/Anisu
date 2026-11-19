@@ -70,28 +70,25 @@ data class PlaybackTarget(
 )
 
 /** How many other streams are opened next to the best one when sources are raced. */
-private const val MAX_RACE_RIVALS = 2
+private const val MAX_RACE_RIVALS = 3
 
 /** How long a stream the person picked by hand may take to resolve before the next one is tried. */
 private const val RESOLVE_TIMEOUT_MS = 30_000L
 
 /** An automatic pick has other streams to fall back on, so it gives up on a stuck one much sooner. */
-private const val AUTO_RESOLVE_TIMEOUT_MS = 12_000L
-
-/** How long the first pick waits for a higher-priority source before playing what it already has. */
-private const val PRIORITY_GRACE_MS = 2_000L
+private const val AUTO_RESOLVE_TIMEOUT_MS = 8_000L
 
 /** How long the first pick waits for a stream at the preferred resolution before it plays the closest one it has. */
 private const val QUALITY_GRACE_MS = 2_500L
 
 /** When racing, a lower-quality backup only starts opening after the preferred-quality streams had this long. */
-private const val RACE_HEDGE_MS = 4_000L
+private const val RACE_HEDGE_MS = 2_500L
 
 /** How long the first pick waits for a stream in the preferred language (a dub often answers later than a sub). */
-private const val LANGUAGE_GRACE_MS = 15_000L
+private const val LANGUAGE_GRACE_MS = 6_000L
 
 /** How long the first pick waits for the source this show last played from, before falling back to the ranking. */
-private const val REMEMBERED_GRACE_MS = 4_000L
+private const val REMEMBERED_GRACE_MS = 3_000L
 
 /**
  * Moving on to another episode (next button, autoplay, episode list): how long to wait for a stream with the same
@@ -101,7 +98,7 @@ private const val REMEMBERED_GRACE_MS = 4_000L
 private const val CONTINUATION_GRACE_MS = 5_000L
 
 /** The next episode's streams are looked up in the background once the current one has played this long. */
-private const val PREFETCH_AFTER_MS = 20_000L
+private const val PREFETCH_AFTER_MS = 8_000L
 
 /** The background lookup of the next episode's streams gives up after this long. */
 private const val PREFETCH_TIMEOUT_MS = 25_000L
@@ -226,7 +223,7 @@ private const val RAM_BUFFER_BYTES = 128 * 1024 * 1024
 private const val START_STALL_MS = 25_000L
 
 /** The same for an automatic pick, which has other streams to move on to. */
-private const val AUTO_START_STALL_MS = 15_000L
+private const val AUTO_START_STALL_MS = 8_000L
 
 /** One selectable audio or subtitle track the player reported. */
 data class TrackOption(
@@ -297,14 +294,54 @@ class PlayerViewModel(
 
     // Netflix-style RAM window: up to five minutes ahead and five behind are held in memory, so a seek
     // back or a resume is instant. The byte cap bounds how much the window can cost on a tight device.
+    private val appContext: Context = context.applicationContext
+
+    private val speedPrefs = appContext.getSharedPreferences("player_speed", android.content.Context.MODE_PRIVATE)
+
+    private fun onWifi(): Boolean = try {
+        val cm = appContext.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        cm.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+    } catch (e: Exception) {
+        false
+    }
+
+    @androidx.annotation.OptIn(UnstableApi::class)
+    private val bandwidthMeter = androidx.media3.exoplayer.upstream.DefaultBandwidthMeter.Builder(context).apply {
+        // What this phone measured last time on Wi-Fi and on mobile data, a little discounted so the start is cautious.
+        val wifi = speedPrefs.getLong("wifi_bps", 0L)
+        val mobile = speedPrefs.getLong("mobile_bps", 0L)
+        if (wifi > 0) setInitialBitrateEstimate(C.NETWORK_TYPE_WIFI, wifi * 8 / 10)
+        if (mobile > 0) {
+            for (type in intArrayOf(C.NETWORK_TYPE_4G, C.NETWORK_TYPE_5G_NSA, C.NETWORK_TYPE_5G_SA)) {
+                setInitialBitrateEstimate(type, mobile * 8 / 10)
+            }
+        }
+    }.build()
+
+    /** Remembers the throughput measured while playing, for the next start (at most every 10 s, only while really playing). */
+    private var lastSpeedSave = 0L
+
+    @androidx.annotation.OptIn(UnstableApi::class)
+    private fun rememberSpeed() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastSpeedSave < 10_000L || !player.isPlaying) return
+        val bps = bandwidthMeter.bitrateEstimate
+        if (bps < 500_000L) return
+        lastSpeedSave = now
+        speedPrefs.edit().putLong(if (onWifi()) "wifi_bps" else "mobile_bps", bps.coerceAtMost(200_000_000L)).apply()
+    }
+
     @androidx.annotation.OptIn(UnstableApi::class)
     val player: ExoPlayer = ExoPlayer.Builder(context, subtitleLead)
+        // Starts on the quality this connection really managed last time instead of a country-wide guess, so the
+        // first segments are the right size: not so big that the start crawls, not so small that it looks blurry.
+        .setBandwidthMeter(bandwidthMeter)
         .setLoadControl(
             androidx.media3.exoplayer.DefaultLoadControl.Builder()
                 // Start after 2 s of data, but after a stall wait for 6 s: resuming on 3 s made a weak connection
                 // stall again within seconds, which showed up as constant buffering. The byte cap now really bounds
                 // the window (time no longer overrides it), so a big window cannot squeeze memory and stutter.
-                .setBufferDurationsMs(30_000, RAM_BUFFER_AHEAD_MS, 2_000, 6_000)
+                .setBufferDurationsMs(30_000, RAM_BUFFER_AHEAD_MS, 1_500, 6_000)
                 .setBackBuffer(RAM_BUFFER_BEHIND_MS, true)
                 .setTargetBufferBytes(RAM_BUFFER_BYTES)
                 .setPrioritizeTimeOverSizeThresholds(false)
@@ -803,32 +840,30 @@ class PlayerViewModel(
                     startNow()
                     return
                 }
-                if (rememberedId != null) {
+                // A stream the person picked by hand for this show: use it, and give its source a short moment to answer.
+                if (isManual && rememberedId != null) {
                     val answered = collected.any { it.sourceId == rememberedId }
-                    if (isManual && answered) {
+                    if (answered) {
                         diagnostics?.log(LogCategory.PLAYBACK, "Starting with the stream picked by hand for this show")
                         startNow()
                         return
                     }
-                    if (!answered && (rememberedId in expectedSourceIds || discoveryPending)) {
-                        startAfter(REMEMBERED_GRACE_MS, "Waiting for the source this show last played from")
+                    if (rememberedId in expectedSourceIds || discoveryPending) {
+                        startAfter(REMEMBERED_GRACE_MS, "Waiting for the source picked by hand for this show")
                         return
                     }
                 }
                 val best = pickStart(collected, remembered, wantedQuality, wantedLanguage, manualPick) ?: return
-                // A best stream that names no resolution means none of them does: waiting cannot find a better one.
-                if (!best.meetsPreference(wantedLanguage, wantedQuality) && best.heightOrNull() != null) {
-                    startAfter(QUALITY_GRACE_MS, "Waiting briefly for a ${wantedQuality}p stream")
+                // A stream in the preferred language at the preferred resolution plays the moment it is listed: no
+                // waiting for the other sources, for a higher-priority one, or for the last-used one. (A best stream
+                // that names no resolution means none of them does: waiting cannot find a better one either.)
+                if (best.meetsPreference(wantedLanguage, wantedQuality) || best.heightOrNull() == null) {
+                    diagnostics?.log(LogCategory.PLAYBACK, "Starting at once on ${best.label}: it matches the preferred language and quality")
+                    startNow(best)
                     return
                 }
-                // Right language and resolution. Start unless a higher-priority source is still about to answer.
-                val bestWanted = expectedSourceIds.minOfOrNull { rankOf(it) }
-                val sticky = rememberedId != null && best.sourceId == rememberedId
-                if (sticky || bestWanted == null || rankOf(best.sourceId) <= bestWanted) {
-                    startNow()
-                } else {
-                    startAfter(PRIORITY_GRACE_MS, "Waiting briefly for the highest-priority source")
-                }
+                // Only a close match so far: give the other sources a moment to list the exact resolution.
+                startAfter(QUALITY_GRACE_MS, "Waiting briefly for a ${wantedQuality}p stream")
             }
             // Unresolved streams from the look-ahead: the same stream listed again by the live lookup is not added twice.
             val seededKeys = HashSet<String>()
@@ -1271,8 +1306,11 @@ class PlayerViewModel(
 
     private val probeClient: okhttp3.OkHttpClient by lazy {
         okhttp3.OkHttpClient.Builder()
-            .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            // The probe sits in front of the first frame, so a host that does not answer must not hold the start
+            // back: after 3 s the player gets the stream without a type and works it out itself.
+            .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(4, java.util.concurrent.TimeUnit.SECONDS)
             .followRedirects(true)
             .build()
     }
@@ -1687,6 +1725,7 @@ class PlayerViewModel(
                     isStarting = if (reallyPlaying) false else _uiState.value.isStarting,
                 )
 
+                rememberSpeed()
                 val anime = _uiState.value.anime
                 val episode = _uiState.value.episode
                 if (anime != null && episode != null && duration > 0) {

@@ -4,9 +4,9 @@ import android.os.SystemClock
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -27,7 +27,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -84,16 +83,25 @@ object PosterTransition {
     /** Close: a little quicker than the open, as a launcher does. */
     const val CLOSE_MILLIS = 320
 
-    /** Black-bars open (the "Your Next Watch" cards): long enough to see the bars grow, then the page shows up. */
-    const val BARS_OPEN_MILLIS = 640
+    /** Two-stage open (the "Your Next Watch" cards): sides to the screen edges, then top and bottom to the corners. */
+    const val STAGED_OPEN_MILLIS = 760
 
-    /** Black-bars close: the page goes, the bars close over the screen, then pull back into the card. */
-    const val BARS_CLOSE_MILLIS = 520
+    /** Two-stage close: the same path back, a little quicker, landing softly in the card. */
+    const val STAGED_CLOSE_MILLIS = 560
+
+    /** Progress at which the open's first stage (sides to the edges) ends and the second (top and bottom) begins. */
+    internal const val STAGE_SPLIT = 0.38f
+
+    /** Stage one: the card widens to the screen edges. Ease-out, so it leaves the card fast. */
+    internal val StageOneEasing = CubicBezierEasing(0.25f, 0.9f, 0.35f, 1f)
+
+    /** Stage two: top and bottom travel to the corners. Ease-out, continuing from where stage one ended. */
+    internal val StageTwoEasing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+
+    /** The close eases the progress itself: it leaves briskly and settles softly into the card. */
+    private val StagedCloseEasing = CubicBezierEasing(0.15f, 0.55f, 0.3f, 1f)
 
     private val OpenEasing = CubicBezierEasing(0.3f, 0f, 0f, 1f)
-
-    /** Standard in-out curve, so the bars visibly accelerate out of the card and settle over the screen. */
-    private val BarsEasing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
 
     /** Settles gently into the poster at the end (Material "emphasized"). */
     private val CloseEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
@@ -109,8 +117,11 @@ object PosterTransition {
         val posterUrl: String?,
         val cornerRadius: Dp,
         val cover: (@Composable (Size) -> Unit)? = null,
-        /** True: no growing window; black bars grow from the card's top and bottom edges until the screen is covered. */
-        val bars: Boolean = false,
+        /**
+         * True: the two-stage open. The window first widens until its sides touch the screen edges, then grows from
+         * its top and bottom edges together until it reaches the four corners.
+         */
+        val staged: Boolean = false,
     )
 
     /** A tap's touch-down and the navigation it triggers are far closer than this; older origins are stale. */
@@ -145,15 +156,16 @@ object PosterTransition {
     private var pendingAt = 0L
     private val claimed = HashMap<String, Origin?>()
 
-    internal fun openSpec(delayed: Boolean = false, bars: Boolean = false) =
-        if (bars) {
-            tween<Float>(durationMillis = BARS_OPEN_MILLIS, delayMillis = if (delayed) OPEN_START_DELAY_MILLIS else 0, easing = BarsEasing)
+    internal fun openSpec(delayed: Boolean = false, staged: Boolean = false) =
+        if (staged) {
+            // Linear in time: the two stages carry their own easing (see stagedWindowBounds), so no second curve sits on top.
+            tween<Float>(durationMillis = STAGED_OPEN_MILLIS, delayMillis = if (delayed) OPEN_START_DELAY_MILLIS else 0, easing = LinearEasing)
         } else {
             tween<Float>(durationMillis = OPEN_MILLIS, delayMillis = if (delayed) OPEN_START_DELAY_MILLIS else 0, easing = OpenEasing)
         }
 
-    internal fun closeSpec(bars: Boolean = false) =
-        if (bars) tween<Float>(durationMillis = BARS_CLOSE_MILLIS, easing = BarsEasing) else tween<Float>(durationMillis = CLOSE_MILLIS, easing = CloseEasing)
+    internal fun closeSpec(staged: Boolean = false) =
+        if (staged) tween<Float>(durationMillis = STAGED_CLOSE_MILLIS, easing = StagedCloseEasing) else tween<Float>(durationMillis = CLOSE_MILLIS, easing = CloseEasing)
 
     /** True when [entryId] has been opened before, i.e. this is a return to it (from the player, say), not a first open. */
     fun hasClaimed(entryId: String): Boolean = claimed.containsKey(entryId)
@@ -221,19 +233,19 @@ fun Modifier.posterTransitionOrigin(
     posterUrl: String? = null,
     cornerRadius: Dp = 12.dp,
     cover: (@Composable (Size) -> Unit)? = null,
-    /** Open with growing black bars from the card's top and bottom edges instead of the growing window. */
-    bars: Boolean = false,
+    /** Open in two stages (sides to the screen edges, then top and bottom to the corners) instead of the plain window. */
+    staged: Boolean = false,
 ): Modifier = composed {
     val holder = remember { CoordinatesHolder() }
     // Read at touch-down, so the cover always reflects what is on screen then (a logo that arrived late, say).
     val latestCover by rememberUpdatedState(cover)
     this
         .onGloballyPositioned { holder.coordinates = it }
-        .pointerInput(posterUrl, cornerRadius, bars) {
+        .pointerInput(posterUrl, cornerRadius, staged) {
             awaitEachGesture {
                 awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 holder.coordinates?.takeIf { it.isAttached }?.let {
-                    PosterTransition.setPending(PosterTransition.Origin(it.fullBoundsInRoot(), posterUrl, cornerRadius, latestCover, bars))
+                    PosterTransition.setPending(PosterTransition.Origin(it.fullBoundsInRoot(), posterUrl, cornerRadius, latestCover, staged))
                 }
             }
         }
@@ -323,15 +335,68 @@ private class WindowShape(val rect: Rect, val radiusPx: Float, private val scrat
 }
 
 /** The window at progress [p]: the poster's bounds at 0, the whole container at 1. Container coordinates. */
-private fun windowBounds(origin: Rect?, containerOffset: Offset, containerSize: Size, p: Float): Rect {
+private fun windowBounds(
+    origin: Rect?,
+    containerOffset: Offset,
+    containerSize: Size,
+    p: Float,
+    staged: Boolean = false,
+    breathPx: Float = 0f,
+): Rect {
     if (origin == null) return Rect(0f, 0f, containerSize.width, containerSize.height)
     val from = origin.translate(-containerOffset.x, -containerOffset.y)
+    if (staged) return stagedWindowBounds(from, containerSize, p, breathPx)
     return Rect(
         left = lerp(from.left, 0f, p),
         top = lerp(from.top, 0f, p),
         right = lerp(from.right, containerSize.width, p),
         bottom = lerp(from.bottom, containerSize.height, p),
     )
+}
+
+/**
+ * The two-stage window at progress [p] (0 = the card, 1 = the whole container), in container coordinates.
+ *
+ * Stage one: the card widens until its left and right sides touch the container's edges, growing a touch taller
+ * ([breathPx] on each side) so it has some weight. Stage two: from that full-width strip the top edge travels to the
+ * top and the bottom edge to the bottom at the same time, until the window reaches the four corners. Each stage has
+ * its own ease-out curve and the second starts exactly where the first ends, so the motion never stops or steps.
+ */
+private fun stagedWindowBounds(from: Rect, containerSize: Size, p: Float, breathPx: Float): Rect {
+    val split = PosterTransition.STAGE_SPLIT
+    val stripTop = from.top - breathPx
+    val stripBottom = from.bottom + breathPx
+    return if (p <= split) {
+        val t = PosterTransition.StageOneEasing.transform((p / split).coerceIn(0f, 1f))
+        Rect(
+            left = lerp(from.left, 0f, t),
+            top = lerp(from.top, stripTop, t),
+            right = lerp(from.right, containerSize.width, t),
+            bottom = lerp(from.bottom, stripBottom, t),
+        )
+    } else {
+        val t = PosterTransition.StageTwoEasing.transform(((p - split) / (1f - split)).coerceIn(0f, 1f))
+        Rect(
+            left = 0f,
+            top = lerp(stripTop, 0f, t),
+            right = containerSize.width,
+            bottom = lerp(stripBottom, containerSize.height, t),
+        )
+    }
+}
+
+/**
+ * Corner radius of the two-stage window: the card's own radius softens to [midPx] as the sides reach the screen
+ * edges, then grows to the phone's screen-corner radius ([screenPx]) as the window reaches full size.
+ */
+private fun stagedCornerPx(posterPx: Float, midPx: Float, screenPx: Float, p: Float): Float {
+    if (p >= 0.999f) return 0f
+    val split = PosterTransition.STAGE_SPLIT
+    return if (p <= split) {
+        lerp(posterPx, midPx, PosterTransition.StageOneEasing.transform((p / split).coerceIn(0f, 1f)))
+    } else {
+        lerp(midPx, screenPx, PosterTransition.StageTwoEasing.transform(((p - split) / (1f - split)).coerceIn(0f, 1f)))
+    }
 }
 
 /**
@@ -376,9 +441,9 @@ fun AnimatedContentScope.PosterExpandContainer(
     val progress = transition.animateFloat(
         transitionSpec = {
             if (targetState == EnterExitState.PostExit) {
-                PosterTransition.closeSpec(bars = origin?.bars == true)
+                PosterTransition.closeSpec(staged = origin?.staged == true)
             } else {
-                PosterTransition.openSpec(delayed = firstOpen && origin != null, bars = origin?.bars == true)
+                PosterTransition.openSpec(delayed = firstOpen && origin != null, staged = origin?.staged == true)
             }
         },
         label = "posterExpand",
@@ -398,8 +463,10 @@ fun AnimatedContentScope.PosterExpandContainer(
     // A poster image is what makes the morph look right: with no image to draw inside the window the
     // close would only shrink a half-transparent page over the background. Those cases cross-fade.
     val originCover = origin?.cover
-    val bars = origin != null && origin.bars
-    val canCover = !bars && (origin?.posterUrl != null || originCover != null) && originBounds != null
+    val staged = origin != null && origin.staged
+    val canCover = (origin?.posterUrl != null || originCover != null) && originBounds != null
+    val breathPx = with(density) { 6.dp.toPx() }
+    val stagedMidCornerPx = with(density) { 10.dp.toPx() }
     val container = remember { OffsetHolder() }
     val shapePath = remember { Path() }
     // The page may apply its held-back data once the motion is over (see LocalPosterSettled).
@@ -409,7 +476,7 @@ fun AnimatedContentScope.PosterExpandContainer(
     val closing = transition.targetState == EnterExitState.PostExit && !isOnBackStack()
 
     // The page under blurs as this one opens and sharpens as it closes. Only the growing-window animation does this
-    // (the black bars and the plain fade have nothing to look through).
+    // (the plain fade has nothing to look through).
     if (behindEntryId != null && canCover && backdropBlurSupported) {
         LaunchedEffect(entryId, behindEntryId) {
             snapshotFlow { progress.value }.collect { p ->
@@ -433,31 +500,19 @@ fun AnimatedContentScope.PosterExpandContainer(
             .onGloballyPositioned { container.offset = it.positionInRoot() }
             .graphicsLayer {
                 val p = progress.value
-                if (bars) {
-                    // The bars draw themselves and the page only fades in under them, so nothing is clipped here.
-                    compositingStrategy = CompositingStrategy.ModulateAlpha
-                } else if (!canCover) {
+                if (!canCover) {
                     // No poster to grow from: a plain fade, without an off-screen copy of the page.
                     alpha = (p * 2f).coerceIn(0f, 1f)
                     compositingStrategy = CompositingStrategy.ModulateAlpha
                 } else {
-                    val bounds = windowBounds(originBounds, container.offset, size, p)
-                    val radius = windowCornerPx(posterCornerPx, screenCornerPx, p)
+                    val bounds = windowBounds(originBounds, container.offset, size, p, staged, breathPx)
+                    val radius = (if (staged) stagedCornerPx(posterCornerPx, stagedMidCornerPx, screenCornerPx, p) else windowCornerPx(posterCornerPx, screenCornerPx, p))
                         .coerceAtMost(minOf(bounds.width, bounds.height) / 2f)
                     shape = WindowShape(bounds, radius, shapePath)
                     clip = true
                 }
             }
-            .then(
-                if (bars) {
-                    // Bars mode has no window to hold the page's black: the screen must stay the home screen until
-                    // the bars have covered it, and only then is it black underneath (the bars end full-screen, so
-                    // the switch is invisible; on close it hands back to the bars the same way).
-                    Modifier.drawBehind { if (progress.value >= BARS_COVERED_AT) drawRect(AnsuColors.Background) }
-                } else {
-                    Modifier.background(AnsuColors.Background)
-                },
-            ),
+            .background(AnsuColors.Background),
     ) {
         if (origin != null && originCover != null) {
             // The banner itself, kept composed for as long as the page lives: it is prepared (artwork out of the
@@ -467,9 +522,11 @@ fun AnimatedContentScope.PosterExpandContainer(
                 cover = originCover,
                 bounds = origin.bounds,
                 boundsAt = { containerSize ->
-                    windowBounds(origin.bounds, container.offset, containerSize, progress.value)
+                    windowBounds(origin.bounds, container.offset, containerSize, progress.value, staged, breathPx)
                 },
-                alpha = { ((0.75f - progress.value) / 0.25f).coerceIn(0f, 1f) },
+                alpha = {
+                    if (staged) ((0.82f - progress.value) / 0.40f).coerceIn(0f, 1f) else ((0.75f - progress.value) / 0.25f).coerceIn(0f, 1f)
+                },
             )
         } else if (origin != null && origin.posterUrl != null) {
             // Kept composed for as long as the page lives, like the banner above: it used to be dropped once the
@@ -480,12 +537,14 @@ fun AnimatedContentScope.PosterExpandContainer(
                 posterUrl = origin.posterUrl,
                 posterBounds = origin.bounds,
                 boundsAt = { containerSize ->
-                    windowBounds(origin.bounds, container.offset, containerSize, progress.value)
+                    windowBounds(origin.bounds, container.offset, containerSize, progress.value, staged, breathPx)
                 },
                 // Opaque while the window is near the poster, gone once the page fills it; played the other
                 // way on close. Keeping it opaque a little longer hides the shrinking page instead of
                 // leaving a half-transparent picture floating over the background.
-                alpha = { ((0.6f - progress.value) / 0.35f).coerceIn(0f, 1f) },
+                alpha = {
+                    if (staged) ((0.82f - progress.value) / 0.40f).coerceIn(0f, 1f) else ((0.6f - progress.value) / 0.35f).coerceIn(0f, 1f)
+                },
             )
         }
         Box(
@@ -500,15 +559,14 @@ fun AnimatedContentScope.PosterExpandContainer(
                     }
                     val behindRadius = PosterTransition.blurRadiusPx(behindAmount, density.density)
                     renderEffect = if (behindRadius > 0.5f) BlurEffect(behindRadius, behindRadius, TileMode.Clamp) else null
-                    if (bars) {
-                        // Hidden until the bars have covered the screen, then shown in as they pull away; on close
-                        // the page goes first and the bars close over the empty screen.
-                        compositingStrategy = CompositingStrategy.ModulateAlpha
-                        alpha = ((progress.value - BARS_COVERED_AT) / 0.4f).coerceIn(0f, 1f)
-                    } else if (canCover) {
+                    if (canCover) {
                         val p = progress.value
                         compositingStrategy = CompositingStrategy.ModulateAlpha
-                        if (closing) {
+                        if (staged) {
+                            // Only fades, no scaling: the window is the motion. The page starts to show once the window
+                            // is a full-width strip and is complete before it is full size, as the card's picture leaves.
+                            alpha = ((p - 0.40f) / 0.42f).coerceIn(0f, 1f)
+                        } else if (closing) {
                             // Close: the page itself deflates with the window. It is scaled by the window's width
                             // and pinned to the window's top-left corner, so the sides pull in and the page
                             // visibly shrinks down into the poster instead of being cropped by a shrinking frame.
@@ -537,45 +595,6 @@ fun AnimatedContentScope.PosterExpandContainer(
                 content()
             }
         }
-        if (bars) {
-            BarsCurtain(
-                bounds = origin.bounds,
-                containerOffset = { container.offset },
-                progress = { progress.value },
-            )
-        }
-    }
-}
-
-/** Progress at which the bars have grown over the whole screen; the page shows up after this. */
-private const val BARS_COVERED_AT = 0.58f
-
-/**
- * Two black bars, one growing up out of the card's top edge and one down out of its bottom edge. Each also grows
- * across the card to its middle, so when they have finished the whole screen is black. From then on the page
- * shows up out of the black. On close it plays backwards: the page goes, the bars start from the full screen and
- * pull in to the card's edges, uncovering the home screen.
- */
-@Composable
-private fun BarsCurtain(bounds: Rect, containerOffset: () -> Offset, progress: () -> Float) {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val p = progress()
-        // Past this point the screen behind is solid black already (see the container), so nothing is drawn.
-        if (p <= 0f || p >= BARS_COVERED_AT) return@Canvas
-        // 0 while the bars are just a line at the card's edges, 1 when they have covered the screen.
-        val grow = p / BARS_COVERED_AT
-        val color = AnsuColors.Background
-        val off = containerOffset()
-        val top = (bounds.top - off.y).coerceIn(0f, size.height)
-        val bottom = (bounds.bottom - off.y).coerceIn(0f, size.height)
-        val mid = (top + bottom) / 2f
-        val upperTop = lerp(top, 0f, grow)
-        val upperBottom = lerp(top, mid, grow)
-        val lowerTop = lerp(bottom, mid, grow)
-        val lowerBottom = lerp(bottom, size.height, grow)
-        // A pixel of overlap, so the two bars never leave a hairline where they meet over the card.
-        drawRect(color, topLeft = Offset(0f, upperTop), size = Size(size.width, (upperBottom - upperTop + 1f).coerceAtLeast(0f)))
-        drawRect(color, topLeft = Offset(0f, lowerTop - 1f), size = Size(size.width, (lowerBottom - lowerTop + 1f).coerceAtLeast(0f)))
     }
 }
 

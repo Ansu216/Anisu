@@ -89,7 +89,13 @@ class EpisodeCommentsViewModel(
                 return@launch
             }
             val thread = threads.firstOrNull()
-            val comments = thread?.let { repository.getThreadComments(it.id, 1)?.comments }.orEmpty()
+            val page = thread?.let { repository.getThreadComments(it.id, 1) }
+            if (thread != null && page == null) {
+                // The discussion exists but its comments did not load: say so, never "no comments yet".
+                _state.value = EpisodeCommentsState(loading = false, failed = true)
+                return@launch
+            }
+            val comments = page?.comments.orEmpty()
             _state.value = EpisodeCommentsState(loading = false, thread = thread, comments = comments, threadCount = threads.size)
         }
     }

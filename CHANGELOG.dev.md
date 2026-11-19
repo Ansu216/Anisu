@@ -20,6 +20,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-19
+
+### Added
+
+- [APK] **Extensions has a three-dot menu with "Show 18+ sources".** `ExtensionsScreen` top bar gets a `MoreVert` button after Search opening a `GlassDropdownMenu` with a checkbox row. `ExtensionManager.showNsfw` now defaults to on (nothing changes until it is switched off). It only filters the Available tab (`listedAvailable`); updates, the Installed tab and the loading and streaming of installed extensions are untouched, so no reload runs when it is toggled.
+
+### Changed
+
+- [APK] **Your Next Watch, New Anime and New Movies cards open with a two-stage animation.** Replaces the black-bars curtain (`BarsCurtain` and its constants removed). `PosterTransition.Origin.staged` / `posterTransitionOrigin(staged = true)`: stage one (progress 0 to 0.38) widens the window to the screen edges with 6 dp of extra height each side, stage two moves top and bottom to the corners, each with its own ease-out (`StageOneEasing`, `StageTwoEasing`). Open is 760 ms linear in time, close 560 ms eased; corner radius goes card, 10 dp, screen corner. The details page only fades (0.40 to 0.82), the card picture fades out by 0.82. A card with no banner passes a `NoImageBanner` cover.
+
+### Fixed
+
+- [APK] **Portrait player comments find discussions that AniList's search missed.** `AniListApi.getEpisodeThreads` tries "Episode N" then "Ep N" searches (10 pages each) and, if nothing matches, reads the show's whole thread list (20 pages) and matches titles locally with a wider pattern (Ep. 5, Episode #05, S2E5). `EpisodeCommentsViewModel` reports a failed comment load instead of "no comments yet". `EpisodeInfoPane` falls back to the episode's list position when the source gives no episode number, so the section is no longer hidden.
+
+## [1.1.6] - 2026-11-17
+
+### Added
+
+- [APK] **Search > Filters has an NSFW switch, off by default.** New `nsfw` field on `AniListSearchFilters`. While it is off `AniListApi.searchMediaPage` adds `isAdult: false` to the query, so adult titles are not returned (the typo-tolerant retry in `CatalogRepository.fuzzyCandidates` goes through the same call); on, the limit is lifted. `SearchFilterSheet` shows it as a row with a `Switch` above "Sort by", `activeFilterChips` adds a removable "NSFW" chip, and Reset also clears it. `nsfw` is deliberately left out of `activeCount` / `isActive`, so turning it on does not turn the trending landing page into a popularity-sorted filter result. It lives in `SearchSession` only, so each app start begins with it off. Home rows still use `ContentFilter`, which blocks nothing.
+
+### Changed
+
+- [APK] **Dropdown menus follow the user's glass settings and blur what is behind them.** `GlassDropdownMenu` forced its fill to at least 92% opaque and skipped the window blur (a fixed blurred box behind a still-scaling menu looked wrong), so the menu settings had no effect on it. The fill is now `glassPopupFill()` as for sheets and dialogs, and `WindowBlurBehind` runs inside the popup at `GlassTuning.windowBlurDp`. The radius is ramped by `progress^4` and quantised to 4 px steps, so the blur only reaches full strength once the menu has grown to size (and drops as it starts to close) and the window is not re-laid-out every frame. **Constraint:** the window blur is a rectangle the size of the menu; its rounded corners are not clipped.
+- [APK] **Settings (and every `FadingTopAppBar` screen) has a bigger header title and less space under it.** `FadingTopAppBar` wraps the title in a 28sp semibold `LocalTextStyle`, and its default `fadeBelow` went from 36 dp to 10 dp, so the content starts close under the header instead of leaving a gap.
+- [APK] **The Schedule / News pill hides and returns with the navigation bar.** New `LocalNavBarHide` (a `State<Float>`, 0 shown to 1 hidden) and `NavBarHideDistance` (220 dp) in `AppBottomBar.kt`; `AnsuNavGraph` provides the bar's own `barHide` animation, and `SubTabToggle` translates by it, so the pill slides down and back on the same 220 ms tween as the bar.
+- [APK] **My Space buttons bounce and their press highlight follows their shape.** New `Modifier.shapedClickable(shape, bounce, onClick)` in `ui/components/Bounce.kt` (`pressBounce`, then `clip(shape)`, then `clickable`). The Sync button, the list chips, the Settings / Your downloads boxes and the list cards use it; the cards pass `bounce = false` so they do not fight the poster-open animation. The Connect button gets `pressBounce`.
+
+### Fixed
+
+- [APK] **The background animation no longer shows through the Home hero banner.** The banner's bottom fade is a mask that makes the picture itself see-through, and the picture was also transparent until it loaded, so the animation showed through. `HeroSlide` now draws a solid page-colour backing that only thins out over the last 14% of the banner's height, so the animation fades in under the bottom edge rather than being cut off by a hard line.
+- [APK] **The Schedule / News pill blurs the content behind it.** `SubTabToggle` did not pass `sampleBackground = !blurActive` to `FrostedGlassCard` as the navigation bar does, so the card painted the animated-background glass over the backdrop blur and hid it.
+
 ## [1.1.4] - 2026-11-16
 
 ### Added
