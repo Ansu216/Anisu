@@ -23,6 +23,10 @@ class AnsuApp : Application(), ImageLoaderFactory {
         .diskCache { DiskCache.Builder().directory(cacheDir.resolve("image_cache")).maxSizeBytes(200L * 1024 * 1024).build() }
         .respectCacheHeaders(false)
         .crossfade(false)
+        // Animated pictures in comments (GIF, animated WebP) play instead of showing one still frame.
+        .components {
+            if (android.os.Build.VERSION.SDK_INT >= 28) add(coil.decode.ImageDecoderDecoder.Factory()) else add(coil.decode.GifDecoder.Factory())
+        }
         .build()
 
     override fun onCreate() {

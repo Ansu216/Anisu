@@ -12,12 +12,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-19
+
+### Added
+
+- [APK] **Orientation Lock in Settings > Playback > Controls.**
+- [APK] **Attach a picture to a comment.**
+
+### Fixed
+
+- [APK] **Pictures in comments are shown instead of the text "[image]".**
+- [APK] **Spoiler pictures in comments stay hidden, GIFs animate, and the player preview shows a thumbnail.**
+- [APK] **Comments can be sent as spoilers, and spoiler text is hidden too.**
+
 ## [1.2.0] - 2026-11-19
 
 ### Added
 
 - [APK] **Extensions has a three-dot menu with "Show 18+ sources".**
-- [APK1.1.6] **Search > Filters has an NSFW switch, off by default.**
+
+### Changed
+
+- [APK] **Your Next Watch, New Anime and New Movies cards open with a two-stage animation.**
+
+### Fixed
+
+- [APK] **Portrait player comments find discussions that AniList's search missed.**
+
+## [1.1.6] - 2026-11-17
+
+### Added
+
+- [APK] **Search > Filters has an NSFW switch, off by default.**
+
+### Changed
+
+- [APK] **Dropdown menus follow the user's glass settings and blur what is behind them.**
+- [APK] **Settings (and every `FadingTopAppBar` screen) has a bigger header title and less space under it.**
+- [APK] **The Schedule / News pill hides and returns with the navigation bar.**
+- [APK] **My Space buttons bounce and their press highlight follows their shape.**
+
+### Fixed
+
+- [APK] **The background animation no longer shows through the Home hero banner.**
+- [APK] **The Schedule / News pill blurs the content behind it.**
+
+## [1.1.4] - 2026-11-16
+
+### Added
 
 - [APK] **The discussion list has no cap and shows how many discussions there are.**
 - [APK] **The portrait player has a "Comments" section under the episode description, per episode, from AniList.**
@@ -26,17 +68,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [APK] **Adult extensions say "18+" in their description line, with the version and language.**
 - [APK] **Dropdown lists grow out of what opened them.**
 - [APK] **The manual source picker shows each stream's size.**
-- [APK] **An NSFW checkbox in a three-dot menu on the Extensions screen.**
-- [APK] **Commits now lists the repository's real history, not just the build's SHA.** 
 
 ### Changed
 
-- [APK] **Your Next Watch, New Anime and New Movies cards open with a two-stage animation.**
-- [APK1.1.6] **Dropdown menus follow the user's glass settings and blur what is behind them.**
-- [APK1.1.6] **Settings (and every `FadingTopAppBar` screen) has a bigger header title and less space under it.**
-- [APK1.1.6] **The Schedule / News pill hides and returns with the navigation bar.**
-- [APK1.1.6] **My Space buttons bounce and their press highlight follows their shape.**
 - [APK] **The portrait player's ambient glow is smooth, like YouTube's.**
+
+### Fixed
+- [APK] **Playback finds sources on a slow connection instead of saying "No playable sources found".**
+
+- [APK] **The build compiles again: four compile errors that broke the debug and release builds are fixed.**
+- [APK] **The Links panel, the welcome card and the error card no longer show the page sharp through the card.**
+- [APK] **Choosing "None" for the background animation clears the shapes still showing in blurred cards; the animation also moves on the details page.**
+- [APK] **Home banner fades smoothly into the page; the background animation is no longer cut off under it.**
+
+## [1.1.1] - 2026-11-14
+
+### Added
+
+- [APK] **An NSFW checkbox in a three-dot menu on the Extensions screen.**
+- [APK] **Commits now lists the repository's real history, not just the build's SHA.**
+
+### Changed
+
 - [APK] **The settings top bars fade out at their bottom edge instead of ending in a hard line.**
 - [APK] **Updates is called Updates, sits in the app bar, and no longer shows the package name.**
 - [APK] **The download counters are back under The project, and Developer options unlock from App version.**
@@ -46,18 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [APK] **Notification settings all live in Updates, and Developer options have a category of their own with an off switch.**
 - [APK] **Build logs and scratch files live in `.ignore/`.**
 
-
 ### Fixed
-
-- [APK] **Portrait player comments find discussions that AniList's search missed.**
-- [APK] **The background animation no longer shows through the Home hero banner.**
-- [APK] **The Schedule / News pill blurs the content behind it.**
-- [APK] **Playback finds sources on a slow connection instead of saying "No playable sources found".**
-
-- [APK] **The build compiles again: four compile errors that broke the debug and release builds are fixed.**
-- [APK] **The Links panel, the welcome card and the error card no longer show the page sharp through the card.**
-- [APK] **Choosing "None" for the background animation clears the shapes still showing in blurred cards; the animation also moves on the details page.**
-- [APK] **Home banner fades smoothly into the page; the background animation is no longer cut off under it.**
 
 - [APK] **The search bar is a visible pill again.**
 

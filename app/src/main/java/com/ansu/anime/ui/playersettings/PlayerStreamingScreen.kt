@@ -17,6 +17,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -82,6 +83,10 @@ import com.ansu.anime.ui.player.SubtitleBgColors
 import com.ansu.anime.ui.player.SubtitlePreview
 import com.ansu.anime.ui.player.SubtitleTextColors
 import com.ansu.anime.ui.components.GlassContentRow
+import com.ansu.anime.ui.components.GlassModalBottomSheet
+import com.ansu.anime.ui.components.GlassRowValue
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import com.ansu.anime.ui.components.GlassGroup
 import com.ansu.anime.ui.components.GlassGroupLabel
 import com.ansu.anime.ui.components.GlassRow
@@ -111,6 +116,8 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val volume by prefs.volumeGesture.collectAsStateWithLifecycle()
     val skipSeconds by prefs.skipSeconds.collectAsStateWithLifecycle()
     val pip by prefs.pipEnabled.collectAsStateWithLifecycle()
+    val orientationLock by prefs.orientationLock.collectAsStateWithLifecycle()
+    var showOrientationSheet by remember { mutableStateOf(false) }
     val autoSourcePick by prefs.autoSourcePick.collectAsStateWithLifecycle()
     val preferredQuality by prefs.preferredQuality.collectAsStateWithLifecycle()
     val preferredLanguage by prefs.preferredLanguage.collectAsStateWithLifecycle()
@@ -128,6 +135,17 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     // The page scrolls; the source list asks it to scroll further while a row is dragged to its edge.
     val scrollState = rememberScrollState()
     val autoScroll = remember { DragAutoScroll() }
+
+    if (showOrientationSheet) {
+        OrientationLockSheet(
+            selected = orientationLock,
+            onSelect = {
+                prefs.setOrientationLock(it)
+                showOrientationSheet = false
+            },
+            onDismiss = { showOrientationSheet = false },
+        )
+    }
 
     val topBackdrop = rememberBackdropState()
     Scaffold(
@@ -243,6 +261,15 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                         }
                     }
                 }
+                GlassRow(
+                    title = "Orientation Lock",
+                    description = "Which way the player opens",
+                    onClick = { showOrientationSheet = true },
+                    trailing = {
+                        GlassRowValue(orientationLabel(orientationLock))
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = AnsuColors.TextTertiary)
+                    },
+                )
                 GlassToggleRow(
                     title = "Hide Next And Previous",
                     description = "Remove the previous and next episode buttons from the player controls",
@@ -443,6 +470,45 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                 }
             }
         }
+    }
+}
+
+private fun orientationLabel(key: String) = when (key) {
+    PlayerPrefs.ORIENTATION_PORTRAIT -> "Portrait"
+    PlayerPrefs.ORIENTATION_SYSTEM -> "System"
+    else -> "Landscape"
+}
+
+/** The Orientation Lock picker: a glass bottom sheet with one tick next to the chosen way. */
+@Composable
+private fun OrientationLockSheet(selected: String, onSelect: (String) -> Unit, onDismiss: () -> Unit) {
+    GlassModalBottomSheet(onDismissRequest = onDismiss) {
+        Text(
+            "Orientation Lock",
+            style = MaterialTheme.typography.titleLarge,
+            color = AnsuColors.TextPrimary,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+        )
+        PlayerPrefs.ORIENTATION_OPTIONS.forEach { option ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSelect(option) }
+                    .padding(horizontal = 24.dp, vertical = 18.dp),
+            ) {
+                Text(
+                    orientationLabel(option),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = AnsuColors.TextPrimary,
+                    modifier = Modifier.weight(1f),
+                )
+                if (option == selected) {
+                    Icon(Icons.Filled.Check, contentDescription = "Selected", tint = AnsuColors.Accent)
+                }
+            }
+        }
+        Spacer(Modifier.height(24.dp))
     }
 }
 

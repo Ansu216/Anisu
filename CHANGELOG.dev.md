@@ -20,6 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-19
+
+### Added
+
+- [APK] **Orientation Lock in Settings > Playback > Controls.** `PlayerPrefs.orientationLock` (`landscape` default, `portrait`, `system`; key `orientation_lock`, bad values fall back to landscape). `PlayerStreamingScreen` gets an "Orientation Lock" `GlassRow` showing the current value that opens a `GlassModalBottomSheet` (`OrientationLockSheet`, tick on the chosen way). `PlayerScreen`'s opening `DisposableEffect` maps it to `SCREEN_ORIENTATION_SENSOR_LANDSCAPE` / `SENSOR_PORTRAIT` / `UNSPECIFIED`; the rotate button still switches by hand and leaving the player still resets to `UNSPECIFIED`.
+- [APK] **Attach a picture to a comment.** The comment composer has an attach button (system photo picker, `PickVisualMedia.ImageOnly`, no storage permission) with a thumbnail, upload spinner, retry and remove. `data/upload/ImageUploader` (built on `AppContainer.imageUploader`, the shared `okHttpClient`) uploads anonymously to Catbox (20 MB cap, images only) because AniList has no upload of its own; `CommentsViewModel.send` writes the link as `img(link)` after the text and Send is enabled for a picture alone.
+
+### Fixed
+
+- [APK] **Pictures in comments are shown instead of the text "[image]".** `CommentBody` / `commentParts` (new `CommentBody.kt`) split a comment into words and pictures (`img(url)`, `img220(url)`, `img100%(url)`, markdown `![](url)`, `<img src>`; http links are upgraded to https) and draw each with Coil; a tap opens it full screen. `CommentRow` uses it; the 3-line preview in the player still shows "[image]" on purpose.
+- [APK] **Spoiler pictures in comments stay hidden, GIFs animate, and the player preview shows a thumbnail.** `commentParts` marks a picture inside `~!...!~` as `spoiler`; `CommentBody` shows "Spoiler picture, tap to show" and does not download it until tapped. New dependency `coil-gif` (`libs.versions.toml` + `app/build.gradle.kts`), registered in `AnsuApp.newImageLoader` (`ImageDecoderDecoder` on API 28+, `GifDecoder` below). `EpisodeComments.PreviewComment` shows the first non-spoiler picture as a 64dp thumbnail (`firstOpenPicture`).
+- [APK] **Comments can be sent as spoilers, and spoiler text is hidden too.** The composer has a spoiler toggle (eye icon, with a line saying it is on); `CommentsViewModel.send(text, spoiler, onPosted)` wraps the whole comment (text and picture) in AniList's `~!...!~`, and the toggle resets after sending. Typing `~!word!~` by hand works too. `commentParts` now splits on spoilers first, so `Words` and `Picture` both carry `spoiler`; `CommentBody` shows "Spoiler, tap to show" for hidden text (tap the revealed text to hide it again). `plainComment` now turns a spoiler into `[spoiler]` instead of printing its text, so the player's 3-line preview no longer leaks it.
+
+
 ## [1.2.0] - 2026-11-19
 
 ### Added

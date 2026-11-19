@@ -1,5 +1,6 @@
 package com.ansu.anime.ui.player
 
+import com.ansu.anime.data.prefs.PlayerPrefs
 import com.ansu.anime.ui.components.BouncyIconButton
 import android.app.Activity
 import android.content.Context
@@ -350,8 +351,13 @@ fun PlayerScreen(container: AppContainer, navController: NavHostController) {
 
     // The fullscreen layout is the main one, so the player opens in landscape; the rotate button
     // switches to the portrait layout (player on top, episode info and list below).
+    // Settings > Playback > Orientation Lock picks the way it opens: landscape (default), portrait, or the phone's own rotation.
     DisposableEffect(Unit) {
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        activity?.requestedOrientation = when (container.playerPrefs.orientationLock.value) {
+            PlayerPrefs.ORIENTATION_PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            PlayerPrefs.ORIENTATION_SYSTEM -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
         onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
     }
     // Immersive in landscape; normal system bars in portrait and when leaving.
