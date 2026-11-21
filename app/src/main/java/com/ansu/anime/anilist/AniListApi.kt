@@ -1077,6 +1077,37 @@ class AniListApi(
         cacheTtlMs: Long = 0L,
         anonymous: Boolean = false,
     ): JsonObject? {
+        val isMediaRead = query.contains("Media(id:") && !query.trimStart().startsWith("mutation")
+        val mediaId = (variables["id"] as? Int)?.takeIf { isMediaRead }
+        // A title already known to be 18+ goes out without the token at once: no failed request first.
+        if (mediaId != null && !anonymous && mediaId in adultMediaIds) {
+            return executeSigned(query, variables, idempotent, cacheTtlMs, anonymous = true)
+        }
+        try {
+            return executeSigned(query, variables, idempotent, cacheTtlMs, anonymous)
+        } catch (e: ApiException) {
+            // AniList answers "Not Found" to a signed-in account that has adult content switched off when the
+            // title is 18+, even though the title exists. The same lookup without the token is answered, so a
+            // read of one title retries once anonymously (alternate titles, MAL id, details, airing info).
+            val adultLookup = !anonymous && e.kind == ApiErrorKind.NOT_FOUND &&
+                query.contains("Media(id:") && !query.trimStart().startsWith("mutation")
+            if (!adultLookup) throw e
+            return executeSigned(query, variables, idempotent, cacheTtlMs, anonymous = true).also {
+                if (mediaId != null) adultMediaIds.add(mediaId)
+            }
+        }
+    }
+
+    /** AniList ids that answered "Not Found" with the token but exist anonymously (18+ titles); read tokenless from then on. */
+    private val adultMediaIds: MutableSet<Int> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    private suspend fun executeSigned(
+        query: String,
+        variables: Map<String, Any?>,
+        idempotent: Boolean = true,
+        cacheTtlMs: Long = 0L,
+        anonymous: Boolean = false,
+    ): JsonObject? {
         if (cacheTtlMs <= 0L) return executeUncached(query, variables, idempotent, anonymous)
         // The signed-in user is part of the key, so logging in or out never shows the other account's data.
         val key = "${if (anonymous) "anon" else authManager.accessToken.value.orEmpty().hashCode().toString()}|$query|${variables.entries.joinToString(", ")}"

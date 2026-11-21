@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- [APK] **Incognito Mode in Settings > Playback > Controls.** `PlayerPrefs.incognito` (key `incognito`, off by default). While on, `PlayerViewModel.startProgressLoop` skips `rememberSource` and `ContinueWatchingRepository.updateProgress` (so no Continue Watching row, no AniList `SaveMediaListEntry` progress, no `LocalListRepository.recordPlayback`), and `setManualPick` is skipped so a hand-picked source is not remembered for the show. Resuming an earlier, non-incognito position still works.
+
+### Fixed
+
+- [APK] **Adult titles found no playable source.** The diagnostics log showed `Loading title details failed: NOT_FOUND` and `Loading alternate titles failed` for every 18+ title: AniList answers 404 to a signed-in account with adult content off. `AniListApi.execute` now retries a `Media(id:` read once without the token (`executeSigned(anonymous = true)`; ids that needed it are kept in `adultMediaIds` and read tokenless straight away afterwards), so `getMediaCore` returns the romaji, native and synonym titles and the source title search no longer runs on the English title alone, plus the MAL id (AniSkip) and episode titles.
+
 ## [1.2.1] - 2026-11-19
 
 ### Added

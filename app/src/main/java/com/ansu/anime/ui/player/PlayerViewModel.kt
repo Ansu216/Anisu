@@ -1115,7 +1115,7 @@ class PlayerViewModel(
     fun pickSource(source: PlayableSource) {
         val anilistId = _uiState.value.anime?.anilistId
         val sourceId = source.sourceId
-        if (anilistId != null && sourceId != null) playerPrefs?.setManualPick(anilistId, sourceId, source.serverName, source.label)
+        if (playerPrefs?.incognito?.value != true && anilistId != null && sourceId != null) playerPrefs?.setManualPick(anilistId, sourceId, source.serverName, source.label)
         // Chosen inside the player, the video is already on screen: no buffering screen over it.
         userPicked = true
         selectSource(source, showStartingScreen = false)
@@ -1728,7 +1728,9 @@ class PlayerViewModel(
                 rememberSpeed()
                 val anime = _uiState.value.anime
                 val episode = _uiState.value.episode
-                if (anime != null && episode != null && duration > 0) {
+                // Incognito: nothing about this viewing is saved, remembered or sent to AniList.
+                val incognito = playerPrefs?.incognito?.value == true
+                if (!incognito && anime != null && episode != null && duration > 0) {
                     val playing = _uiState.value.selectedSource
                     val anilistId = anime.anilistId
                     if (player.isPlaying && playing?.sourceId != null && anilistId != null) {

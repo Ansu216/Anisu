@@ -120,6 +120,19 @@ class PlayerPrefs(context: Context) {
         prefs.edit().putBoolean(KEY_AUTOPLAY_NEXT, value).apply()
     }
 
+    private val _incognito = MutableStateFlow(prefs.getBoolean(KEY_INCOGNITO, false))
+
+    /**
+     * Incognito mode: while on, nothing watched is saved or synced. No Continue Watching entry, no AniList
+     * progress, no local list entry, and no remembered source or manual pick for the show.
+     */
+    val incognito: StateFlow<Boolean> = _incognito
+
+    fun setIncognito(value: Boolean) {
+        _incognito.value = value
+        prefs.edit().putBoolean(KEY_INCOGNITO, value).apply()
+    }
+
     private val _hideEpisodeButtons = MutableStateFlow(prefs.getBoolean(KEY_HIDE_EPISODE_BUTTONS, false))
 
     /** Hides the previous/next episode buttons on the player controls. */
@@ -387,6 +400,7 @@ class PlayerPrefs(context: Context) {
         const val ORIENTATION_SYSTEM = "system"
         val ORIENTATION_OPTIONS = listOf(ORIENTATION_LANDSCAPE, ORIENTATION_PORTRAIT, ORIENTATION_SYSTEM)
         private const val KEY_AUTOPLAY_NEXT = "autoplay_next"
+        private const val KEY_INCOGNITO = "incognito"
         private const val KEY_SEEK_BAR_STYLE = "seek_bar_style"
         const val SEEK_STYLE_CLASSIC = "classic"
         private const val KEY_HIDE_EPISODE_BUTTONS = "hide_episode_buttons"

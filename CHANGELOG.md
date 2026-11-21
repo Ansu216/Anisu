@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- [APK] **Incognito Mode in Settings > Playback > Controls.**
+
+### Fixed
+
+- [APK] **Adult titles found no playable source.**
+
 ## [1.2.1] - 2026-11-19
 
 ### Added

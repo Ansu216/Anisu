@@ -109,6 +109,7 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
     val swipeSeek by prefs.swipeSeek.collectAsStateWithLifecycle()
     val holdSpeed by prefs.holdSpeed.collectAsStateWithLifecycle()
     val hideEpisodeButtons by prefs.hideEpisodeButtons.collectAsStateWithLifecycle()
+    val incognito by prefs.incognito.collectAsStateWithLifecycle()
     val castButton by prefs.castButton.collectAsStateWithLifecycle()
     val castUnlocked by prefs.castUnlocked.collectAsStateWithLifecycle()
     val seekBarStyleKey by prefs.seekBarStyle.collectAsStateWithLifecycle()
@@ -269,6 +270,12 @@ fun PlayerStreamingScreen(container: AppContainer, navController: NavHostControl
                         GlassRowValue(orientationLabel(orientationLock))
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = AnsuColors.TextTertiary)
                     },
+                )
+                GlassToggleRow(
+                    title = "Incognito Mode",
+                    description = "What you watch is not saved or synced: no Continue Watching, no AniList progress, no local list entry",
+                    checked = incognito,
+                    onCheckedChange = prefs::setIncognito,
                 )
                 GlassToggleRow(
                     title = "Hide Next And Previous",
