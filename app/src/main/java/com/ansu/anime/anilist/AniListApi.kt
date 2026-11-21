@@ -253,6 +253,29 @@ class AniListApi(
         page: Int,
         perPage: Int = 30,
     ): AniListMediaPage? {
+        if (!filters.nsfw) return searchMediaOnce(query, filters, page, perPage, adultOnly = false)
+        // NSFW is on. AniList hides adult titles from a signed-in account whose own "display adult content"
+        // setting is off, and a plain trending list is dominated by ordinary shows, so a plain query alone
+        // can come back with no adult title at all. Ask for adult titles explicitly (without the account's
+        // token, so its setting cannot hide them) and show them first, followed by the ordinary results.
+        val adult = searchMediaOnce(query, filters, page, perPage, adultOnly = true)
+        if (query.isBlank() && filters.genres.isEmpty() && filters.tags.isEmpty()) return adult
+        val normal = searchMediaOnce(query, filters, page, perPage, adultOnly = false)
+        if (adult == null) return normal
+        if (normal == null) return adult
+        return AniListMediaPage(
+            media = (adult.media + normal.media).distinctBy { it.id },
+            hasNextPage = adult.hasNextPage || normal.hasNextPage,
+        )
+    }
+
+    private suspend fun searchMediaOnce(
+        query: String,
+        filters: AniListSearchFilters,
+        page: Int,
+        perPage: Int,
+        adultOnly: Boolean,
+    ): AniListMediaPage? {
         val hasText = query.isNotBlank()
         // No text and no filters means the Search tab's landing state: top trending titles.
         val defaultSort = when {
@@ -276,7 +299,7 @@ class AniListApi(
             filters.season?.takeIf { safeLiteral(it) }?.let { add("season: $it") }
             filters.year?.let { add("seasonYear: $it") }
             // Adult (18+) titles only come back when the NSFW switch in the filter sheet is on.
-            if (!filters.nsfw) add("isAdult: false")
+            if (!filters.nsfw) add("isAdult: false") else if (adultOnly) add("isAdult: true")
         }.joinToString(", ")
         val searchVar = if (hasText) ", ${'$'}search: String" else ""
         val gql = """
@@ -293,7 +316,7 @@ class AniListApi(
             put("perPage", perPage)
             if (hasText) put("search", query)
         }
-        val data = execute(gql, variables, cacheTtlMs = SEARCH_TTL_MS) ?: return null
+        val data = execute(gql, variables, cacheTtlMs = SEARCH_TTL_MS, anonymous = adultOnly) ?: return null
         val pageObj = data["Page"]?.jsonObject ?: return null
         return AniListMediaPage(
             media = pageObj["media"]?.jsonArray.orEmpty().mapNotNull { it.jsonObject.toMedia() },
@@ -1056,7 +1079,7 @@ class AniListApi(
     ): JsonObject? {
         if (cacheTtlMs <= 0L) return executeUncached(query, variables, idempotent, anonymous)
         // The signed-in user is part of the key, so logging in or out never shows the other account's data.
-        val key = "${authManager.accessToken.value.orEmpty().hashCode()}|$query|${variables.entries.joinToString(", ")}"
+        val key = "${if (anonymous) "anon" else authManager.accessToken.value.orEmpty().hashCode().toString()}|$query|${variables.entries.joinToString(", ")}"
         freshCached(key, cacheTtlMs)?.let {
             cachedAnswers.incrementAndGet()
             return it
@@ -1084,7 +1107,7 @@ class AniListApi(
                 return@withLock onDisk.data
             }
             try {
-                val data = executeUncached(query, variables, idempotent)
+                val data = executeUncached(query, variables, idempotent, anonymous)
                 if (data != null) {
                     storeCached(key, data)
                     diskCache.write(key, data)

@@ -22,6 +22,9 @@ enum class ApiErrorKind {
     /** HTTP 5xx. */
     SERVER,
 
+    /** AniList answered on purpose that this account may not use the feature (HTTP 500 "Feature Blocked"). */
+    FEATURE_BLOCKED,
+
     /** HTTP 401/403, e.g. an expired AniList token. */
     UNAUTHORIZED,
     NOT_FOUND,
@@ -52,6 +55,7 @@ class ApiException(
             ApiErrorKind.TIMEOUT -> "The server took too long to respond. Please try again."
             ApiErrorKind.RATE_LIMITED -> "Too many requests. Wait a moment and try again."
             ApiErrorKind.SERVER -> "The server is having trouble right now. Try again shortly."
+            ApiErrorKind.FEATURE_BLOCKED -> "AniList isn't letting this account post comments or start discussions. This is a restriction on the AniList account, not an outage."
             ApiErrorKind.UNAUTHORIZED -> "Your AniList session is no longer valid. Sign in again from My Space."
             ApiErrorKind.NOT_FOUND -> "That title couldn't be found."
             ApiErrorKind.BAD_REQUEST -> "The server rejected that request."
@@ -79,6 +83,8 @@ class ApiException(
 /** Maps an HTTP status (plus the optional `Retry-After` header and server message) to an [ApiException]. */
 fun httpApiException(code: Int, retryAfterSeconds: Long?, detail: String?): ApiException {
     val kind = when {
+        // AniList sends this as a 500, but it is a deliberate answer about the account, not an outage.
+        detail?.contains("feature blocked", ignoreCase = true) == true -> ApiErrorKind.FEATURE_BLOCKED
         code == 429 -> ApiErrorKind.RATE_LIMITED
         code == 401 || code == 403 -> ApiErrorKind.UNAUTHORIZED
         code == 404 -> ApiErrorKind.NOT_FOUND

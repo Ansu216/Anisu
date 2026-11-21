@@ -227,7 +227,16 @@ fun EpisodeInfoPane(
                 // A source that gives no usable number (0 or -1) falls back to the episode's place in the list.
                 val commentsEpisode = state.episode?.episodeNumber?.toInt()?.takeIf { it > 0 }
                     ?: (currentIndex + 1).takeIf { currentIndex >= 0 }
-                if (commentsMedia != null && commentsEpisode != null && commentsEpisode > 0) {
+                val commentsIsMovie = (state.anime?.format).equals("MOVIE", ignoreCase = true)
+                if (commentsMedia != null && commentsIsMovie) {
+                    // A movie has no episode to match a discussion to, so all of the title's discussions show.
+                    MovieCommentsSection(
+                        container = container,
+                        mediaId = commentsMedia,
+                        mediaTitle = state.anime?.title.orEmpty(),
+                        modifier = Modifier.padding(top = 20.dp),
+                    )
+                } else if (commentsMedia != null && commentsEpisode != null && commentsEpisode > 0) {
                     EpisodeCommentsSection(
                         container = container,
                         mediaId = commentsMedia,

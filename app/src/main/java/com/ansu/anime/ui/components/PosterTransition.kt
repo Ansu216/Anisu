@@ -6,6 +6,7 @@ import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -78,16 +79,16 @@ object PosterTransition {
      * clock, so the window used to appear already half open. The open therefore waits this long before it starts
      * moving, which gives that first frame time to finish; the close has nothing to compose and needs no wait.
      */
-    private const val OPEN_START_DELAY_MILLIS = 90
+    private const val OPEN_START_DELAY_MILLIS = 60
 
     /** Close: a little quicker than the open, as a launcher does. */
     const val CLOSE_MILLIS = 320
 
     /** Two-stage open (the "Your Next Watch" cards): sides to the screen edges, then top and bottom to the corners. */
-    const val STAGED_OPEN_MILLIS = 760
+    const val STAGED_OPEN_MILLIS = 520
 
     /** Two-stage close: the same path back, a little quicker, landing softly in the card. */
-    const val STAGED_CLOSE_MILLIS = 560
+    const val STAGED_CLOSE_MILLIS = 400
 
     /** Progress at which the open's first stage (sides to the edges) ends and the second (top and bottom) begins. */
     internal const val STAGE_SPLIT = 0.38f
@@ -98,8 +99,15 @@ object PosterTransition {
     /** Stage two: top and bottom travel to the corners. Ease-out, continuing from where stage one ended. */
     internal val StageTwoEasing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
 
-    /** The close eases the progress itself: it leaves briskly and settles softly into the card. */
-    private val StagedCloseEasing = CubicBezierEasing(0.15f, 0.55f, 0.3f, 1f)
+    /**
+     * Plays an easing backwards in time. The staged windows are shaped by ease-out curves that suit the open; run in
+     * reverse by the close, those same curves would creep away from the page at first and then hit the card at full
+     * speed. Mirrored, the close leaves briskly and settles softly into the card, the way the open leaves it.
+     */
+    internal fun mirrored(easing: Easing): Easing = Easing { x -> 1f - easing.transform(1f - x) }
+
+    internal val StageOneCloseEasing = mirrored(StageOneEasing)
+    internal val StageTwoCloseEasing = mirrored(StageTwoEasing)
 
     private val OpenEasing = CubicBezierEasing(0.3f, 0f, 0f, 1f)
 
@@ -165,7 +173,7 @@ object PosterTransition {
         }
 
     internal fun closeSpec(staged: Boolean = false) =
-        if (staged) tween<Float>(durationMillis = STAGED_CLOSE_MILLIS, easing = StagedCloseEasing) else tween<Float>(durationMillis = CLOSE_MILLIS, easing = CloseEasing)
+        if (staged) tween<Float>(durationMillis = STAGED_CLOSE_MILLIS, easing = LinearEasing) else tween<Float>(durationMillis = CLOSE_MILLIS, easing = CloseEasing)
 
     /** True when [entryId] has been opened before, i.e. this is a return to it (from the player, say), not a first open. */
     fun hasClaimed(entryId: String): Boolean = claimed.containsKey(entryId)
@@ -342,10 +350,11 @@ private fun windowBounds(
     p: Float,
     staged: Boolean = false,
     breathPx: Float = 0f,
+    closing: Boolean = false,
 ): Rect {
     if (origin == null) return Rect(0f, 0f, containerSize.width, containerSize.height)
     val from = origin.translate(-containerOffset.x, -containerOffset.y)
-    if (staged) return stagedWindowBounds(from, containerSize, p, breathPx)
+    if (staged) return stagedWindowBounds(from, containerSize, p, breathPx, closing)
     return Rect(
         left = lerp(from.left, 0f, p),
         top = lerp(from.top, 0f, p),
@@ -362,12 +371,14 @@ private fun windowBounds(
  * top and the bottom edge to the bottom at the same time, until the window reaches the four corners. Each stage has
  * its own ease-out curve and the second starts exactly where the first ends, so the motion never stops or steps.
  */
-private fun stagedWindowBounds(from: Rect, containerSize: Size, p: Float, breathPx: Float): Rect {
+private fun stagedWindowBounds(from: Rect, containerSize: Size, p: Float, breathPx: Float, closing: Boolean = false): Rect {
     val split = PosterTransition.STAGE_SPLIT
+    val one = if (closing) PosterTransition.StageOneCloseEasing else PosterTransition.StageOneEasing
+    val two = if (closing) PosterTransition.StageTwoCloseEasing else PosterTransition.StageTwoEasing
     val stripTop = from.top - breathPx
     val stripBottom = from.bottom + breathPx
     return if (p <= split) {
-        val t = PosterTransition.StageOneEasing.transform((p / split).coerceIn(0f, 1f))
+        val t = one.transform((p / split).coerceIn(0f, 1f))
         Rect(
             left = lerp(from.left, 0f, t),
             top = lerp(from.top, stripTop, t),
@@ -375,7 +386,7 @@ private fun stagedWindowBounds(from: Rect, containerSize: Size, p: Float, breath
             bottom = lerp(from.bottom, stripBottom, t),
         )
     } else {
-        val t = PosterTransition.StageTwoEasing.transform(((p - split) / (1f - split)).coerceIn(0f, 1f))
+        val t = two.transform(((p - split) / (1f - split)).coerceIn(0f, 1f))
         Rect(
             left = 0f,
             top = lerp(stripTop, 0f, t),
@@ -389,13 +400,15 @@ private fun stagedWindowBounds(from: Rect, containerSize: Size, p: Float, breath
  * Corner radius of the two-stage window: the card's own radius softens to [midPx] as the sides reach the screen
  * edges, then grows to the phone's screen-corner radius ([screenPx]) as the window reaches full size.
  */
-private fun stagedCornerPx(posterPx: Float, midPx: Float, screenPx: Float, p: Float): Float {
+private fun stagedCornerPx(posterPx: Float, midPx: Float, screenPx: Float, p: Float, closing: Boolean = false): Float {
     if (p >= 0.999f) return 0f
     val split = PosterTransition.STAGE_SPLIT
+    val one = if (closing) PosterTransition.StageOneCloseEasing else PosterTransition.StageOneEasing
+    val two = if (closing) PosterTransition.StageTwoCloseEasing else PosterTransition.StageTwoEasing
     return if (p <= split) {
-        lerp(posterPx, midPx, PosterTransition.StageOneEasing.transform((p / split).coerceIn(0f, 1f)))
+        lerp(posterPx, midPx, one.transform((p / split).coerceIn(0f, 1f)))
     } else {
-        lerp(midPx, screenPx, PosterTransition.StageTwoEasing.transform(((p - split) / (1f - split)).coerceIn(0f, 1f)))
+        lerp(midPx, screenPx, two.transform(((p - split) / (1f - split)).coerceIn(0f, 1f)))
     }
 }
 
@@ -505,8 +518,8 @@ fun AnimatedContentScope.PosterExpandContainer(
                     alpha = (p * 2f).coerceIn(0f, 1f)
                     compositingStrategy = CompositingStrategy.ModulateAlpha
                 } else {
-                    val bounds = windowBounds(originBounds, container.offset, size, p, staged, breathPx)
-                    val radius = (if (staged) stagedCornerPx(posterCornerPx, stagedMidCornerPx, screenCornerPx, p) else windowCornerPx(posterCornerPx, screenCornerPx, p))
+                    val bounds = windowBounds(originBounds, container.offset, size, p, staged, breathPx, closing)
+                    val radius = (if (staged) stagedCornerPx(posterCornerPx, stagedMidCornerPx, screenCornerPx, p, closing) else windowCornerPx(posterCornerPx, screenCornerPx, p))
                         .coerceAtMost(minOf(bounds.width, bounds.height) / 2f)
                     shape = WindowShape(bounds, radius, shapePath)
                     clip = true
@@ -522,7 +535,7 @@ fun AnimatedContentScope.PosterExpandContainer(
                 cover = originCover,
                 bounds = origin.bounds,
                 boundsAt = { containerSize ->
-                    windowBounds(origin.bounds, container.offset, containerSize, progress.value, staged, breathPx)
+                    windowBounds(origin.bounds, container.offset, containerSize, progress.value, staged, breathPx, closing)
                 },
                 alpha = {
                     if (staged) ((0.82f - progress.value) / 0.40f).coerceIn(0f, 1f) else ((0.75f - progress.value) / 0.25f).coerceIn(0f, 1f)
@@ -537,7 +550,7 @@ fun AnimatedContentScope.PosterExpandContainer(
                 posterUrl = origin.posterUrl,
                 posterBounds = origin.bounds,
                 boundsAt = { containerSize ->
-                    windowBounds(origin.bounds, container.offset, containerSize, progress.value, staged, breathPx)
+                    windowBounds(origin.bounds, container.offset, containerSize, progress.value, staged, breathPx, closing)
                 },
                 // Opaque while the window is near the poster, gone once the page fills it; played the other
                 // way on close. Keeping it opaque a little longer hides the shrinking page instead of

@@ -39,17 +39,17 @@ class AniListRepository(
      * [fallback] is returned so the screen shows its empty state instead of crashing. Cancellation
      * is rethrown; swallowing it would keep a cancelled coroutine running.
      */
-    private suspend fun <T> guarded(what: String, fallback: T, quiet: Boolean = false, block: suspend () -> T): T =
+    private suspend fun <T> guarded(what: String, fallback: T, quiet: Boolean = false, tracksOutage: Boolean = true, block: suspend () -> T): T =
         try {
             block()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             val apiError = e.toApiException()
-            if (errors.isAmbiguous(apiError) && probeSaysDown()) {
+            if (tracksOutage && errors.isAmbiguous(apiError) && probeSaysDown()) {
                 errors.confirmOutage(apiError)
             }
-            errors.report(what, apiError, quiet, tracksOutage = true)
+            errors.report(what, apiError, quiet, tracksOutage = tracksOutage)
             fallback
         }
 
@@ -324,18 +324,18 @@ class AniListRepository(
     /** Posts a comment (or a reply); the new comment's id, or null when signed out or AniList refused it. */
     suspend fun postComment(threadId: Int, text: String, parentCommentId: Int? = null): Int? {
         if (!authManager.isLoggedIn) return null
-        return guarded<Int?>("Posting your comment", null) { api.saveThreadComment(threadId, text, parentCommentId) }
+        return guarded<Int?>("Posting your comment", null, tracksOutage = false) { api.saveThreadComment(threadId, text, parentCommentId) }
     }
 
     /** Opens a discussion thread about a show; its id, or null when signed out or AniList refused it. */
     suspend fun startThread(mediaId: Int, title: String, body: String): Int? {
         if (!authManager.isLoggedIn) return null
-        return guarded<Int?>("Starting the discussion", null) { api.saveThread(mediaId, title, body) }
+        return guarded<Int?>("Starting the discussion", null, tracksOutage = false) { api.saveThread(mediaId, title, body) }
     }
 
     suspend fun toggleCommentLike(commentId: Int): Boolean {
         if (!authManager.isLoggedIn) return false
-        return guarded("Updating your like", false) { api.toggleCommentLike(commentId) }
+        return guarded("Updating your like", false, tracksOutage = false) { api.toggleCommentLike(commentId) }
     }
 
     /** The user's heart and list entry for a show; null when signed out or the request failed. */

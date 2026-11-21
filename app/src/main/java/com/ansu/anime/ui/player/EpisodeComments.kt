@@ -271,3 +271,160 @@ private fun PreviewComment(comment: AniListComment) {
         }
     }
 }
+
+/** The discussions of a movie: a movie has no episode to match a thread to, so every discussion the title has is listed. */
+data class MovieCommentsState(
+    val loading: Boolean = true,
+    val failed: Boolean = false,
+    /** The busiest discussions of the title, most replies first. */
+    val threads: List<AniListThread> = emptyList(),
+    val total: Int = 0,
+    val creating: Boolean = false,
+)
+
+class MovieCommentsViewModel(
+    private val repository: AniListRepository,
+    private val mediaId: Int,
+    private val mediaTitle: String,
+) : ViewModel() {
+    private val _state = MutableStateFlow(MovieCommentsState())
+    val state: StateFlow<MovieCommentsState> = _state
+
+    init {
+        load()
+    }
+
+    fun load() {
+        _state.value = MovieCommentsState(loading = true)
+        viewModelScope.launch {
+            val page = repository.getMediaThreadsPage(mediaId, 1)
+            _state.value = if (page == null) {
+                MovieCommentsState(loading = false, failed = true)
+            } else {
+                MovieCommentsState(
+                    loading = false,
+                    threads = page.threads.sortedByDescending { it.replyCount },
+                    total = maxOf(page.total, page.threads.size),
+                )
+            }
+        }
+    }
+
+    /** Opens a discussion about the movie (the reader is signed in); the list reloads to show it. */
+    fun startDiscussion() {
+        if (_state.value.creating) return
+        _state.value = _state.value.copy(creating = true)
+        viewModelScope.launch {
+            val id = repository.startThread(
+                mediaId = mediaId,
+                title = "$mediaTitle - Discussion",
+                body = "What did you think of $mediaTitle? Share your thoughts below.",
+            )
+            if (id != null) load() else _state.value = _state.value.copy(creating = false)
+        }
+    }
+}
+
+/**
+ * "Comments" for a movie in the portrait player: all of the title's AniList discussions (there is no episode to pick
+ * one by), the busiest few listed here and "View all discussions" opening the full list in the comments sheet.
+ */
+@Composable
+fun MovieCommentsSection(
+    container: AppContainer,
+    mediaId: Int,
+    mediaTitle: String,
+    modifier: Modifier = Modifier,
+) {
+    val viewModel: MovieCommentsViewModel = viewModel(
+        key = "movie-comments-$mediaId",
+        factory = viewModelFactory { initializer { MovieCommentsViewModel(container.aniListRepository, mediaId, mediaTitle) } },
+    )
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val signedIn by container.aniListRepository.isLoggedIn.collectAsStateWithLifecycle()
+    // Null: the sheet is closed. Otherwise it opens on the list, or straight on the chosen discussion.
+    var sheet by remember { mutableStateOf<MovieSheet?>(null) }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+            Text("Comments", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            if (state.total > 0) Text("  ${state.total}", color = AnsuColors.TextSecondary, fontSize = 14.sp)
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.White.copy(alpha = 0.07f))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            when {
+                state.loading -> CircularProgressIndicator(
+                    color = AnsuColors.Accent,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(22.dp).align(Alignment.CenterHorizontally),
+                )
+                state.failed -> {
+                    Text("Couldn't load the discussions.", color = AnsuColors.TextSecondary, fontSize = 14.sp)
+                    TextButton(onClick = viewModel::load) { Text("Try again") }
+                }
+                state.threads.isEmpty() -> {
+                    Text("Nobody has opened a discussion for this movie on AniList yet.", color = AnsuColors.TextSecondary, fontSize = 14.sp)
+                    if (signedIn) {
+                        TextButton(onClick = viewModel::startDiscussion, enabled = !state.creating) {
+                            Text(if (state.creating) "Starting…" else "Start the discussion")
+                        }
+                    } else {
+                        Text("Sign in with AniList (My Space) to start one.", color = AnsuColors.TextTertiary, fontSize = 13.sp)
+                    }
+                }
+                else -> {
+                    state.threads.take(MOVIE_PREVIEW_THREADS).forEach { thread ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().clickable { sheet = MovieSheet(thread) },
+                        ) {
+                            Text(
+                                thread.title,
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "  ${thread.replyCount} ${if (thread.replyCount == 1) "reply" else "replies"}",
+                                color = AnsuColors.TextSecondary,
+                                fontSize = 12.sp,
+                            )
+                        }
+                    }
+                    Text(
+                        text = "View all discussions",
+                        color = AnsuColors.Accent,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable { sheet = MovieSheet(null) },
+                    )
+                }
+            }
+        }
+    }
+
+    sheet?.let { open ->
+        CommentsSheet(
+            container = container,
+            mediaId = mediaId,
+            mediaTitle = mediaTitle,
+            onDismiss = {
+                sheet = null
+                viewModel.load()
+            },
+            initialThread = open.thread,
+        )
+    }
+}
+
+private class MovieSheet(val thread: AniListThread?)
+
+private const val MOVIE_PREVIEW_THREADS = 3
