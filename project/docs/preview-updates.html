@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Anisu · anteprima schermate Updates / About</title>
+<style>
+  :root{
+    --bg:#07080B; --elev:#0F1015; --glass:#1B1D27; --stroke:rgba(255,255,255,.08);
+    --t1:#F3F4F6; --t2:#A0A3B1; --t3:#6B6E7C;
+    --accent:#A78BFA; --accent-soft:rgba(167,139,250,.16);
+    --ok:#4CD137; --err:#E0605A;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:28px;background:#050609;color:var(--t1);
+       font-family:Inter,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--t3);font-size:13px;margin:0 0 22px}
+  .row{display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap}
+  figure{margin:0}
+  figcaption{font-size:12px;color:var(--t3);margin-top:10px;max-width:390px;line-height:1.5}
+  figcaption b{color:var(--t1)}
+  .phone{width:390px;height:800px;background:var(--bg);border:1px solid #1d1f27;border-radius:30px;
+         overflow:hidden;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .status{height:26px;display:flex;justify-content:space-between;align-items:center;
+          padding:0 18px;font-size:11px;color:var(--t2)}
+  .back{display:flex;align-items:center;gap:14px;padding:6px 18px 0}
+  .back span{font-size:22px;color:var(--t1)}
+  .content{padding:14px 16px 24px;overflow:hidden}
+  .page-title{font-size:28px;font-weight:800;letter-spacing:-.3px;margin:6px 0 16px}
+  /* glass card = FrostedGlassCard(tintAlpha .4 / .5) */
+  .card{background:linear-gradient(180deg,rgba(27,29,39,.5),rgba(27,29,39,.42));
+        border:1px solid var(--stroke);border-radius:20px;backdrop-filter:blur(14px);margin-bottom:14px}
+  .card.hero{background:linear-gradient(180deg,rgba(167,139,250,.20),rgba(15,16,21,.9));
+             border:1px solid var(--stroke);border-radius:24px}
+  .pad{padding:16px}
+  .grp-label{font-size:11px;letter-spacing:.3px;font-weight:600;color:var(--t3);
+             text-transform:uppercase;margin:18px 0 8px 16px}
+  .grp-label:first-child{margin-top:0}
+  /* one settings row */
+  .r{display:flex;align-items:center;gap:14px;padding:15px 16px}
+  .r + .r{border-top:1px solid var(--stroke)}
+  .tile{width:40px;height:40px;border-radius:50%;background:var(--accent-soft);color:var(--accent);
+        display:flex;align-items:center;justify-content:center;font-size:17px;flex:none}
+  .tile.plain{background:transparent;color:var(--accent);font-size:20px}
+  .txt{flex:1;min-width:0}
+  .t{font-size:15px;font-weight:600;line-height:1.35}
+  .d{font-size:14px;color:var(--t2);line-height:1.45;margin-top:2px}
+  .d.ok{color:var(--ok)} .d.err{color:var(--err)} .d.acc{color:var(--accent)}
+  .trail{font-size:13px;color:var(--t2);flex:none;display:flex;align-items:center;gap:10px}
+  .trail.acc{color:var(--accent);font-weight:700}
+  .chev{color:var(--t3);font-size:16px}
+  /* vivi-style switch with a glyph in the thumb */
+  .sw{width:46px;height:27px;border-radius:14px;background:var(--accent);position:relative;flex:none}
+  .sw.off{background:rgba(255,255,255,.16)}
+  .sw i{position:absolute;top:3px;right:3px;width:21px;height:21px;border-radius:50%;background:#fff;
+        color:var(--accent);font-size:12px;font-style:normal;display:flex;align-items:center;
+        justify-content:center;font-weight:800}
+  .sw.off i{left:3px;right:auto;color:var(--t3)}
+  /* segmented channel control */
+  .seg{display:flex;height:46px;border-radius:23px;background:rgba(27,29,39,.45);
+       border:1px solid var(--stroke);padding:4px;gap:4px}
+  .seg div{flex:1;display:flex;align-items:center;justify-content:center;border-radius:19px;
+           font-size:13px;color:var(--t2);font-weight:500}
+  .seg .on{background:var(--accent);color:#fff;font-weight:700}
+  /* buttons */
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;height:44px;border-radius:20px;
+       background:var(--accent);color:#fff;font-weight:700;font-size:14px}
+  .btn.ghost{background:transparent;border:1px solid var(--stroke);color:var(--t1);font-weight:500}
+  .bars{height:6px;border-radius:3px;background:var(--accent-soft);margin-top:10px;position:relative}
+  .bars i{position:absolute;inset:0 38% 0 0;background:var(--accent);border-radius:3px}
+  .note{font-size:11px;color:var(--t3);margin-top:12px;line-height:1.5}
+  .pill{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);border-radius:20px;
+        padding:6px 14px;font-size:11px;font-weight:600;color:var(--t1)}
+  .diff{background:rgba(167,139,250,.10);border:1px dashed rgba(167,139,250,.45);border-radius:12px;
+        padding:8px 10px;font-size:12px;color:#D9D2FF;margin-bottom:14px}
+</style>
+</head>
+<body>
+  <h1>Anisu · Updates &amp; About — anteprime da scegliere</h1>
+  <p class="sub">Stessi token reali dell'app: background #07080B, card <code>FrostedGlassCard</code> (#1B1D27 a 40–50% + bordo bianco 8%), accent viola #A78BFA, testo #F3F4F6 / #A0A3B1 / #6B6E7C.</p>
+
+  <div class="row">
+    <!-- ================= VARIANTE A ================= -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>11:46</span><span>65%</span></div>
+        <div class="back"><span>&#8592;</span></div>
+        <div class="content">
+          <div class="page-title">Updates</div>
+
+          <div class="card hero">
+            <div class="r" style="padding:18px">
+              <div class="tile" style="width:44px;height:44px;font-size:20px">&#8635;</div>
+              <div class="txt">
+                <div class="t" style="font-size:17px">Anisu 0.2.0-nightly</div>
+                <div class="d ok">Aggiornato · controllato poco fa</div>
+              </div>
+              <div class="chev" style="font-size:20px">&#8635;</div>
+            </div>
+          </div>
+
+          <div class="grp-label">Build</div>
+          <div class="card">
+            <div class="r">
+              <div class="tile">&#8681;</div>
+              <div class="txt"><div class="t">Aggiornamento di sistema</div></div>
+              <div class="trail acc">Nuova build</div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r">
+              <div class="tile">&#8505;</div>
+              <div class="txt"><div class="t">Versione installata</div></div>
+              <div class="trail">0.2.0-nightly</div>
+            </div>
+            <div class="r">
+              <div class="tile">&#35;</div>
+              <div class="txt"><div class="t">Version code</div></div>
+              <div class="trail">2026101201</div>
+            </div>
+          </div>
+
+          <div class="grp-label">Canale e controllo automatico</div>
+          <div class="card">
+            <div class="r">
+              <div class="tile">&#8646;</div>
+              <div class="txt">
+                <div class="t">Canale</div>
+                <div class="d">Nightly: build orarie dal branch apk-nightly</div>
+              </div>
+              <div class="trail">Nightly</div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r">
+              <div class="tile">&#10003;</div>
+              <div class="txt">
+                <div class="t">Controlla automaticamente</div>
+                <div class="d">All'apertura e ogni 12 ore</div>
+              </div>
+              <div class="sw"><i>&#10003;</i></div>
+            </div>
+            <div class="r">
+              <div class="tile">&#9993;</div>
+              <div class="txt">
+                <div class="t">Notifiche</div>
+                <div class="d">Avviso di sistema quando esce una build</div>
+              </div>
+              <div class="trail">Attive</div>
+              <div class="chev">&#8250;</div>
+            </div>
+          </div>
+
+          <div class="grp-label">Archivio</div>
+          <div class="card">
+            <div class="r">
+              <div class="tile">&#128465;</div>
+              <div class="txt">
+                <div class="t">Cancella APK scaricati</div>
+                <div class="d err">2 APK nella cache</div>
+              </div>
+              <div class="chev">&#8505;</div>
+            </div>
+            <div class="r">
+              <div class="tile">&#9776;</div>
+              <div class="txt">
+                <div class="t">Changelog</div>
+                <div class="d">Cosa è cambiato in questa build</div>
+              </div>
+              <div class="chev">&#8250;</div>
+            </div>
+          </div>
+
+          <div class="note">Le build sono pubblicate dal repository ufficiale (github.com/Ansu216/Anisu). Android verifica la firma prima di installare.</div>
+        </div>
+      </div>
+      <figcaption><b>Variante A — vivi-music adattato al black glass.</b> Titolo grande, gruppi di righe icona+titolo+descrizione, interruttori con la spunta dentro il pomello, nessuna card "hero" grande. Righe nuove: Version code, Canale come riga, Cancella APK scaricati, Changelog.</figcaption>
+    </figure>
+
+    <!-- ================= VARIANTE B ================= -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>11:46</span><span>65%</span></div>
+        <div class="back"><span>&#8592;</span><span style="font-size:20px;font-weight:700">Updates</span></div>
+        <div class="content">
+          <div class="card hero" style="margin-top:14px">
+            <div class="pad">
+              <div style="display:flex;align-items:center;gap:16px">
+                <div class="tile" style="width:44px;height:44px;font-size:20px">&#8635;</div>
+                <div class="txt">
+                  <div class="t" style="font-size:19px;font-weight:800">Anisu 0.2.0-nightly</div>
+                  <div class="d">Version code 2026101201 &middot; Nightly</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="pad">
+              <div class="t" style="margin-bottom:12px">Canale</div>
+              <div class="seg"><div>Releases</div><div class="on">Nightly</div></div>
+              <div class="note" style="margin-top:8px">Build orarie dal branch apk-nightly — novità prima, bug prima.</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="pad">
+              <div class="t" style="margin-bottom:12px">Stato</div>
+              <div class="r" style="padding:0 0 12px;border:0">
+                <div class="tile" style="width:32px;height:32px;background:var(--accent-soft)">&#10003;</div>
+                <div class="txt"><div class="t" style="font-size:14px">Anisu 0.2.1-nightly è disponibile</div>
+                  <div class="d">Costruita 3 ore fa</div></div>
+              </div>
+              <div class="btn">&#8681;&nbsp; Scarica e installa</div>
+              <div class="bars"><i></i></div>
+              <div class="note">Download 38% — il file riprende da dove si era fermato.</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="pad">
+              <div class="t" style="margin-bottom:12px">Controllo automatico</div>
+              <div class="r" style="padding:0;border:0">
+                <div class="txt"><div class="t" style="font-size:14px">All'apertura e ogni 12 ore</div>
+                  <div class="d">Avviso di sistema quando esce una build</div></div>
+                <div class="sw"><i>&#10003;</i></div>
+              </div>
+              <div style="height:10px"></div>
+              <div class="btn ghost" style="height:38px;font-size:13px">Invia una notifica di prova</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="r">
+              <div class="tile">&#8505;</div>
+              <div class="txt"><div class="t">Version code</div></div>
+              <div class="trail">2026101201</div>
+            </div>
+            <div class="r">
+              <div class="tile">&#128465;</div>
+              <div class="txt"><div class="t">Cancella APK scaricati</div><div class="d err">2 APK nella cache</div></div>
+              <div class="chev">&#8505;</div>
+            </div>
+            <div class="r">
+              <div class="tile">&#9776;</div>
+              <div class="txt"><div class="t">Changelog</div><div class="d">Cosa è cambiato in questa build</div></div>
+              <div class="chev">&#8250;</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <figcaption><b>Variante B — ibrida.</b> Tiene la card hero e il selettore a pillole di Anisu (che già conosci) e ci innesta le righe compatte di vivi-music sotto: stato con download, controllo automatico, Version code, APK in cache, Changelog. Cambia meno e resta riconoscibile come Anisu.</figcaption>
+    </figure>
+
+    <!-- ================= ABOUT ================= -->
+    <figure>
+      <div class="phone">
+        <div class="status"><span>11:46</span><span>65%</span></div>
+        <div class="back"><span>&#8592;</span></div>
+        <div class="content">
+          <div class="page-title">About</div>
+
+          <div class="diff">QUI IL FIX DELLE "DUE VERSIONI": <b>una sola riga di versione</b> nel riquadro (nome + canale), e il version code scende in una riga propria.</div>
+
+          <div class="card hero">
+            <div class="pad" style="display:flex;align-items:center;gap:16px">
+              <div class="tile" style="width:56px;height:56px;border-radius:18px;font-size:24px">&#9650;</div>
+              <div class="txt">
+                <div class="t" style="font-size:24px;font-weight:800">Anisu</div>
+                <div class="d">Anime, dove vuoi guardarlo</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="r">
+              <div class="tile">&#8635;</div>
+              <div class="txt">
+                <div class="t">Versione</div>
+                <div class="d">0.2.0-nightly &middot; Nightly</div>
+              </div>
+            </div>
+            <div class="r">
+              <div class="tile">&#35;</div>
+              <div class="txt"><div class="t">Version code</div></div>
+              <div class="trail">2026101201</div>
+            </div>
+            <div class="r">
+              <div class="tile">&#8681;</div>
+              <div class="txt"><div class="t">Aggiornamenti</div><div class="d">Canale, controllo automatico e installazione</div></div>
+              <div class="chev">&#8250;</div>
+            </div>
+          </div>
+
+          <div class="grp-label">Il progetto</div>
+          <div class="card">
+            <div class="r">
+              <div class="tile">&#9786;</div>
+              <div class="txt"><div class="t">Sviluppatore</div><div class="d">Ansuman Sahu · @Ansu216</div></div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r">
+              <div class="tile">&#9783;</div>
+              <div class="txt"><div class="t">Contributors</div><div class="d">Chi costruisce e testa Anisu</div></div>
+              <div class="chev">&#8250;</div>
+            </div>
+            <div class="r">
+              <div class="tile">&#8599;</div>
+              <div class="txt"><div class="t">Repository</div><div class="d">github.com/Ansu216/Anisu</div></div>
+              <div class="chev">&#8250;</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <figcaption><b>About — correzione delle due versioni.</b> Prima c'erano due pill: "Version 0.2.0-nightly-2026.10.11.1900" e "2026101201 · Nightly" (nome e codice mescolati, e il timestamp rendeva la pill lunghissima). Ora: una riga "0.2.0-nightly · Nightly" e il version code in una riga con la sua etichetta.</figcaption>
+    </figure>
+  </div>
+</body>
+</html>

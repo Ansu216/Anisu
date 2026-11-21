@@ -1,0 +1,9 @@
+# Baseline profile: tells Android to compile Anisu's own code, Compose and the image loader ahead of time at install,
+# so the first open/close animation, the first scroll and the first screen are not run by the slower interpreter / JIT
+# while it warms up (the usual cause of a stutter the first few times a screen opens after an install or update).
+HSPLcom/ansu/anime/**->**(**)**
+HSPLandroidx/compose/**->**(**)**
+HSPLcoil/**->**(**)**
+Lcom/ansu/anime/**;
+Landroidx/compose/**;
+Lcoil/**;

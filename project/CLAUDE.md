@@ -1,0 +1,731 @@
+# CLAUDE.md
+
+Instructions for **Claude Code** (and any other AI agent) working in this
+repository. Claude Code loads this file automatically.
+
+**Read the whole file before your first edit.** Section 4 is the exact build
+procedure — following it is what keeps the build green. Section 5 lists the traps
+that have broken this build before. Section 7 is mandatory: every change touches
+`CHANGELOG.md` and `CHANGELOG.dev.md`.
+
+## Before you start
+
+1. Run the build once, as it is, before changing anything:
+   `./gradlew assembleDebug assembleRelease --console=plain`. It must be green on
+   an untouched tree. If it is not, that is the problem to fix first — do not
+   start a feature on top of a red build.
+2. Fix the user's actual request. Do not refactor, rename or "tidy up" working
+   code that the request does not need (§6).
+3. When you are done: green build (§4), APK identity unchanged (§4.4), entries in
+   `CHANGELOG.md` **and** `CHANGELOG.dev.md` (§7), and no commit unless the user asked for one (§8).
+
+## 1. Project overview
+
+**Anisu** is an Android client for [AniList](https://anilist.co) with anime
+catalogue browsing, an airing schedule and news feed, library tracking and
+playback through pluggable sources (built-in demo source and
+extensions).
+
+- **Package / application id**: `com.ansu.anime`
+- **Display name**: `Anisu`
+- **Language/build**: Kotlin 2.1.0, Java 17 bytecode target, JDK 21 toolchain,
+  Gradle Kotlin DSL, Gradle 8.9 (wrapper committed), AGP 8.7.2.
+- **UI**: Jetpack Compose + Material 3, Navigation Compose, Coil for images.
+- **Data**: Room (KSP codegen), plain `SharedPreferences` for settings,
+  `EncryptedSharedPreferences` for the AniList token.
+- **Network**: OkHttp + `kotlinx.serialization`.
+- **Playback**: Media3 / ExoPlayer.
+- **SDK levels**: `minSdk 26` (Android 8.0), `targetSdk`/`compileSdk` 35.
+- **Version**: `version.txt` in the repository root is the single source of truth for
+  **all** of it — three value lines in the vivi-music-de shape, with `#` comment lines
+  ignored: line 1 version, line 2 version code, line 3 channel. `app/build.gradle.kts`
+  reads all three (each overridable per build with `-PversionName` / `-PversionCode` /
+  `-Pchannel`) and so do `apk-nightly.yml` and `release-apk.yml`. The **channel**
+  decides the name: a `nightly` build is `<version>-nightly` (e.g. `0.3.0-nightly`) and
+  is published to the `apk-nightly` branch, anything else keeps the plain `<version>`;
+  a release uses the pushed tag but the same version-code counter. The name carries no
+  timestamp: a build is identified by the commit it was made from (`-PbuildCommit`,
+  exposed as `BuildConfig.BUILD_COMMIT`), which is what the updater compares, because
+  the name and the version code are the same on every nightly by design. **The version code is a plain build number, bumped by
+  one per release and only ever increasing, and it must stay above every code that
+  has already been published.** The earlier workflows published date-coded
+  `YYYYMMDDHH` values up to `2026101200`, so the counter is `2026101201` and counts
+  up from there — a small, "tidier" number is lower than the codes installed on
+  people's phones, and Android reports a lower code to the user only as "the package
+  appears to be invalid", refusing the install. The number therefore never
+  decreases. **No file repeats it**: every place that needs the version or the
+  version code reads `version.txt`, and an update edits that file and `CHANGELOG.md`
+  and nothing else — the readers are listed in §7.4. Release notes are extracted
+  from `CHANGELOG.md` (see §7).
+
+### Do not bump the toolchain
+
+The exact versions above are the ones that build. **Do not upgrade Gradle, AGP,
+Kotlin, KSP, the Compose BOM or any library on your own initiative**, and do not
+run `./gradlew wrapper --gradle-version …`. An unrequested bump is the single
+most reliable way to turn a green build red, and the versions are intertwined
+(KSP must match Kotlin exactly: `2.1.0-1.0.29` for Kotlin `2.1.0`). A dependency
+or toolchain upgrade is a separate, explicitly requested task — and it comes with
+a `### Changed` entry in `CHANGELOG.md`.
+
+Adding a *new* dependency is done in two places, never one:
+`gradle/libs.versions.toml` (the version + the `[libraries]` alias) **and**
+`app/build.gradle.kts` (`implementation(libs.…)`). Declaring it in only one of
+them fails the build.
+
+## 2. Architecture and module structure
+
+`settings.gradle.kts` sets `rootProject.name = "Anisu"` and declares a single
+module: `:app`. There are no other Gradle modules — do not introduce one unless
+the user explicitly asks.
+
+Source root: `app/src/main/java/com/ansu/anime/`
+
+| Path | Role |
+|---|---|
+| `AnsuApp.kt` | `Application` subclass; builds the DI container |
+| `MainActivity.kt` | Single activity, hosts the Compose content |
+| `di/AppContainer.kt` | **Manual** dependency container (there is no Hilt/Koin) |
+| `ui/navigation/AnsuNavGraph.kt` | Navigation graph, `Dest` routes, `bottomNavDestinations` |
+| `ui/theme/Theme.kt` | `AnsuTheme` + the `AnsuColors` palette and type/shape scales |
+| `ui/components/Common.kt` | Shared composables (hero carousel, shelves, cards, chips, `PersonCard`) |
+| `ui/components/GlassSurface.kt` | `FrostedGlassCard` / `BottomScrim` glass surfaces |
+| `ui/components/AppBottomBar.kt` | Frosted bottom navigation bar (`AppBottomBar`, `NavBarSurface`) |
+| `ui/search/SearchSession.kt` | Search tab state (query, filters, results, scroll) kept for the life of the app so it survives opening a result |
+| `ui/components/Backdrop.kt` | Content-behind-the-bar blur: `backdropSource` on a tab's content, `frostedBackdrop` on the bar |
+| `ui/home` | Home screen + view model (continue watching, trending, season picks, shelves) |
+| `ui/schedule` | Schedule **and** News tab, its view model and UI models |
+| `ui/myspace` | "My Space" profile tab (Liked / Watching / Completed lists) |
+| `ui/appearance` | Appearance settings (nav-bar roundness, frostiness) |
+| `ui/about` | About: version, update channel + install, developer credit and links |
+| `ui/search`, `ui/details`, `ui/player` | Search, details (cast/crew sheet) and playback |
+| `ui/extensions`, `ui/settings`, `ui/auth` | Extensions, settings, AniList login |
+| `core/model/AnimeModels.kt` | `SAnime`, `SEpisode`, `MediaOrigin`, `Shelf` |
+| `core/util/` | `Formatting`, `MediaLabels`, `BioText` (cleans AniList bios), `SelectionHolder` |
+| `core/net/` | `ApiException` / `ApiErrorKind` and `ApiErrorHandler`: every API failure is reported here (log + snackbar in `MainActivity`) |
+| `data/db/AppDatabase.kt` | Room database |
+| `data/repository/` | Catalogue and continue-watching repositories |
+| `data/news/NewsRepository.kt` | News feed backing the Schedule screen's News tab |
+| `data/prefs/` | `SharedPreferences`-backed settings: `AppearancePrefs`, `UpdatePrefs` |
+| `data/update/` | Self-updater: `UpdateChecker` (GitHub Releases + `apk-nightly`), `UpdateInstaller`, `UpdateManager` |
+| `extension/` | Extension manager, repo, source tester and the `AnimeCatalogueSource` API; `extension/aniyomi/` loads Aniyomi/Keiyoushi APKs and adapts their sources |
+| `eu/kanade/tachiyomi/` | **Intentional non-Ansu package.** Re-implementation of the Aniyomi extension API (library 12-15) that extension APKs are compiled against. Class and package names must match Aniyomi's exactly; do not rename or move them (§5 branding rules do not apply here) |
+| `anilist/` | AniList GraphQL API (`AniListApi`), models, repository, OAuth manager |
+
+Dependency wiring flows `AnsuApp` → `AppContainer` → screens/view models. Pass
+dependencies explicitly; keep it that way.
+
+`build/` directories are generated and gitignored — never edit or commit them.
+
+## 3. Quick reference
+
+```bash
+./gradlew assembleDebug      # debug APK
+./gradlew assembleRelease    # minified release APK
+./gradlew clean              # wipe build output
+```
+
+Section 4 is the full procedure, including what to do when it fails.
+
+## 4. Build playbook — follow this exactly
+
+This is the procedure that produces a green build. Do not improvise around it.
+
+### 4.1 Environment
+
+- **JDK 21.** The Gradle toolchain requires it. `java -version` must report 21
+  (Temurin works). On a machine with several JDKs, set `JAVA_HOME` to the 21 one
+  (or put `org.gradle.java.home` in a **gitignored** `gradle.properties`) — never
+  commit a machine path. `local.properties` does **not** work for this: Gradle
+  reads `org.gradle.java.home` from `gradle.properties` only, so a Gradle started
+  on JDK 25 dies inside the Kotlin DSL before configuring, with
+  `java.lang.IllegalArgumentException: 25.0.5`.
+- **Android SDK** with `platforms;android-35` and `build-tools;35.0.0`.
+  `local.properties` must contain `sdk.dir=<path>` (or export
+  `ANDROID_SDK_ROOT`). `local.properties` is machine-local and **gitignored** —
+  never commit it, and never edit it in a commit.
+- **Network on the first run.** Gradle has to download the distribution and the
+  dependencies. After that, `--offline` is fine for a **debug** build.
+
+### 4.2 The commands
+
+```bash
+# The bar: zero errors AND zero warnings, both variants.
+./gradlew assembleDebug assembleRelease --console=plain
+```
+
+- Anything that prints `w:` is a failure for this repository, exactly like an
+  `e:`. Do not leave deprecation warnings behind.
+- Use `--console=plain` so the error list is not overwritten by a progress bar,
+  and grep it if it is long: `./gradlew … 2>&1 | grep '^e: '`.
+- **Do not pass `--offline` to a release build.** The release variant runs lint,
+  whose `lint-gradle` artifact is resolved lazily; with `--offline` it fails with
+  `No cached version of com.android.tools.lint:lint-gradle:… available for
+  offline mode`. That is a missing download, not a code error — rerun with the
+  network. If `assembleDebug` is green and `assembleRelease` fails on that
+  message, this is the cause.
+- Both variants are signed by the same committed key, so nothing extra has to be
+  configured to build a release.
+- There are **no unit tests** in this repository. `./gradlew test` and
+  `./gradlew connectedAndroidTest` have nothing to run; the build plus an APK
+  inspection (§4.4) is the verification.
+
+Optional extras, in increasing cost: `./gradlew lintDebug` (static analysis) and
+`./gradlew dependencies` (dependency graph) — neither is part of the check.
+
+### 4.3 When the build fails
+
+1. **Read only the first `e:` line, then the ones that share its file.** Kotlin
+   reports cascading nonsense after the first real error: one missing import can
+   produce dozens of `Unresolved reference` and even
+   `@Composable invocations can only happen from the context of a @Composable
+   function` errors in *other* files. Fix the first cause and rebuild before
+   reading further.
+2. `Redeclaration` / `Conflicting overloads` / `Overload resolution ambiguity`
+   means **two files declare the same top-level symbol**. Search the identifier
+   across `app/src/main/java` before adding anything new, and delete or rename the
+   duplicate. This exact failure is what broke the build before — see §5.
+3. `Unresolved reference: item` inside a `LazyColumn`/`LazyRow` — do not import
+   it, it is a member of `LazyListScope`. See §5.
+4. `Unresolved reference` for a Compose API you just used — check §5 for the
+   opt-in requirement and the icon variants before anything else.
+5. `No cached version … available for offline mode` — rerun without `--offline`
+   (§4.2).
+6. `Unsupported class file major version` / `Unsupported Java` — the JDK is not
+   21 (§4.1). Do not "fix" it by changing the Kotlin or Java target.
+7. Still stuck? Run `./gradlew assembleDebug --stacktrace` and read the
+   **first** `Caused by:`.
+
+**Never make a red build green by** deleting a file you do not understand,
+commenting out the failing code, weakening a rule in this document, changing the
+toolchain, or disabling a lint/compiler check. Fix the cause.
+
+### 4.4 Verifying a built APK
+
+`.apk` path: `app/build/outputs/apk/debug/app-debug.apk` and
+`app/build/outputs/apk/release/app-release.apk`.
+
+```bash
+"$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk
+# must report: package: name='com.ansu.anime'   application-label:'Anisu'   launchable-activity: com.ansu.anime.MainActivity
+
+"$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk
+# must report: Verified using v1/v2 scheme ... and the Anisu certificate
+```
+
+A wrong `package:`/`application-label:`, or a missing `launchable-activity`,
+means the manifest and the package name have drifted — that is an instant
+`ClassNotFoundException` on launch.
+
+### 4.5 Checklist before you say "done"
+
+- [ ] `./gradlew assembleDebug assembleRelease` → **0 errors, 0 warnings**.
+- [ ] `aapt dump badging` still reports `com.ansu.anime` / `Anisu`.
+- [ ] No new `com.kernel.anime` / `Anisu` / `StreamHub` name anywhere (§5).
+- [ ] No duplicate top-level symbols were introduced (§4.3.2).
+- [ ] `CHANGELOG.dev.md` `## [Unreleased]` updated **and** `python scripts/split_changelog.py` run, so `CHANGELOG.md` was regenerated rather than hand-edited (§7).
+- [ ] A version change touched `version.txt` **only** (plus that changelog entry) —
+      no copy of the version or the version code is left behind in another file
+      (§7.4).
+- [ ] Docs updated if the change alters how the project is built, signed or
+      released (`README.md`, `how-to-compile.md`, `CLAUDE.md`, `AGENTS.md`).
+- [ ] `git status` contains no `local.properties`, `build/`, `.gradle/` or
+      `.kotlin/`.
+
+### 4.6 Scratch files, logs and temporary output
+
+`.ignore/` is the scratch folder of this repository. Every agent writes its build logs, test
+logs, ad-hoc screenshots and any other temporary file there, never at the repository root:
+
+```bash
+./gradlew assembleDebug assembleRelease --console=plain > .ignore/build.log 2>&1
+```
+
+`.ignore/` is gitignored, so nothing in it is committed, pushed or packed into `fix.zip`. It is
+also the first place to look when a previous run failed, because the full output survives there
+instead of being lost with the terminal. The one exception is `screenshots/`: the headless
+`ScreenshotTest` writes the visual proofs it produces there on purpose, so they can be inspected
+next to the code they show.
+
+## 5. Code conventions
+
+- Match the surrounding style: same naming, same import ordering, same
+  composable structure. Prefer the smallest change that solves the request.
+- Screens are plain composables that receive `AppContainer` and a
+  `NavController`; state lives in a `*ViewModel` exposing a single UI state
+  (e.g. `DetailsUiState`) through a `StateFlow`.
+- **Do not add a DI framework**, a second module, or a new networking/DB stack.
+  Use what is already wired.
+- Material 3 APIs that are still experimental (`TopAppBar`, `ModalBottomSheet`,
+  `HorizontalDivider`) are opted into **per file**, with
+  `@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)` as
+  the **first line** of the file, before `package`. A new file that uses one of
+  those APIs needs that line or it will not compile. Do not add a
+  `-opt-in=` compiler flag in Gradle instead.
+
+### AniList queries — episodes have their own request
+
+The details query (`AniListApi.getMediaDetails`) is the **heavy** one: it carries
+characters, staff, relations and recommendations, and only the details page may
+pay for it. Episodes never come from it. An episode list, the player and the
+source search use their own lighter requests — `getMediaCore` /
+`getStreamingEpisodes` for the show's titles and its streaming episodes,
+`getAiringInfo` for status and episode counts, and `EpisodeMetadataRepository`
+for per-episode metadata — each with its own cache lifetime. When something needs
+an episode count or episode data, ask one of those: do not move episode fields
+into the details query to save a request, because that puts the heavy answer back
+on the path to streaming.
+
+### Known traps — these have broken the build before
+
+- **Never leave two files declaring the same top-level symbol.** A duplicated
+  `Application`, nav graph, `Dest`, composable or model does not just shadow:
+  it makes the whole file set fail with `Redeclaration` / `Conflicting
+  overloads` / `Overload resolution ambiguity`, and the follow-on errors
+  (`@Composable invocations can only happen from the context of a @Composable
+  function`) are pure noise. Search before adding a new screen or model.
+- **`item { }` inside a `LazyColumn`/`LazyRow` is a member of `LazyListScope`**,
+  not a top-level function. `import androidx.compose.foundation.lazy.item` does
+  not exist and fails with "Unresolved reference". Only `items(...)` is
+  imported (`androidx.compose.foundation.lazy.items`).
+- Never nest a vertical `LazyColumn`/`LazyVerticalGrid` inside another
+  vertically scrolling container — it either crashes at runtime or needs a
+  magic height. Build non-scrolling grids with `chunked(n)` + `Row`/`Column`.
+- Use the auto-mirrored icons: `Icons.AutoMirrored.Filled.ArrowBack`,
+  `Icons.AutoMirrored.Filled.ViewList`, … The `Icons.Filled.*` variants are
+  deprecated and produce warnings.
+- `Modifier.padding(horizontal = …, top = …, bottom = …)` is not a valid
+  overload. Combine only `horizontal`/`vertical`, or use `start`/`end`/`top`/
+  `bottom` explicitly.
+- `EncryptedSharedPreferences` can throw on some ROMs and after a backup
+  restore. Anything constructed in `Application.onCreate` **must not** be able
+  to crash the app — keep the `runCatching { … }.getOrElse { plain prefs }`
+  fallback in `AniListAuthManager`.
+- Creating `EncryptedSharedPreferences` twice, or a second `companion object`,
+  fails to compile.
+- The app draws edge to edge (`enableEdgeToEdge()`) and a Material 3 `Scaffold`
+  lays its `bottomBar`/`topBar` slots flush against the window. A **custom**
+  (non-Material) bar must apply its own insets —
+  `Modifier.windowInsetsPadding(WindowInsets.navigationBars)` — or it ends up
+  underneath the system navigation bar, exactly as `AppBottomBar` did.
+
+### Branding — never regress this
+
+The app is **Anisu**: that is the launcher label and every user-visible string,
+and its package / application id stays `com.ansu.anime`. There must be **no**
+`com.kernel.anime` and no `StreamHub` naming anywhere, in any file name, path or
+source line.
+
+The technical identifiers deliberately keep the older `Ansu` spelling and must
+**not** be renamed: the package `com.ansu.anime`, the class names `AnsuApp`,
+`AnsuTheme`, `AnsuNavGraph`, `AnsuColors`, the colour resources `ansu_*`, the URI
+scheme `ansu://`, and the `Ansu`-named APK assets and `Ansu-Android` user agents
+the updater matches on. Renaming them would break the updater, the saved data or
+the extension runtime for no user-visible gain.
+
+The **signing identity** is also fixed: the keystore file `keystore/anisu.jks`
+and its key alias `anisu`, plus the prefs file name in `AniListAuthManager`. Do
+not rename them — that would change the signing certificate or silently log every
+user out. The GitHub repository slug (`Ansu216/Anisu`, used in the workflow badge
+URLs and by the in-app updater) is also fixed and must not be rewritten.
+
+## 6. Golden rule: "if it works, don't touch it"
+
+Do not refactor, rewrite or "clean up" modules, files or functions that are
+already working, unless (a) it is strictly necessary for the requested change,
+or (b) the user explicitly asks for it. State the risk before editing something
+that could break existing behaviour, and ask when in doubt.
+
+#### Do-not-touch areas (verified working — leave alone)
+
+- **The signing setup and the committed keystore.** `keystore/anisu.jks` is
+  committed on purpose so local and CI builds produce identically signed APKs.
+- **The launch path.** `AnsuApp` → `MainActivity` → `AnsuNavGraph` is verified
+  against the built APK; a mismatch between the manifest class names and the
+  package is an instant `ClassNotFoundException` on launch.
+- **The `apk-nightly` branch.** It is generated by CI. Never commit to it by
+  hand and never "fix" it manually.
+- **`version.txt`.** The three value lines are the single source of the version,
+  the version code and the channel (§7.4); the version code is a plain, monotonic
+  build number, so keep it increasing, never lower it below a code that has already
+  been published, and do not put the version back in the workflow's `date` calls.
+  Do not copy the number into another file either: every reader takes it from here,
+  and a copy goes stale at the next release (§7.4 lists them).
+- **The workflow job graphs.** `plan` → `build` (parallel matrix) →
+  `publish`/`release` exists so a partial build can never be published. Do not
+  merge the matrix legs back into one job, and do not remove the
+  `fail-fast: false` / `always()` guards.
+
+## 7. Versioning and the changelog — MANDATORY
+
+**Every change that alters behaviour, the UI, the build, the CI or the docs is
+written into `CHANGELOG.dev.md`, and the short `CHANGELOG.md` is regenerated from
+it, in the same commit.** A change with no dev entry is an incomplete change.
+
+### 7.1 The two files
+
+The method is the one `PiBOH/vivi-music-de` uses, and it is a generation, not two
+hand-written copies:
+
+| File | Reader | What it carries |
+|---|---|---|
+| `CHANGELOG.dev.md` | the next developer or agent | **the source.** Every change with the whole story: the files, the functions, the figures measured, the check that proves it. No length limit. |
+| `CHANGELOG.md` | the person installing the APK | **generated** from the dev file by `scripts/split_changelog.py`: one line per change, its bold head and nothing else. |
+
+- **Write the entry once, in `CHANGELOG.dev.md`, then run
+  `python scripts/split_changelog.py`.** The script keeps the headings, blank
+  lines and notes, reduces every entry to its head and drops the continuation
+  lines. **Every section lives in the dev file**, including the releases cut
+  before the script existed: they were migrated once and the short file is now
+  generated in full, so the script keeps nothing from it. Any section it cannot
+  generate (a stray `## ` heading) is copied from `CHANGELOG.md` untouched, in
+  order.
+- **Never edit `CHANGELOG.md` by hand.** A change made there is gone at the next
+  run — which is exactly what keeps the two from drifting.
+- **Every bullet is tagged with the surface it changes and none is left
+  untagged:** `- [APK] …`. Anisu has one surface, so every entry starts with
+  `[APK]`.
+- Both files follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+  and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+- New work goes under `## [Unreleased]`, in the right category, in the right
+  order:
+  `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed`,
+  `### Security`.
+- If a category does not exist under `## [Unreleased]`, create it — do not
+  invent a new one.
+- At release time the entries are moved, in the **dev** file, under a new heading,
+  `## [<version>] - <YYYY-MM-DD>` (inserted directly under `## [Unreleased]`),
+  `## [Unreleased]` is left empty for the next cycle, and the script is run again.
+  **`<version>` is the tag without its `v`**: tag `v1.2.3` → `## [1.2.3]`.
+- **Never rewrite a published section.** A mistake is corrected in a new release.
+
+- Comparing the file's two ends is the fastest way to see what a release
+  contains: `Unreleased` (empty in a clean tree) and the newest `<version>`.
+
+### 7.2 Which number to bump (SemVer)
+
+Given `MAJOR.MINOR.PATCH` (`1.4.2`), and an optional pre-release suffix
+(`1.4.2-rc.1`):
+
+| Bump | When |
+|---|---|
+| **MAJOR** | A change users cannot ignore or that breaks compatibility: the package/application id changes, an existing extension's contract breaks, saved data stops loading, a feature is removed. |
+| **MINOR** | A new, backwards-compatible capability: a new screen, a new source type, a new setting, a new channel. **Anything a user would notice as "more app".** |
+| **PATCH** | Backwards-compatible fixes only: bug fixes, wording, performance, CI and docs corrections, dependency patches. |
+
+- Before `1.0.0` (`0.x.y`) the same rules are used, but the project is allowed to
+  break compatibility in a MINOR bump — still say so in `### Changed`.
+- A **pre-release** (`-alpha`, `-beta`, `-rc.1`, …) is only for a version that is
+  not ready to be the default download. `release-apk.yml` marks it as a
+  pre-release on GitHub automatically, purely from the suffix in the tag.
+- Build metadata (`+build.5`) is ignored for ordering and is not used here.
+- The tag is `v` + the version: `v1.4.2`. **The tag and the changelog heading must
+  match**, or the release body comes out empty.
+
+### 7.3 How to write an entry
+
+An entry has two halves, and they are written once, in `CHANGELOG.dev.md`:
+
+```markdown
+- [APK] **One-line head, what changed for the person using the app.**
+  The whole account, indented under the head: what was wrong, what it does now,
+  the files and functions touched, the figures measured, the check that proves
+  it, and a `**Constraint:**` sentence for any limit that was deliberately kept.
+```
+
+- **The head is the only line `CHANGELOG.md` and the release page show**, so it
+  says the change and nothing else, in about ten to twenty words.
+- **The body is the six-months-later explanation** and may be as long as the
+  change needs: the file or function, the dependency and its version, the Gradle
+  task that failed, the command that proved it.
+- One bullet per change. Two unrelated changes are two bullets, never one
+  paragraph. A head that needs a second sentence to be understood is two
+  entries.
+
+- **Say what and why**, and include the detail someone would ask for next: which
+  file/flow is involved, what the old behaviour was, what the new behaviour is.
+- No commit hashes, no file-path-only bullets, no "various fixes".
+- Group related changes into one entry rather than listing one bullet per file.
+- English only, like the commit messages (§8).
+- `CHANGELOG.dev.md` uses the same shape with the technical half of the story:
+  the file or function, the dependency and its version, the Gradle task that
+  failed. It is the six-months-later explanation, so it can be duller and more
+  specific than the `CHANGELOG.md` bullet — but still a sentence, not a diff.
+
+### 7.4 `version.txt` — the version file
+
+The file has **three value lines** and any number of `#` comment lines, which are
+ignored everywhere it is read (Gradle, `apk-nightly.yml`, `release-apk.yml`):
+
+```
+0.3.0        # line 1 - version (the release tag is "v" + this)
+2026101201   # line 2 - version code
+nightly     # line 3 - channel
+```
+
+- **Line 1** is the SemVer base version. Bump it here (and add the changelog entry)
+  when behaviour changes, exactly as in §7.2.
+- **Line 2** is the version code: a plain build number that **only ever increases**,
+  bumped by one for every release and shared by the nightly and the stable channel, so
+  several nightlies in a row deliberately carry the same code until a release moves
+  it. It is not derived from a date any more, but it had to **start above every code
+  already published**: the old date-coded `YYYYMMDDHH` values reached `2026101200`, so
+  the counter is `2026101201`. Android refuses to install an APK whose code is lower
+  than the installed one — the installer reports that to the user as an "invalid
+  package" and the update simply cannot be installed — so never let it decrease, and
+  never "simplify" it back to a small number.
+- **Line 3** is the channel of a release build: `nightly` makes a build
+  `<version>-nightly` (e.g. `0.3.0-nightly`), anything else (`beta`, `stable`) leaves the
+  plain `<version>`. The nightly workflow ignores it and always builds a nightly, because
+  everything it publishes goes to `apk-nightly` (see §9). No timestamp goes into the name: CI passes the
+  commit as `-PbuildCommit`, the app exposes it as `BuildConfig.BUILD_COMMIT`, and that
+  is what the updater compares — `stage-nightly.sh` likewise identifies a run by the run
+  id it writes into `nightly.json`, not by the now-shared version name.
+
+#### Who reads it — nothing repeats the version
+
+Every place that needs the version or the version code takes it out of this file.
+None of them carries a copy of the number:
+
+| Reader | How it reads `version.txt` |
+|---|---|
+| `app/build.gradle.kts` | lines 1-2-3 into `versionName`, `versionCode` and `BuildConfig.RELEASE_CHANNEL`; each is overridable per build with `-PversionName` / `-PversionCode` / `-Pchannel`, and a missing or non-integer line fails the build with an explicit message instead of a default |
+| `.github/workflows/apk-nightly.yml` | the `plan` job checks the repository out, drops the `#` lines, reads lines 1 and 2, refuses a code that is not an integer, and hands `-PversionName` / `-PversionCode` / `-Pchannel=nightly` to **both** matrix legs so they carry one name. **Line 3 is deliberately not read**: this workflow only publishes nightlies, so the channel is forced to `nightly` whatever the file says |
+| `.github/workflows/release-apk.yml` | **line 2 for the version code, always**; a manual run with no tag typed in takes the version from line 1 and tags it `v<line 1>`, so the release matches its own `## [<version>]` heading instead of a date that no changelog section carries. A tag typed in or pushed still decides the release name |
+| `.github/scripts/stage-nightly.sh` | receives `VERSION_NAME` / `VERSION_CODE` from the `plan` job (never recomputes them) and copies `version.txt` into the published branch |
+| the app at runtime | `BuildConfig.VERSION_NAME` / `VERSION_CODE` in About and Updates, and `BuildConfig.BUILD_COMMIT` for the updater's comparison |
+
+What follows from it:
+
+- **An update edits `version.txt`, `CHANGELOG.md` and `CHANGELOG.dev.md`** —
+  nothing else. The number to
+  put on line 1 is chosen with §7.2, the entry is written with §7.3. A version
+  repeated in a README, a code comment, a workflow or a Kotlin constant is a second
+  source of truth, and it goes stale the moment the next update lands.
+- **Never derive it** at build time: no `date` call for a version or a version code,
+  no workflow run number, no tag guessed inside Gradle. A release tag is `v` + line 1;
+  the version code is line 2. (The `iso` field the nightly writes into `nightly.json`
+  is a build timestamp, not a version.)
+- **A `-P` override is a build input, not a second source.** CI uses it to make both
+  legs of one run agree; the value still originates in this file.
+- **If a reader needs something this file does not carry, add a line here** and teach
+  every reader about it in the same change — never hardcode the value at the reading
+  end.
+
+### 7.5 Where the changelog ends up
+
+`release-apk.yml` extracts the `## [<version>]` section from `CHANGELOG.md` (the
+user-facing file; `CHANGELOG.dev.md` never reaches a release body) on the
+tagged commit, plus the commits since the previous tag, and uses both as the
+GitHub Release body. If the section is missing the workflow does **not** fail —
+it emits a warning annotation and publishes a placeholder body — but that release
+is worse for every user, so add the section **before** pushing the tag.
+
+## 8. Git conventions — MANDATORY (do not violate)
+
+- **English only.** Every commit message — title **and** body — must be written
+  in English. No Italian, no mixed language.
+- **No co-author footer, ever.** Never append `Co-Authored-By: …`,
+  `Generated with …`, `🤖` or any line crediting an agent, client or model.
+  Write a plain commit message: a short imperative subject and, when useful, a
+  body explaining **why** the change was made. This applies unless the user
+  explicitly asks for a footer in that specific message.
+- Do not commit build output, `local.properties`, `.kotlin/`, `.gradle/` or
+  local Gradle distributions. These are already in `.gitignore`.
+- Do not commit unless the user asks for it, and do not push, force-push or
+  rewrite published history unless the user asks. When a push is rejected
+  because the remote moved, integrate (rebase onto `origin/main`) rather than
+  discarding remote work.
+
+## 9. CI and releases
+
+| Workflow | Trigger | Output |
+|---|---|---|
+| `.github/workflows/apk-nightly.yml` | hourly `cron`, **every push to `main` that is not docs-only** (`paths-ignore`: `docs/**`, `**.md`), manual | force-publishes to `apk-nightly`: `Ansu-nightly.apk`, `Ansu-nightly-debug.apk`, `nightly.json`, generated `README.md` |
+| `.github/workflows/release-apk.yml` | tag `v*`, manual (with no tag typed in the manual run uses `v` + `version.txt` line 1) | GitHub Release with `Ansu-<version>.apk` and `-debug.apk`, notes extracted from `CHANGELOG.md` |
+| `.github/workflows/extract-fix-zip.yml` | push to `main` that **changed a `fix.*` file** *and* whose **commit title** starts with `Maygodblastyou`, `fix` or `n`; manual (always starts) | extracts the `fix.*` archive **that push brought in** (`.zip`, `.7z`, `.rar`, `.tar`, `.tar.gz`, …) into the working tree (its own relative paths), commits it to `main` as `extract fix.zip and updated the app`, then dispatches the nightly APK build. A push applies only the archives it changed; a manual run applies everything on `main` and always dispatches a build. A push that carried an archive but has no matching title ends in a `::warning::` annotation and a run summary (`warn` job) instead of silently doing nothing. No account is checked |
+
+The two APK workflows are built the same way, and **both compile their APKs in
+parallel**:
+
+```
+plan  ──▶  build (matrix: release, debug — one runner each, fail-fast: false)
+                     │
+                     ├─▶  publish-release  (as soon as the release leg's APK exists)
+                     └─▶  publish-debug    (as soon as the debug leg's APK exists)
+```
+
+- Both `plan` jobs **check the repository out** — they read `version.txt` out of it,
+  so without the checkout every run fails with `version.txt: No such file or
+  directory` before anything is built.
+- The `build` job is a **matrix**: `release` and `debug` run simultaneously on
+  separate runners. Never merge them back into a single job that calls
+  `assembleDebug assembleRelease` — that is exactly the serialization this
+  structure removes.
+- `fail-fast: false` keeps the other leg running when one fails, so a single run
+  shows the real state of *both* variants.
+- The nightly publishes each variant **independently**: `publish-release` and
+  `publish-debug` are separate jobs, each gated only on whether its **own** build
+  leg produced an APK, not on the aggregate `build` result. This is deliberate — a
+  failure on one side must never hold back the other. A job whose artifact is
+  missing (`download-artifact` finds nothing) reports a `::notice::` and publishes
+  nothing. Both jobs share the concurrency group `apk-nightly-branch`
+  (`cancel-in-progress: false`) so they never write the branch at the same time,
+  and each folds the sibling variant of the same run into the branch it writes
+  (`.github/scripts/stage-nightly.sh` reads the branch and, when the `runId` matches —
+  the run id, which is what identifies a run now that the version name and the version
+  code are the same on every nightly — keeps the other APK) — so publishing one leg
+  never drops the other, and the two APKs can never belong to different runs.
+- `release-apk.yml` keeps its atomic `release` job guarded with
+  `if: ${{ always() && … build.result == 'success' }}`, so a GitHub Release is only
+  ever created with both of its assets. Only the **nightly** workflow publishes
+  per variant.
+- The nightly publishes one consistent set: both APKs of a run share the stamp
+  computed by the `plan` job, and the branch is replaced as a whole.
+- The release is a **pre-release** automatically when the tag carries a SemVer
+  pre-release suffix (`v1.2.3-rc.1`), and a stable release otherwise. The manual
+  run can override that with the `channel` input.
+
+`extract-fix-zip.yml` extracts the fix archive, commits the result to `main` and
+then starts the nightly APK build. On a **push** the job runs only when the newest
+commit's title starts with `Maygodblastyou`, `fix` or `n`; a **manual run always
+starts**, whatever the title, applies every `fix.*` archive on `main`, and starts a
+build afterwards even when there was nothing to extract — it is the "it did not
+run, run it by hand" button, and it must never come back skipped. No login is
+checked: the old `if: github.actor == 'Maygodblastyou'` guard skipped **every** run
+once the account was renamed — a push and a manual dispatch by this repository's
+own collaborators were both finished as `skipped` in a second, having done nothing —
+and only someone who can already push to `main` or dispatch a workflow can reach
+this job. The run cannot loop by itself either: the bot's own commit message
+matches no trigger title, and a push made with `GITHUB_TOKEN` starts no workflow at
+all. The run only starts when the push changed a `fix.*` file (a `paths:` filter), so a
+push with nothing to apply costs no runner, and a push that *did* carry an archive with
+a title matching none of the three fires the `warn` job instead of the `extract` one:
+same script, `--check` mode (its stdout is the list of archives, notices go to stderr),
+and a warning annotation plus a run summary naming the archive and the title. Before it,
+a mistyped title looked exactly like a working extraction — a green run with nothing in
+it. Five details are load-bearing:
+
+- A **push applies only the archives that push brought in**. The script diffs the
+  commit before the push against the pushed one and extracts the `fix.*` files that
+  diff touched, so an old archive lying in the repository is never re-applied by a
+  later commit that happens to carry a trigger title — which, for a `fix.zip` made
+  before a version bump, would silently roll `version.txt` back. A manual run
+  applies everything present, because that is what "re-apply my archive" means.
+- The archive may be **any format**: `fix.zip`, `fix.7z`, `fix.rar`, `fix.tar`,
+  `fix.tar.gz`, `.tgz`, `.tar.bz2`, `.tar.xz` — anything named `fix.*` at the
+  repository root. 7z and rar are read through a 7-Zip binary, which the workflow
+  installs when the runner ships none, and a failure to install it is never fatal
+  (a zip or tar needs no 7-Zip).
+- The extraction **only ever writes**. It updates existing files, creates missing
+  ones and never deletes anything — `fix.zip` is left in place too — so the commit
+  it makes can contain additions and modifications only.
+- The pushed commit **does not trigger other workflows by itself**: a push made
+  with the built-in `GITHUB_TOKEN` starts nothing. `workflow_dispatch` is the one
+  exception, so the final step calls `gh workflow run apk-nightly.yml`, which is
+  what makes the APK build run "by itself" after the commit. That needs
+  `actions: write` next to `contents: write` in the workflow's `permissions`.
+
+  Storing a personal access token and pushing with it works too and would trigger
+the push-based workflows directly, but it needs a repository secret; the dispatch
+needs none.
+
+- The extraction **skips `.github/workflows/**`**. GitHub refuses any write there
+  from the built-in `GITHUB_TOKEN` (*"refusing to allow a GitHub App to create or
+  update workflow … without `workflows` permission"*) and that is a platform rule,
+  not a grantable scope — no `permissions:` block lifts it, so a commit that touched
+  a workflow file is rejected as a whole. An archive that contains the entire
+  repository would therefore never apply. The secret `FIX_ZIP_TOKEN` (a PAT with the
+  `workflow` scope) is the opt-in that lifts the restriction; it has to be passed to
+  `actions/checkout`'s `token:` input, because the checkout is what stores the
+  credential every later `git` command uses.
+
+Every entry of the archive is validated before it is written, and one that would
+escape the repository or write into `.git` aborts the run. Pushing to `main` uses a
+full-history checkout (`fetch-depth: 0`) and rebases first, and a rejected push is
+reported as an `::error::` annotation, which is readable from the API without
+authenticating.
+
+Notes for anyone editing these:
+
+- The runners already ship the Android SDK at `$ANDROID_SDK_ROOT`. Do **not**
+  add `android-actions/setup-android` — it shells out to `sdkmanager tools`, a
+  package that no longer exists, and fails every run.
+- The workflow checks out the repository, so the Gradle wrapper jar must be
+  committed or `./gradlew` cannot start.
+- Both workflows build with `-PversionCode` / `-PversionName`, which only work
+  because `app/build.gradle.kts` reads those properties. Keep that wiring.
+- The nightly README and `nightly.json` are generated by
+  `.github/scripts/stage-nightly.sh` (run by both `publish-release` and
+  `publish-debug`), so their content must be edited there — not on the branch,
+  which is overwritten on every run.
+- `stage-nightly.sh` writes `nightly.json`, including the published APK's file
+  name under `apk` (always the **release** build) and the debug one under
+  `apkDebug`. The in-app updater reads `apk`, so keep its fields in sync with
+  `NightlyManifest` in `data/update/UpdateModels.kt` — that is what lets the APK
+  be renamed without breaking updates.
+- Pushing to `apk-nightly` requires `permissions: contents: write` and the
+  repository setting *Actions → General → Workflow permissions → Read and write*.
+- The release job checks out with `fetch-depth: 0`: it needs the previous tags
+  (`git describe`) and `CHANGELOG.md` at the tagged commit.
+
+## 10. Ask before assuming
+
+If a request is ambiguous, conflicts with the rules above, or would require a
+large one-way change (rewriting history, changing the package name, swapping a
+library, bumping the toolchain, adding a module), ask first rather than guessing.
+A wrong guess is more expensive than one question.
+
+## 11. The end-of-chat `fix.zip` — MANDATORY
+
+At the end of **every chat** the agent hands the user a `fix.zip` that carries the
+changes of that chat. `extract-fix-zip.yml` extracts it from the repository root,
+so every entry must keep the project's own relative path.
+
+The archive must contain **exactly** these files and folders — plus the `docs/`
+folder, described below:
+
+- `app/` — the whole `:app` module **except its `build/` sub-folder** (never ship
+  generated output);
+- `gradle/` (the wrapper and `libs.versions.toml`);
+- `scripts/` (the changelog generator and any other tooling);
+- `keystore/` (the committed signing key and its README);
+- `.gitignore`;
+- `AGENTS.md`;
+- `CHANGELOG.md`;
+- `CHANGELOG.dev.md`;
+- `gradle.properties`;
+- `build.gradle.kts` (the root build script);
+- `gradlew`;
+- `gradlew.bat`;
+- `how-to-compile.md`;
+- `local.properties`;
+- `README.md`;
+- `settings.gradle.kts`;
+- `version.txt` (the single source of the base version).
+
+Rules:
+
+- **No `build/` directory anywhere**, and no `.gradle/`, `.kotlin/` or other local
+  build output.
+- `local.properties` is included for local builds and must contain **only**
+  `sdk.dir` — never a token, key or secret, and not `org.gradle.java.home`,
+  which Gradle does not read from there (§4.1). Everything else (`gradle.properties`, sources) is what the build needs.
+- GitHub refuses to let the workflow token write `.github/workflows/**`, so the
+  archive does not need to carry that folder; when a chat changes a workflow the
+  user pushes it by hand.
+
+**All additional documentation written during a chat goes into `docs/`.** Never
+scatter loose Markdown files at the repository root: a new guide, report or
+analysis belongs in `docs/`, and the `docs/` folder is carried in the archive too
+so the documentation ships with the code it describes.
+
+## 12. Legal and content compliance
+
+Anisu aggregates metadata from the public AniList API and plays media through
+third-party sources and extensions. Never hardcode credentials,
+API keys or tokens into the repository or into commit messages, and do not add
+code whose only purpose is to bypass a paywall, DRM or an access control. The
+AniList client id lives in a `buildConfigField` placeholder and is meant to be
+filled in per developer.
