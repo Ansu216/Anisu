@@ -91,11 +91,16 @@ object Dest {
     const val MY_SPACE = "my_space"
     const val DOWNLOADS = "downloads"
     const val DETAILS = "details"
+    /** Character or staff page: `person/{kind}/{id}` (see [personRoute]). */
+    const val PERSON = "person/{kind}/{id}"
     const val SOURCES = "sources"
     const val PLAYER = "player"
     const val EXTENSIONS = "extensions"
     const val ANILIST_LOGIN = "anilist_login"
 }
+
+/** The route of one character's or staff member's page. */
+fun personRoute(kind: com.ansu.anime.core.util.PersonKind, id: Int): String = "person/${kind.name}/$id"
 
 /** Bottom bar destinations, in display order. */
 val bottomNavDestinations = listOf(Dest.HOME, Dest.SEARCH, Dest.SCHEDULE, Dest.NEWS, Dest.MY_SPACE)
@@ -463,6 +468,20 @@ fun AnsuNavGraph(container: AppContainer, navController: NavHostController = rem
                         navController.navigate(if (auto) Dest.PLAYER else Dest.SOURCES)
                     },
                 )
+            }
+        }
+        composable(
+            Dest.PERSON,
+            arguments = listOf(
+                androidx.navigation.navArgument("kind") { type = androidx.navigation.NavType.StringType },
+                androidx.navigation.navArgument("id") { type = androidx.navigation.NavType.IntType },
+            ),
+        ) { entry ->
+            val kind = runCatching { com.ansu.anime.core.util.PersonKind.valueOf(entry.arguments?.getString("kind").orEmpty()) }
+                .getOrDefault(com.ansu.anime.core.util.PersonKind.CHARACTER)
+            val personId = entry.arguments?.getInt("id") ?: 0
+            TabletCentered(840.dp) {
+                com.ansu.anime.ui.person.PersonScreen(container = container, navController = navController, kind = kind, id = personId)
             }
         }
         composable(Dest.SOURCES) {

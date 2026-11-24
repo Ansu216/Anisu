@@ -16,7 +16,13 @@ import com.ansu.anime.core.model.SAnime
  * so backing out landed on an empty search. The screen now reads and writes this holder, so the query, filters,
  * results, paging and scroll position are all still there when it comes back.
  */
+/** What the open search panel looks for: titles (the default), characters or staff. */
+enum class SearchPanelMode { ANIME, CHARACTERS, STAFF }
+
 class SearchSession {
+    /** The chip chosen in the open search panel; kept so the panel opens on the same chip next time. */
+    var panelMode by mutableStateOf(SearchPanelMode.ANIME)
+
     var query by mutableStateOf("")
     var filters by mutableStateOf(AniListSearchFilters())
     var results by mutableStateOf<List<SAnime>>(emptyList())

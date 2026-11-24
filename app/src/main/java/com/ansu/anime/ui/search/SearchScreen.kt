@@ -70,6 +70,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Search
@@ -282,6 +283,35 @@ fun SearchScreen(
         }
     }
 
+    // ---- Characters / Staff chips of the open panel ----
+    val panelMode = session.panelMode
+    var peopleLoading by remember { mutableStateOf(false) }
+    var peopleFailed by remember { mutableStateOf(false) }
+    var people by remember { mutableStateOf<List<com.ansu.anime.anilist.AniListPersonHit>>(emptyList()) }
+    var peopleFor by remember { mutableStateOf<Pair<SearchPanelMode, String>?>(null) }
+    LaunchedEffect(panelMode, typedNow, retryTick) {
+        if (panelMode == SearchPanelMode.ANIME || typedNow.length < 2) {
+            people = emptyList()
+            peopleFor = null
+            peopleLoading = false
+            peopleFailed = false
+            return@LaunchedEffect
+        }
+        if (peopleFor == panelMode to typedNow && retryTick == 0) return@LaunchedEffect
+        delay(400)
+        peopleLoading = true
+        peopleFailed = false
+        val page = if (panelMode == SearchPanelMode.CHARACTERS) {
+            container.aniListRepository.searchCharacters(typedNow)
+        } else {
+            container.aniListRepository.searchStaff(typedNow)
+        }
+        people = page?.people.orEmpty()
+        peopleFailed = page == null
+        peopleFor = if (page == null) null else panelMode to typedNow
+        peopleLoading = false
+    }
+
     // ---- Search history and the expanding search panel ----
     val history by container.searchHistory.items.collectAsStateWithLifecycle()
     // True while the search bar is open: the dark panel has grown out of it to the screen's edges and shows the history.
@@ -311,6 +341,14 @@ fun SearchScreen(
         closeSearch()
     }
     BackHandler(enabled = searching) { closeSearch() }
+
+    val openPerson: (com.ansu.anime.anilist.AniListPersonHit) -> Unit = { hit ->
+        val kind = if (panelMode == SearchPanelMode.STAFF) com.ansu.anime.core.util.PersonKind.STAFF else com.ansu.anime.core.util.PersonKind.CHARACTER
+        closeSearch()
+        navController.navigate(
+            container.selectionHolder.openPerson(com.ansu.anime.core.util.PersonPreview(kind, hit.id, hit.name, hit.imageUrl, hit.subtitle)),
+        )
+    }
 
     val openResult: (SAnime) -> Unit = { anime ->
         container.searchHistory.add(query)
@@ -466,6 +504,13 @@ fun SearchScreen(
                   onRemove = container.searchHistory::remove,
                   onClearAll = container.searchHistory::clear,
                   onOpen = { anime -> closeSearch(); openResult(anime) },
+                  mode = panelMode,
+                  onMode = { session.panelMode = it },
+                  people = people,
+                  peopleLoading = peopleLoading,
+                  peopleFailed = peopleFailed,
+                  onRetryPeople = { retryTick += 1 },
+                  onOpenPerson = openPerson,
               )
           }
 
@@ -481,7 +526,12 @@ fun SearchScreen(
                   value = query,
                   onValueChange = { query = it },
                   onClear = { query = "" },
-                  onSearch = { submit() },
+                  onSearch = { if (panelMode == SearchPanelMode.ANIME) submit() else focusManager.clearFocus() },
+                  hint = when (panelMode) {
+                      SearchPanelMode.ANIME -> "Search anime..."
+                      SearchPanelMode.CHARACTERS -> "Search characters..."
+                      SearchPanelMode.STAFF -> "Search staff..."
+                  },
                   searching = searching,
                   onBack = { closeSearch() },
                   onFocused = { searching = true },
@@ -575,6 +625,7 @@ private fun SearchField(
     onBack: () -> Unit,
     onFocused: () -> Unit,
     backdrop: BackdropState? = null,
+    hint: String = "Search anime...",
     modifier: Modifier = Modifier,
 ) {
     BasicTextField(
@@ -628,7 +679,7 @@ private fun SearchField(
                     ) {
                         if (value.isEmpty()) {
                             Text(
-                                text = "Search anime...",
+                                text = hint,
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = AnsuColors.TextTertiary,
                                 maxLines = 1,
@@ -687,6 +738,13 @@ private fun SearchPanel(
     onClearAll: () -> Unit,
     onOpen: (SAnime) -> Unit,
     panelBackgroundStyle: com.ansu.anime.data.prefs.BackgroundStyle,
+    mode: SearchPanelMode,
+    onMode: (SearchPanelMode) -> Unit,
+    people: List<com.ansu.anime.anilist.AniListPersonHit>,
+    peopleLoading: Boolean,
+    peopleFailed: Boolean,
+    onRetryPeople: () -> Unit,
+    onOpenPerson: (com.ansu.anime.anilist.AniListPersonHit) -> Unit,
 ) {
     val typing = filter.isNotEmpty()
     // While something is typed, only the earlier searches that match it are shown, the newest few.
@@ -738,7 +796,25 @@ private fun SearchPanel(
                 },
             contentPadding = PaddingValues(top = SearchBarRowHeight + topInset + 4.dp, bottom = 12.dp + bottomPadding),
         ) {
-            if (!typing) {
+            item(key = "mode-chips") { PanelModeChips(mode = mode, onMode = onMode) }
+            if (mode != SearchPanelMode.ANIME) {
+                val noun = if (mode == SearchPanelMode.CHARACTERS) "characters" else "staff"
+                when {
+                    !typing || typed1(filter) -> item(key = "people-hint") { EmptyPanelText("Type a name to search $noun.") }
+                    peopleLoading -> item(key = "people-loading") { PanelSpinner() }
+                    peopleFailed -> item(key = "people-failed") {
+                        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp), contentAlignment = Alignment.Center) {
+                            com.ansu.anime.ui.components.ErrorGlassCard(
+                                title = "Couldn't search $noun",
+                                message = "Check your connection and try again.",
+                                onRetry = onRetryPeople,
+                            )
+                        }
+                    }
+                    people.isEmpty() -> item(key = "people-empty") { EmptyPanelText("No $noun found.") }
+                    else -> items(people, key = { "person-${it.id}" }) { hit -> PersonRow(hit = hit, onClick = { onOpenPerson(hit) }) }
+                }
+            } else if (!typing) {
                 if (history.isEmpty()) {
                     item(key = "empty") {
                         EmptyPanelText("Your searches will show up here.")
@@ -808,6 +884,70 @@ private fun SearchPanel(
             }
         }
     }
+    }
+}
+
+/** True while the typed text is too short to search (under two characters). */
+private fun typed1(text: String): Boolean = text.length < 2
+
+/** The Anime / Characters / Staff chips at the top of the open search panel. */
+@Composable
+private fun PanelModeChips(mode: SearchPanelMode, onMode: (SearchPanelMode) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        listOf(
+            SearchPanelMode.ANIME to "Anime",
+            SearchPanelMode.CHARACTERS to "Characters",
+            SearchPanelMode.STAFF to "Staff",
+        ).forEach { (value, label) ->
+            val selected = mode == value
+            androidx.compose.material3.FilterChip(
+                selected = selected,
+                onClick = { onMode(value) },
+                label = { Text(label) },
+                leadingIcon = if (selected) {
+                    { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                } else {
+                    null
+                },
+                shape = RoundedCornerShape(12.dp),
+                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                    labelColor = AnsuColors.TextPrimary,
+                    selectedContainerColor = AnsuColors.AccentSoft,
+                    selectedLabelColor = AnsuColors.TextPrimary,
+                    selectedLeadingIconColor = AnsuColors.TextPrimary,
+                ),
+                border = androidx.compose.material3.FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = selected,
+                    borderColor = AnsuColors.TextTertiary,
+                    selectedBorderColor = Color.Transparent,
+                ),
+            )
+        }
+    }
+}
+
+/** One character or staff result: the same rounded-square picture the details page uses, then name and a line under it. */
+@Composable
+private fun PersonRow(hit: com.ansu.anime.anilist.AniListPersonHit, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(modifier = Modifier.size(64.dp).clip(RoundedCornerShape(10.dp)).background(AnsuColors.BackgroundElevated)) {
+            if (hit.imageUrl != null) {
+                AsyncImage(model = hit.imageUrl, contentDescription = hit.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+        }
+        Column(modifier = Modifier.weight(1f).padding(start = 16.dp)) {
+            Text(hit.name, color = AnsuColors.TextPrimary, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            hit.subtitle?.let {
+                Text(it, color = AnsuColors.TextTertiary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            }
+        }
     }
 }
 

@@ -220,3 +220,59 @@ data class AniListThreadPage(val threads: List<AniListThread>, val total: Int, v
 
 /** One page of a thread's top-level comments. */
 data class AniListCommentPage(val comments: List<AniListComment>, val hasNextPage: Boolean)
+
+/** What a search for characters or staff returns for one person: enough for a row (picture, name, one line under it). */
+data class AniListPersonHit(
+    val id: Int,
+    val name: String,
+    val imageUrl: String?,
+    /** A character's most popular show, or a staff member's occupation; null when AniList has none. */
+    val subtitle: String?,
+)
+
+/** One page of a character or staff search. */
+data class AniListPersonPage(val people: List<AniListPersonHit>, val hasNextPage: Boolean)
+
+/** A voice actor of a character in one language (a dub), or the same person seen from the staff side. */
+data class AniListVoiceActor(
+    val id: Int,
+    val name: String,
+    val imageUrl: String?,
+    /** AniList's `languageV2` (Japanese, English, ...); empty when unknown. */
+    val language: String,
+)
+
+/** A show a character appears in, with the role there (MAIN, SUPPORTING, BACKGROUND). */
+data class AniListCharacterShow(val media: AniListMedia, val role: String)
+
+data class AniListCharacterDetails(
+    val id: Int,
+    val name: String,
+    val nativeName: String?,
+    val imageUrl: String?,
+    val description: String?,
+    val isFavourite: Boolean,
+    /** Every voice actor across the character's shows, Japanese first, then the dubs. */
+    val voiceActors: List<AniListVoiceActor>,
+    val shows: List<AniListCharacterShow>,
+)
+
+/** A character a staff member voiced, with the show it is from. */
+data class AniListVoicedCharacter(val id: Int, val name: String, val imageUrl: String?, val showTitle: String?)
+
+/** A show a staff member worked on: the credit they hold there (a voiced character, "Director", ...). */
+data class AniListStaffWork(val media: AniListMedia, val credit: String)
+
+data class AniListStaffDetails(
+    val id: Int,
+    val name: String,
+    val nativeName: String?,
+    val imageUrl: String?,
+    val description: String?,
+    val isFavourite: Boolean,
+    /** The language the person works in (a voice actor's dub language). */
+    val language: String?,
+    val occupations: List<String>,
+    val voicedCharacters: List<AniListVoicedCharacter>,
+    val works: List<AniListStaffWork>,
+)

@@ -305,6 +305,30 @@ class AniListRepository(
         return guarded("Updating your favourites", false) { api.toggleFavourite(mediaId) }
     }
 
+    /** One page of a character search; null when the request failed. */
+    suspend fun searchCharacters(query: String, page: Int = 1): AniListPersonPage? =
+        guarded<AniListPersonPage?>("Searching characters", null) { api.searchCharacters(query, page) }
+
+    /** One page of a staff search; null when the request failed. */
+    suspend fun searchStaff(query: String, page: Int = 1): AniListPersonPage? =
+        guarded<AniListPersonPage?>("Searching staff", null) { api.searchStaff(query, page) }
+
+    suspend fun getCharacterDetails(id: Int): AniListCharacterDetails? =
+        guarded<AniListCharacterDetails?>("Loading character", null) { api.getCharacterDetails(id) }
+
+    suspend fun getStaffDetails(id: Int): AniListStaffDetails? =
+        guarded<AniListStaffDetails?>("Loading staff profile", null) { api.getStaffDetails(id) }
+
+    suspend fun toggleFavouriteCharacter(id: Int): Boolean {
+        if (!authManager.isLoggedIn) return false
+        return guarded("Updating your favourites", false) { api.toggleFavouriteCharacter(id) }
+    }
+
+    suspend fun toggleFavouriteStaff(id: Int): Boolean {
+        if (!authManager.isLoggedIn) return false
+        return guarded("Updating your favourites", false) { api.toggleFavouriteStaff(id) }
+    }
+
     /** The discussion threads about a show; null when the request failed (as opposed to "there are none"). */
     suspend fun getMediaThreads(mediaId: Int): List<AniListThread>? =
         guarded<List<AniListThread>?>("Loading discussions", null) { api.getMediaThreads(mediaId) }

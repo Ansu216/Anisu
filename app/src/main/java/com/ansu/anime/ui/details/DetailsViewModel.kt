@@ -150,6 +150,7 @@ class DetailsViewModel(
                 extensionManager.findEpisodesByTitle(
                     current,
                     extraTitlesProvider = { current.anilistId?.let { id -> aniListRepository.getAllTitles(id) }.orEmpty() },
+                    seasonProvider = { current.anilistId?.let { id -> artworkRepository.get(id).season } },
                 )
             }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
         }
@@ -259,6 +260,7 @@ class DetailsViewModel(
                                 onPartial(com.ansu.anime.extension.foldOriginEpisodes(partial, origin.sourceId, ownSoFar))
                             },
                             extraTitlesProvider = { anime.anilistId?.let { id -> aniListRepository.getAllTitles(id) }.orEmpty() },
+                            seasonProvider = { anime.anilistId?.let { id -> artworkRepository.get(id).season } },
                         )
                     }.getOrDefault(emptyList())
                 }

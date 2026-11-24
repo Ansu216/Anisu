@@ -12,12 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-11-24
+
 ### Added
 
+- [APK] **Characters and Staff chips in the open search panel, and a full character / staff page.**
 - [APK] **Incognito Mode in Settings > Playback > Controls.**
 
 ### Fixed
 
+- [APK] **Later seasons listed the first season's episodes.**
 - [APK] **Adult titles found no playable source.**
 
 ## [1.2.1] - 2026-11-19

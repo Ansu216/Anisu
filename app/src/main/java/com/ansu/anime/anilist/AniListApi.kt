@@ -1438,6 +1438,220 @@ class AniListApi(
         )
     }
 
+    // ---- Characters and staff: search, and the full pages behind the Characters / Staff chips ----
+
+    suspend fun searchCharacters(query: String, page: Int = 1): AniListPersonPage? {
+        val gql = """
+            query (${'$'}page: Int, ${'$'}search: String) {
+              Page(page: ${'$'}page, perPage: 25) {
+                pageInfo { hasNextPage }
+                characters(search: ${'$'}search, sort: [SEARCH_MATCH]) {
+                  id
+                  name { full }
+                  image { large }
+                  media(perPage: 1, sort: [POPULARITY_DESC], type: ANIME) { nodes { title { romaji english native } synonyms } }
+                }
+              }
+            }
+        """.trimIndent()
+        val data = execute(gql, mapOf("page" to page, "search" to query), cacheTtlMs = SEARCH_TTL_MS) ?: return null
+        val pageObj = data["Page"]?.jsonObject ?: return null
+        val people = pageObj["characters"]?.jsonArray.orEmpty().mapNotNull { element ->
+            val obj = element as? JsonObject ?: return@mapNotNull null
+            AniListPersonHit(
+                id = obj["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return@mapNotNull null,
+                name = obj["name"]?.jsonObject?.get("full")?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null,
+                imageUrl = obj["image"]?.jsonObject?.get("large")?.jsonPrimitive?.contentOrNull,
+                subtitle = (obj["media"] as? JsonObject)?.get("nodes")?.jsonArray?.firstOrNull()?.jsonObject?.let {
+                    pickTitle(it["title"] as? JsonObject, it["synonyms"] as? JsonArray)
+                },
+            )
+        }.distinctBy { it.id }
+        return AniListPersonPage(people, pageObj["pageInfo"]?.jsonObject?.get("hasNextPage")?.jsonPrimitive?.content == "true")
+    }
+
+    suspend fun searchStaff(query: String, page: Int = 1): AniListPersonPage? {
+        val gql = """
+            query (${'$'}page: Int, ${'$'}search: String) {
+              Page(page: ${'$'}page, perPage: 25) {
+                pageInfo { hasNextPage }
+                staff(search: ${'$'}search, sort: [SEARCH_MATCH]) {
+                  id
+                  name { full }
+                  image { large }
+                  primaryOccupations
+                  languageV2
+                }
+              }
+            }
+        """.trimIndent()
+        val data = execute(gql, mapOf("page" to page, "search" to query), cacheTtlMs = SEARCH_TTL_MS) ?: return null
+        val pageObj = data["Page"]?.jsonObject ?: return null
+        val people = pageObj["staff"]?.jsonArray.orEmpty().mapNotNull { element ->
+            val obj = element as? JsonObject ?: return@mapNotNull null
+            val occupation = obj["primaryOccupations"]?.jsonArray?.firstOrNull()?.jsonPrimitive?.contentOrNull
+            val language = obj["languageV2"]?.jsonPrimitive?.contentOrNull
+            AniListPersonHit(
+                id = obj["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return@mapNotNull null,
+                name = obj["name"]?.jsonObject?.get("full")?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null,
+                imageUrl = obj["image"]?.jsonObject?.get("large")?.jsonPrimitive?.contentOrNull,
+                subtitle = occupation ?: language,
+            )
+        }.distinctBy { it.id }
+        return AniListPersonPage(people, pageObj["pageInfo"]?.jsonObject?.get("hasNextPage")?.jsonPrimitive?.content == "true")
+    }
+
+    suspend fun getCharacterDetails(characterId: Int): AniListCharacterDetails? {
+        val gql = """
+            query (${'$'}id: Int) {
+              Character(id: ${'$'}id) {
+                id
+                name { full native }
+                image { large }
+                description(asHtml: false)
+                isFavourite
+                media(sort: [POPULARITY_DESC], type: ANIME, perPage: 25) {
+                  edges {
+                    characterRole
+                    voiceActors(sort: [RELEVANCE]) { id name { full } languageV2 image { large } }
+                    node { ...mediaFields }
+                  }
+                }
+              }
+            }
+            $MEDIA_FIELDS
+        """.trimIndent()
+        val data = execute(gql, mapOf("id" to characterId), cacheTtlMs = DETAILS_TTL_MS) ?: return null
+        val obj = data["Character"]?.jsonObject ?: return null
+        val name = obj["name"]?.jsonObject?.get("full")?.jsonPrimitive?.contentOrNull ?: return null
+        val edges = obj["media"]?.jsonObject?.get("edges")?.jsonArray.orEmpty().mapNotNull { it as? JsonObject }
+        val shows = edges.mapNotNull { edge ->
+            val media = (edge["node"] as? JsonObject)?.toMedia() ?: return@mapNotNull null
+            AniListCharacterShow(media, edge["characterRole"]?.jsonPrimitive?.contentOrNull ?: "BACKGROUND")
+        }.distinctBy { it.media.id }
+        val actors = edges.flatMap { edge -> edge["voiceActors"]?.jsonArray.orEmpty().mapNotNull { (it as? JsonObject)?.toVoiceActor() } }
+            .distinctBy { it.id }
+            .sortedBy { languageRank(it.language) }
+        return AniListCharacterDetails(
+            id = characterId,
+            name = name,
+            nativeName = obj["name"]?.jsonObject?.get("native")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() },
+            imageUrl = obj["image"]?.jsonObject?.get("large")?.jsonPrimitive?.contentOrNull,
+            description = obj["description"]?.jsonPrimitive?.contentOrNull,
+            isFavourite = obj["isFavourite"]?.jsonPrimitive?.content == "true",
+            voiceActors = actors,
+            shows = shows,
+        )
+    }
+
+    suspend fun getStaffDetails(staffId: Int): AniListStaffDetails? {
+        val gql = """
+            query (${'$'}id: Int) {
+              Staff(id: ${'$'}id) {
+                id
+                name { full native }
+                image { large }
+                description(asHtml: false)
+                isFavourite
+                languageV2
+                primaryOccupations
+                characters(sort: [FAVOURITES_DESC], perPage: 25) {
+                  edges {
+                    node { id name { full } image { large } }
+                    media { id title { romaji english native } synonyms }
+                  }
+                }
+                characterMedia(sort: [POPULARITY_DESC], perPage: 25) {
+                  edges {
+                    characterRole
+                    characters { name { full } }
+                    node { ...mediaFields type }
+                  }
+                }
+                staffMedia(type: ANIME, sort: [POPULARITY_DESC], perPage: 25) {
+                  edges {
+                    staffRole
+                    node { ...mediaFields type }
+                  }
+                }
+              }
+            }
+            $MEDIA_FIELDS
+        """.trimIndent()
+        val data = execute(gql, mapOf("id" to staffId), cacheTtlMs = DETAILS_TTL_MS) ?: return null
+        val obj = data["Staff"]?.jsonObject ?: return null
+        val name = obj["name"]?.jsonObject?.get("full")?.jsonPrimitive?.contentOrNull ?: return null
+        val voiced = obj["characters"]?.jsonObject?.get("edges")?.jsonArray.orEmpty().mapNotNull { element ->
+            val edge = element as? JsonObject ?: return@mapNotNull null
+            val node = edge["node"] as? JsonObject ?: return@mapNotNull null
+            val showObj = edge["media"]?.jsonArray?.firstOrNull() as? JsonObject
+            AniListVoicedCharacter(
+                id = node["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return@mapNotNull null,
+                name = node["name"]?.jsonObject?.get("full")?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null,
+                imageUrl = node["image"]?.jsonObject?.get("large")?.jsonPrimitive?.contentOrNull,
+                showTitle = showObj?.let { pickTitle(it["title"] as? JsonObject, it["synonyms"] as? JsonArray) },
+            )
+        }.distinctBy { it.id }
+        // Shows the person voiced a character in, then the shows they hold a crew credit in.
+        val dubbed = obj["characterMedia"]?.jsonObject?.get("edges")?.jsonArray.orEmpty().mapNotNull { element ->
+            val edge = element as? JsonObject ?: return@mapNotNull null
+            val node = edge["node"] as? JsonObject ?: return@mapNotNull null
+            if (node["type"]?.jsonPrimitive?.contentOrNull != "ANIME") return@mapNotNull null
+            val media = node.toMedia() ?: return@mapNotNull null
+            val who = edge["characters"]?.jsonArray?.firstOrNull()?.jsonObject?.get("name")?.jsonObject?.get("full")?.jsonPrimitive?.contentOrNull
+            AniListStaffWork(media, who?.let { "Voice: $it" } ?: "Voice")
+        }
+        val crew = obj["staffMedia"]?.jsonObject?.get("edges")?.jsonArray.orEmpty().mapNotNull { element ->
+            val edge = element as? JsonObject ?: return@mapNotNull null
+            val node = edge["node"] as? JsonObject ?: return@mapNotNull null
+            val media = node.toMedia() ?: return@mapNotNull null
+            AniListStaffWork(media, edge["staffRole"]?.jsonPrimitive?.contentOrNull.orEmpty())
+        }
+        return AniListStaffDetails(
+            id = staffId,
+            name = name,
+            nativeName = obj["name"]?.jsonObject?.get("native")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() },
+            imageUrl = obj["image"]?.jsonObject?.get("large")?.jsonPrimitive?.contentOrNull,
+            description = obj["description"]?.jsonPrimitive?.contentOrNull,
+            isFavourite = obj["isFavourite"]?.jsonPrimitive?.content == "true",
+            language = obj["languageV2"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() },
+            occupations = obj["primaryOccupations"]?.jsonArray.orEmpty().mapNotNull { it.jsonPrimitive.contentOrNull },
+            voicedCharacters = voiced,
+            works = (dubbed + crew).distinctBy { it.media.id },
+        )
+    }
+
+    /** Heart (favourite) toggle for a character on the signed-in account. */
+    suspend fun toggleFavouriteCharacter(characterId: Int): Boolean {
+        val mutation = """
+            mutation (${'$'}id: Int) { ToggleFavourite(characterId: ${'$'}id) { characters { nodes { id } } } }
+        """.trimIndent()
+        return (execute(mutation, mapOf("id" to characterId), idempotent = false) != null).also { if (it) clearCache() }
+    }
+
+    /** Heart (favourite) toggle for a staff member on the signed-in account. */
+    suspend fun toggleFavouriteStaff(staffId: Int): Boolean {
+        val mutation = """
+            mutation (${'$'}id: Int) { ToggleFavourite(staffId: ${'$'}id) { staff { nodes { id } } } }
+        """.trimIndent()
+        return (execute(mutation, mapOf("id" to staffId), idempotent = false) != null).also { if (it) clearCache() }
+    }
+
+    private fun JsonObject.toVoiceActor(): AniListVoiceActor? = AniListVoiceActor(
+        id = this["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null,
+        name = this["name"]?.jsonObject?.get("full")?.jsonPrimitive?.contentOrNull ?: return null,
+        imageUrl = this["image"]?.jsonObject?.get("large")?.jsonPrimitive?.contentOrNull,
+        language = this["languageV2"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+    )
+
+    /** Japanese first (the original cast), English second, the other dubs after. */
+    private fun languageRank(language: String): Int = when (language) {
+        "Japanese" -> 0
+        "English" -> 1
+        "" -> 99
+        else -> 2
+    }
+
     private fun JsonObject.toCharacter(): AniListCharacter? {
         val node = this["node"]?.jsonObject ?: return null
         val idValue = node["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: return null

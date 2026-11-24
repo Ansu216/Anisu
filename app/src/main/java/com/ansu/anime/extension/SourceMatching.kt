@@ -29,6 +29,9 @@ private const val SLOW_SOURCE_TIMEOUT_MS = 25_000L
 /** Title variants searched at the same time in each source; the rest only run when these find nothing good. */
 private const val FIRST_STAGE_QUERIES = 2
 
+/** How long a show whose titles name no season waits for ani.zip to say which season it is. */
+private const val SEASON_LOOKUP_MS = 2_500L
+
 /** A remembered page is one request; if it hangs, the normal search (with its own budget) takes over. */
 private const val REMEMBERED_TIMEOUT_MS = 6_000L
 
@@ -259,6 +262,11 @@ suspend fun ExtensionManager.findEpisodesByTitle(
      * never wait for it; the others wait up to a second for it before searching.
      */
     extraTitlesProvider: (suspend () -> List<String>)? = null,
+    /**
+     * The season number ani.zip maps this entry to, for a later season whose titles do not spell it out (such as
+     * "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen"). Only waited for when no title names the season.
+     */
+    seasonProvider: (suspend () -> Int?)? = null,
 ): List<SEpisode> = coroutineScope {
     // The extensions are scanned in the background at launch; waiting here means a title opened right after
     // the first screen still finds every installed source instead of only the built-in one.
@@ -268,9 +276,26 @@ suspend fun ExtensionManager.findEpisodesByTitle(
     val now = System.currentTimeMillis()
     // Skip sources that failed a moment ago, unless that would leave nothing to ask.
     val candidates = all.filter { now - (recentFailures[it.id] ?: 0L) > FAILURE_COOLDOWN_MS }.ifEmpty { all }
-    val titleKey = (anime.anilistId ?: anime.id).toString()
+    // "m2:" retires every page remembered before matching knew about seasons: those could be the first season's page.
+    val titleKey = "m2:" + (anime.anilistId ?: anime.id).toString()
     val extrasDeferred = extraTitlesProvider?.let { provider ->
         async { runCatching { withTimeoutOrNull(1_000L) { provider() } }.getOrNull().orEmpty() }
+    }
+    // The season is worked out once for all sources, from every title of the show (and ani.zip when none names it).
+    val targetDeferred = async {
+        val extras = extrasDeferred?.await() ?: extraTitles
+        val titles = (listOf(anime.title) + anime.altTitles + extras).distinct()
+        val fromTitles = titles.firstNotNullOfOrNull { seasonNumberOf(it) }
+        val fromZip = if (fromTitles == null && seasonProvider != null) {
+            runCatching { withTimeoutOrNull(SEASON_LOOKUP_MS) { seasonProvider() } }.getOrNull()
+        } else {
+            null
+        }
+        SeasonTarget(season = maxOf(fromTitles ?: 1, fromZip ?: 1), marked = fromTitles != null)
+    }
+    val quickTarget = (listOf(anime.title) + anime.altTitles).distinct().let { titles ->
+        val found = titles.firstNotNullOfOrNull { seasonNumberOf(it) }
+        SeasonTarget(season = found ?: 1, marked = found != null)
     }
     val matches = mutableListOf<SourceMatch>()
     val answeredIds = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
@@ -282,11 +307,16 @@ suspend fun ExtensionManager.findEpisodesByTitle(
                     // "Nothing found" is a normal answer; only an error or a timeout counts against the source.
                     var answered = false
                     val match = try {
-                        rememberedMatch(source, titleKey)?.also { answered = true } ?: withTimeoutOrNull(timeoutMs) {
+                        rememberedMatch(source, titleKey, quickTarget)?.also { answered = true } ?: withTimeoutOrNull(timeoutMs) {
                             val extras = extrasDeferred?.await() ?: extraTitles
                             val allTitles = (listOf(anime.title) + extras).distinct()
-                            val queries = allTitles.flatMap { titleQueries(it) }.distinct().take(5)
-                            matchIn(source, allTitles, queries).also { answered = true }
+                            val target = targetDeferred.await()
+                            val queries = if (target.season > 1) {
+                                allTitles.flatMap { titleQueries(it, target).take(4) }.distinct().take(8)
+                            } else {
+                                allTitles.flatMap { titleQueries(it) }.distinct().take(5)
+                            }
+                            matchIn(source, allTitles + anime.altTitles, queries, target).also { answered = true }
                         }?.also { found ->
                             found.candidate?.let { SourceMatchMemory.remember(titleKey, source.id, it, found.score) }
                         }
@@ -326,8 +356,15 @@ suspend fun ExtensionManager.findEpisodesByTitle(
  * Null when nothing is remembered, the page now lists no episodes (it is forgotten) or the request failed or
  * timed out (it is kept, and the caller falls back to a normal search).
  */
-private suspend fun rememberedMatch(source: AnimeCatalogueSource, titleKey: String): SourceMatch? {
+private suspend fun rememberedMatch(source: AnimeCatalogueSource, titleKey: String, target: SeasonTarget): SourceMatch? {
     val saved = SourceMatchMemory.get(titleKey, source.id) ?: return null
+    // A remembered page that names a different season than this show (or a later show's page remembered for a
+    // first season) is dropped and searched again, so one wrong match is never kept for a month.
+    val savedSeason = seasonNumberOf(saved.title)
+    if ((target.marked && target.season > 1 && savedSeason != target.season) || (target.season <= 1 && savedSeason != null && savedSeason > 1)) {
+        SourceMatchMemory.forget(titleKey, source.id)
+        return null
+    }
     val page = SAnime(
         id = saved.animeId,
         title = saved.title,
@@ -393,6 +430,82 @@ private fun mergeMatches(matches: List<SourceMatch>): List<SEpisode> {
     }
 }
 
+/**
+ * Which season a search is for. [season] is 1 for a first season or a show that names none; [marked] is true when
+ * a title of the show spells the number out ("Season 2", "2nd Season", "II"), which lets a page be judged by its
+ * own title; when false the number came from ani.zip only, so a page has to match the show's own title closely.
+ */
+private class SeasonTarget(val season: Int, val marked: Boolean)
+
+private val SEASON_ORDINAL = Regex("""(?i)\b(\d{1,2})(?:st|nd|rd|th)\s+season\b""")
+private val SEASON_WORD = Regex("""(?i)\bseason\s*(\d{1,2})\b""")
+private val SEASON_S_NUMBER = Regex("""(?i)\bs(\d{1,2})\b""")
+private val SEASON_JAPANESE = Regex("""第\s*([0-9一二三四五六七八九十]{1,2})\s*期""")
+private val SEASON_JAPANESE_SHORT = Regex("""([0-9]{1,2})期""")
+private val SEASON_TRAILING_ROMAN = Regex("""\s+(II|III|IV|V|VI|VII|VIII|IX)\s*$""")
+private val SEASON_TRAILING_DIGIT = Regex("""^(.{3,}?)\s+([2-9])\s*$""")
+
+private val KANJI_NUMBERS = mapOf('一' to 1, '二' to 2, '三' to 3, '四' to 4, '五' to 5, '六' to 6, '七' to 7, '八' to 8, '九' to 9, '十' to 10)
+private val ROMAN_NUMBERS = mapOf("II" to 2, "III" to 3, "IV" to 4, "V" to 5, "VI" to 6, "VII" to 7, "VIII" to 8, "IX" to 9)
+
+/** The season number a title names ("Season 2", "2nd Season", "S2", "II", "第2期", a lone trailing "2"), or null when it names none. */
+internal fun seasonNumberOf(title: String): Int? {
+    val text = title.replace(Regex("[(\\[][^)\\]]*[)\\]]"), " ").trim()
+    SEASON_ORDINAL.find(text)?.let { return it.groupValues[1].toIntOrNull() }
+    SEASON_WORD.find(text)?.let { return it.groupValues[1].toIntOrNull() }
+    SEASON_JAPANESE.find(text)?.let { m ->
+        val v = m.groupValues[1]
+        return v.toIntOrNull() ?: v.firstNotNullOfOrNull { KANJI_NUMBERS[it] }
+    }
+    SEASON_JAPANESE_SHORT.find(text)?.let { return it.groupValues[1].toIntOrNull() }
+    SEASON_S_NUMBER.find(text)?.let { return it.groupValues[1].toIntOrNull() }
+    SEASON_TRAILING_ROMAN.find(text)?.let { return ROMAN_NUMBERS[it.groupValues[1]] }
+    SEASON_TRAILING_DIGIT.find(text)?.let { return it.groupValues[2].toIntOrNull() }
+    return null
+}
+
+/** [title] without its season marker, so "X 2nd Season", "X Season 2" and "X" can be compared by name alone. */
+private fun stripSeason(title: String): String {
+    var t = title
+    listOf(SEASON_ORDINAL, SEASON_WORD, SEASON_JAPANESE, SEASON_JAPANESE_SHORT, SEASON_S_NUMBER, SEASON_TRAILING_ROMAN).forEach { t = t.replace(it, " ") }
+    SEASON_TRAILING_DIGIT.find(t)?.let { t = it.groupValues[1] }
+    return t.replace(Regex("\\s+"), " ").trim().trimEnd(':', '-', ' ')
+}
+
+private fun ordinalOf(n: Int): String = when {
+    n % 100 in 11..13 -> "${n}th"
+    n % 10 == 1 -> "${n}st"
+    n % 10 == 2 -> "${n}nd"
+    n % 10 == 3 -> "${n}rd"
+    else -> "${n}th"
+}
+
+/**
+ * How well a source's page [candidate] fits the show, season included. The plain title similarity cannot tell
+ * "X" from "X 2nd Season" (one contains the other), which is why a later season was matched to the first
+ * season's page and listed its episodes. For a later season, a page naming that season scores by name, a page naming
+ * another season is pushed far down, and a page naming none (the first season) is pushed below the match limit.
+ * For a first season, a page that names a later season is pushed down.
+ */
+private fun scoreCandidate(candidate: String, titles: List<String>, target: SeasonTarget): Double {
+    val raw = titles.maxOf { similarity(candidate, it) }
+    val pageSeason = seasonNumberOf(candidate)
+    if (target.season <= 1) {
+        return if (pageSeason != null && pageSeason > 1) raw * 0.4 else raw
+    }
+    return when {
+        pageSeason == target.season -> {
+            val byName = titles.maxOf { similarity(stripSeason(candidate), stripSeason(it)) }
+            maxOf(raw, byName * 0.95)
+        }
+        pageSeason != null && pageSeason > 1 -> raw * 0.3
+        // The page says nothing about its season. When the show's own titles say nothing either (the number came
+        // from ani.zip), only a page with the show's exact name can be it; otherwise it is the first season's page.
+        !target.marked && raw >= 0.95 -> raw
+        else -> minOf(raw, 0.45)
+    }
+}
+
 private class QueryResult(val match: SourceMatch, val hasEpisodes: Boolean)
 
 private class StageResult(val good: SourceMatch?, val results: List<QueryResult>)
@@ -402,23 +515,23 @@ private class StageResult(val good: SourceMatch?, val results: List<QueryResult>
  * the first well-matching title WITH episodes wins at once (the rest are cancelled). Only when none did, the
  * remaining variants run too; the best-scoring result is then used.
  */
-private suspend fun matchIn(source: AnimeCatalogueSource, titles: List<String>, queries: List<String>): SourceMatch? {
+private suspend fun matchIn(source: AnimeCatalogueSource, titles: List<String>, queries: List<String>, target: SeasonTarget): SourceMatch? {
     if (queries.isEmpty()) return null
-    val first = searchStage(source, titles, queries.take(FIRST_STAGE_QUERIES))
+    val first = searchStage(source, titles, queries.take(FIRST_STAGE_QUERIES), target)
     first.good?.let { return it }
     val rest = queries.drop(FIRST_STAGE_QUERIES)
-    val second = if (rest.isEmpty()) null else searchStage(source, titles, rest)
+    val second = if (rest.isEmpty()) null else searchStage(source, titles, rest, target)
     second?.good?.let { return it }
     val results = first.results + second?.results.orEmpty()
     return (results.filter { it.hasEpisodes }.maxByOrNull { it.match.score } ?: results.maxByOrNull { it.match.score })?.match
 }
 
-private suspend fun searchStage(source: AnimeCatalogueSource, titles: List<String>, queries: List<String>): StageResult = coroutineScope {
+private suspend fun searchStage(source: AnimeCatalogueSource, titles: List<String>, queries: List<String>, target: SeasonTarget): StageResult = coroutineScope {
     val winner = kotlinx.coroutines.CompletableDeferred<SourceMatch?>()
     val results = mutableListOf<QueryResult>()
     val jobs = queries.map { query ->
         launch {
-            val result = matchForQuery(source, titles, query)
+            val result = matchForQuery(source, titles, query, target)
             if (result != null) {
                 synchronized(results) { results += result }
                 if (result.hasEpisodes && result.match.score >= GOOD_MATCH_SCORE) winner.complete(result.match)
@@ -434,7 +547,7 @@ private suspend fun searchStage(source: AnimeCatalogueSource, titles: List<Strin
     StageResult(good, synchronized(results) { results.toList() })
 }
 
-private suspend fun matchForQuery(source: AnimeCatalogueSource, titles: List<String>, query: String): QueryResult? {
+private suspend fun matchForQuery(source: AnimeCatalogueSource, titles: List<String>, query: String, target: SeasonTarget): QueryResult? {
     val results = try {
         source.getSearchAnime(1, query, emptyList()).animes
     } catch (e: kotlinx.coroutines.CancellationException) {
@@ -445,7 +558,7 @@ private suspend fun matchForQuery(source: AnimeCatalogueSource, titles: List<Str
     // Try the few best-looking results rather than only the top one; the top hit is often a
     // different season or a dub entry with no episodes.
     val ranked = results
-        .map { it to titles.maxOf { t -> similarity(it.title, t) } }
+        .map { it to scoreCandidate(it.title, titles, target) }
         .filter { it.second >= MIN_MATCH_SCORE }
         .sortedByDescending { it.second }
         .take(3)
@@ -471,7 +584,7 @@ private suspend fun matchForQuery(source: AnimeCatalogueSource, titles: List<Str
                 fetches.forEach { it.cancel() }
                 return@coroutineScope QueryResult(SourceMatch(source, score, episodes, candidate), true)
             }
-            if (fallback == null) {
+            if (fallback == null && target.season <= 1) {
                 // Movies / single-item entries: some sources return no episode list. Keep the entry playable.
                 val single = SEpisode(
                     id = (candidate.origin as? com.ansu.anime.core.model.MediaOrigin.Extension)?.urlPath ?: candidate.id,
@@ -486,7 +599,7 @@ private suspend fun matchForQuery(source: AnimeCatalogueSource, titles: List<Str
 }
 
 /** Title variants to search with: full title, pre-colon part, season/part suffixes removed, bracketed text removed. */
-private fun titleQueries(title: String): List<String> {
+private fun titleQueries(title: String, target: SeasonTarget = SeasonTarget(1, false)): List<String> {
     val base = title.trim()
     val noBrackets = base.replace(Regex("[(\\[][^)\\]]*[)\\]]"), " ").replace(Regex("\\s+"), " ").trim()
     val noSeason = noBrackets
@@ -495,7 +608,19 @@ private fun titleQueries(title: String): List<String> {
         .replace(Regex("\\s+"), " ").trim()
     val beforeColon = base.substringBefore(':').trim()
     val firstWords = noSeason.split(' ').take(3).joinToString(" ")
-    return listOf(base, noBrackets, noSeason, beforeColon, firstWords)
+    // A later season is searched with its number spelled out, so the source returns that season's page.
+    val withSeason = if (target.season > 1) {
+        val name = stripSeason(noBrackets).ifBlank { noSeason }
+        listOf("$name Season ${target.season}", "$name ${ordinalOf(target.season)} Season", "$name ${target.season}")
+    } else {
+        emptyList()
+    }
+    val ordered = if (target.season > 1) {
+        listOf(base) + withSeason.take(1) + listOf(noBrackets) + withSeason.drop(1) + listOf(beforeColon)
+    } else {
+        listOf(base, noBrackets, noSeason, beforeColon, firstWords)
+    }
+    return ordered
         .filter { it.length >= 2 }
         .distinct()
 }

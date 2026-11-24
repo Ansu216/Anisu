@@ -12,7 +12,23 @@ import kotlinx.coroutines.flow.StateFlow
  * shared holder for "what's currently selected" is simpler and just as
  * correct as round-tripping everything through a nav-arg codec.
  */
+/** Which kind of person a character/staff page shows. */
+enum class PersonKind { CHARACTER, STAFF }
+
+/** What is already known about a person when their page opens (from the search row or the cast row), so the header shows at once. */
+data class PersonPreview(val kind: PersonKind, val id: Int, val name: String, val imageUrl: String?, val subtitle: String?)
+
 class SelectionHolder {
+    private val personPreviews = HashMap<String, PersonPreview>()
+
+    /** Remembers [preview] for the page at [com.ansu.anime.ui.navigation.personRoute]; returns that route. */
+    fun openPerson(preview: PersonPreview): String {
+        personPreviews["${preview.kind}/${preview.id}"] = preview
+        return com.ansu.anime.ui.navigation.personRoute(preview.kind, preview.id)
+    }
+
+    fun personPreview(kind: PersonKind, id: Int): PersonPreview? = personPreviews["$kind/$id"]
+
     private val _currentAnime = MutableStateFlow<SAnime?>(null)
     val currentAnime: StateFlow<SAnime?> = _currentAnime
 

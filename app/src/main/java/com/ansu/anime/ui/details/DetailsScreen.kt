@@ -144,7 +144,6 @@ fun DetailsScreen(
     val downloadItems by container.downloads.items.collectAsStateWithLifecycle()
     val downloadStatuses = remember(downloadItems) { downloadItems.associate { it.entry.id to it.status } }
     var expandSynopsis by remember { mutableStateOf(false) }
-    var selectedPerson by remember { mutableStateOf<PersonDetail?>(null) }
     var playingTrailer by remember { mutableStateOf<com.ansu.anime.data.repository.Trailer?>(null) }
     var showComments by remember { mutableStateOf(false) }
     // The download options dialog: asks for the picture quality of one episode, or for how many episodes to queue.
@@ -467,7 +466,16 @@ fun DetailsScreen(
                                 imageUrl = character.imageUrl,
                                 name = character.name,
                                 role = character.role.lowercase().replaceFirstChar { it.uppercase() },
-                                onClick = { selectedPerson = PersonDetail.Character(character) },
+                                onClick = {
+                                    navController.navigate(
+                                        container.selectionHolder.openPerson(
+                                            com.ansu.anime.core.util.PersonPreview(
+                                                com.ansu.anime.core.util.PersonKind.CHARACTER, character.id, character.name, character.imageUrl,
+                                                character.role.lowercase().replaceFirstChar { it.uppercase() },
+                                            ),
+                                        ),
+                                    )
+                                },
                             )
                         }
                     }
@@ -483,7 +491,15 @@ fun DetailsScreen(
                                 imageUrl = member.imageUrl,
                                 name = member.name,
                                 role = member.role,
-                                onClick = { selectedPerson = PersonDetail.Staff(member) },
+                                onClick = {
+                                    navController.navigate(
+                                        container.selectionHolder.openPerson(
+                                            com.ansu.anime.core.util.PersonPreview(
+                                                com.ansu.anime.core.util.PersonKind.STAFF, member.id, member.name, member.imageUrl, member.role,
+                                            ),
+                                        ),
+                                    )
+                                },
                             )
                         }
                     }
@@ -510,9 +526,6 @@ fun DetailsScreen(
     }
     }
 
-    selectedPerson?.let { person ->
-        CharacterStaffSheet(person = person, onDismiss = { selectedPerson = null })
-    }
     val commentsFor = anime
     if (showComments && commentsFor?.anilistId != null) {
         CommentsSheet(
