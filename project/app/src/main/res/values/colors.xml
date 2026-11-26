@@ -1,4 +1,0 @@
-<resources>
-    <!-- Window / status-bar background used by Theme.Ansu before Compose draws. -->
-    <color name="ansu_background">#101013</color>
-</resources>
